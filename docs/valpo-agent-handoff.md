@@ -50,7 +50,7 @@ Follow these rules unless a later decision explicitly changes them:
 
 ## First Implementation Goal
 
-Build the smallest server-side MVP:
+Phase 0 scaffold now exists. The next implementation goal is the smallest server-side deploy MVP:
 
 ```text
 create project
@@ -62,18 +62,16 @@ track releases
 rollback release
 ```
 
-Do not start with GitHub/GitLab OAuth, buildpacks, databases, or the multi-server dashboard. Those depend on the core deploy lifecycle.
+Do not start with GitHub/GitLab OAuth, buildpacks, managed databases, static uploads, or the multi-server dashboard. Those depend on the core deploy lifecycle.
 
 Do preserve modular boundaries for source adapters, build adapters, service definitions, backup targets, notification sinks, and lifecycle events. Those are future extension points, not v1 product scope.
 
 ## Suggested Repository Structure
 
+The current implementation keeps API, worker, CLI, and shared library code in one Ruby gem-style repository rather than separate `apps/` directories.
+
 ```text
 valpo/
-  apps/
-    api/
-    worker/
-    cli/
   lib/
     valpo/
       api/
@@ -81,16 +79,21 @@ valpo/
       models/
       docker/
       caddy/
-      config/
-      releases/
-      sources/
+      config.rb
+      database.rb
+      migrator.rb
   db/
     migrations/
+  exe/
+    valpo
+    valpo-api
+    valpo-worker
   packaging/
+    README.md
     systemd/
-    install/
   docs/
   test/
+    valpo/
 ```
 
 This structure is only a starting suggestion. Prefer coherence over rigid adherence.
@@ -249,17 +252,22 @@ Start with tests around state transitions and failure behavior:
 
 Use integration tests where local Docker is available, but keep unit tests able to run without Docker.
 
+Keep test files aligned with the source tree. For example, `lib/valpo/models/project.rb` should have a focused counterpart under `test/valpo/models/project_test.rb`.
+
 ## Open Questions
 
-- Should the first API bind only to localhost and rely on SSH tunneling?
-- Should the first CLI be bundled in the same repo as the server?
-- Should Caddy be configured through its admin API or generated config file reloads?
-- Should deployments use one shared Docker network or one network per project?
 - How should secret encryption keys be generated, stored, and rotated?
-- What is the first supported Linux distribution?
 - Should managed service credentials be preserved or regenerated during project import?
 - Should v1 managed services be owned by exactly one project?
 - Should Postgres/MariaDB backups be enabled by default?
+
+Resolved for the current scaffold:
+
+- The first API binds to localhost by default.
+- The CLI is bundled in the same Ruby project as the server.
+- Caddy starts with generated config file rendering and reload boundaries.
+- Docker starts with one shared network named `valpo`.
+- The first packaging target is Ubuntu 26.04 LTS.
 
 ## Agent Instruction
 
@@ -272,4 +280,4 @@ When starting implementation, read these documents first:
 5. `valpo-architecture-decisions.md`
 6. `valpo-roadmap.md`
 
-Then build Phase 0 and Phase 1 only. Keep changes aligned with the single-server MVP before expanding into GitHub/GitLab, static uploads, managed services, or dashboard work.
+Then continue with Phase 1 only. Keep changes aligned with the single-server deploy MVP before expanding into GitHub/GitLab, static uploads, managed services, or dashboard work.

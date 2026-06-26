@@ -1,0 +1,8 @@
+# Valpo production config template for Ubuntu 26.04 LTS.
+production:
+  database_path: /var/lib/valpo/valpo.db
+  api_host: 127.0.0.1
+  api_port: 7092
+  caddy_config_path: /etc/caddy/valpo.caddy
+  docker_network: valpo
+  worker_poll_interval: 2

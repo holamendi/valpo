@@ -1,0 +1,23 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+$LOAD_PATH.unshift(File.expand_path("../lib", __dir__))
+
+require "optparse"
+require "valpo"
+
+options = {}
+OptionParser.new do |parser|
+  parser.banner = "Usage: valpo-worker [options]"
+  parser.on("--config PATH", "Path to valpo.yml") { |path| options[:config] = path }
+  parser.on("--once", "Process at most one job and exit") { options[:once] = true }
+  parser.on("--migrate", "Run migrations before starting") { options[:migrate] = true }
+end.parse!(ARGV)
+
+config = Valpo::Config.load(path: options[:config])
+Valpo::Boot.run(config: config, migrate: options[:migrate])
+
+require "valpo/jobs/worker"
+
+worker = Valpo::Jobs::Worker.new(poll_interval: config.worker_poll_interval)
+worker.run(once: options[:once])

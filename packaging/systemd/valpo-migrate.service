@@ -1,0 +1,15 @@
+[Unit]
+Description=Valpo Database Migration
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=valpo
+Group=valpo
+WorkingDirectory=/opt/valpo
+Environment=VALPO_ENV=production
+Environment=VALPO_CONFIG=/etc/valpo/valpo.yml
+StateDirectory=valpo
+LogsDirectory=valpo
+ExecStart=/usr/bin/env bundle exec rake db:migrate

@@ -2,13 +2,15 @@
 
 ## Roadmap Philosophy
 
-Build from the smallest useful self-contained VPS platform outward. Avoid starting with GitHub/GitLab, database migrations, or the multi-server dashboard until the local server deploy lifecycle is solid.
+Build from the smallest useful self-contained VPS platform outward. Avoid starting with GitHub/GitLab, managed database features, or the multi-server dashboard until the local server deploy lifecycle is solid.
 
 The first milestone should prove that Valpo can reliably take an artifact, run it, route traffic to it, show logs, and roll it back. The next product-defining milestone is managed services that feel like Heroku add-ons rather than raw container setup.
 
 ## Phase 0: Architecture And Scaffold
 
 Goal: create the project skeleton and validate the local host model.
+
+Status: implemented as the initial Ruby scaffold. The current repository has the Roda API skeleton, Sequel/SQLite migrations, SQLite-backed job runner, worker, CLI, config loading, Docker/Caddy wrapper boundaries, and systemd/config templates.
 
 Deliverables:
 
@@ -33,6 +35,8 @@ Exit criteria:
 ## Phase 1: Single-Server Container Deploy MVP
 
 Goal: deploy a prebuilt Docker image to one VPS and route HTTP traffic to it.
+
+Status: next implementation phase.
 
 Deliverables:
 

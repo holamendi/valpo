@@ -1,0 +1,21 @@
+[Unit]
+Description=Valpo Worker
+After=network-online.target docker.service valpo-migrate.service
+Wants=network-online.target docker.service
+Requires=valpo-migrate.service
+
+[Service]
+Type=simple
+User=valpo
+Group=valpo
+WorkingDirectory=/opt/valpo
+Environment=VALPO_ENV=production
+Environment=VALPO_CONFIG=/etc/valpo/valpo.yml
+StateDirectory=valpo
+LogsDirectory=valpo
+ExecStart=/usr/bin/env bundle exec exe/valpo-worker --config /etc/valpo/valpo.yml
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
