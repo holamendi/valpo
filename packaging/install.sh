@@ -137,6 +137,7 @@ run_as_valpo_shell() {
   runuser -u "$VALPO_USER" -- env \
     HOME="$STATE_DIR" \
     USER="$VALPO_USER" \
+    PATH="${STATE_DIR}/.local/bin:${PATH}" \
     MISE_RUBY_COMPILE=false \
     MISE_YES=1 \
     bash -lc "$1"
@@ -271,12 +272,27 @@ install_systemd_units() {
   install -m 0644 "${PREFIX}/packaging/systemd/valpo-migrate.service" /etc/systemd/system/valpo-migrate.service
 }
 
+locked_bundler_version() {
+  awk '
+    /^BUNDLED WITH$/ {
+      getline
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", $0)
+      print
+      exit
+    }
+  ' "${PREFIX}/Gemfile.lock"
+}
+
 install_gems() {
   [[ "$SKIP_DEPS" -eq 0 ]] || return 0
+  bundler_version="$(locked_bundler_version)"
+  [[ -n "$bundler_version" ]] || fail "Gemfile.lock must include BUNDLED WITH"
+
   log "Installing Ruby gems"
-  run_as_valpo_shell "cd '${PREFIX}' && '${MISE_BIN}' x ruby@${RUBY_VERSION} -- gem install bundler"
-  run_as_valpo_shell "cd '${PREFIX}' && '${MISE_BIN}' x ruby@${RUBY_VERSION} -- bundle config set --global path '${STATE_DIR}/bundle'"
-  run_as_valpo_shell "cd '${PREFIX}' && '${MISE_BIN}' x ruby@${RUBY_VERSION} -- bundle install --jobs 4 --retry 3"
+  run_as_valpo_shell "cd '${PREFIX}' && '${MISE_BIN}' x ruby@${RUBY_VERSION} -- gem install bundler -v '${bundler_version}'"
+  run_as_valpo_shell "cd '${PREFIX}' && '${MISE_BIN}' x ruby@${RUBY_VERSION} -- bundle _${bundler_version}_ config set --global path '${STATE_DIR}/bundle'"
+  run_as_valpo_shell "cd '${PREFIX}' && '${MISE_BIN}' x ruby@${RUBY_VERSION} -- bundle _${bundler_version}_ config set --global frozen true"
+  run_as_valpo_shell "cd '${PREFIX}' && '${MISE_BIN}' x ruby@${RUBY_VERSION} -- bundle _${bundler_version}_ install --jobs 4 --retry 3"
 }
 
 run_migrations() {

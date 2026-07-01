@@ -33,6 +33,22 @@ class ValpoPackagingInstallScriptTest < Minitest::Test
     assert_match(/ruby-build\|building ruby\|compiling ruby/, script)
   end
 
+  def test_installer_puts_mise_on_path_for_valpo_shell_commands
+    script = File.read(INSTALL_SCRIPT)
+
+    assert_includes script, "PATH=\"${STATE_DIR}/.local/bin:${PATH}\""
+  end
+
+  def test_installer_uses_locked_bundler_without_rewriting_source
+    script = File.read(INSTALL_SCRIPT)
+
+    assert_includes script, "locked_bundler_version()"
+    assert_includes script, "Gemfile.lock must include BUNDLED WITH"
+    assert_includes script, "gem install bundler -v '${bundler_version}'"
+    assert_includes script, "bundle _${bundler_version}_ config set --global frozen true"
+    assert_includes script, "bundle _${bundler_version}_ install --jobs 4 --retry 3"
+  end
+
   def test_installer_uses_valpo_owned_caddy_import
     script = File.read(INSTALL_SCRIPT)
     config = File.read(EXAMPLE_CONFIG)
