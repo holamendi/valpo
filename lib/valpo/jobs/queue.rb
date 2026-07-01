@@ -2,17 +2,46 @@
 
 require "json"
 require "time"
+require "valpo/errors"
 
 module Valpo
   module Jobs
     class Queue
+      ACTIVE_PROJECT_JOB_STATUSES = %w[queued running].freeze
+      PROJECT_OPERATION_TYPES = %w[
+        deploy_registry_image
+        rollback_release
+        apply_caddy_config
+        stop_project
+        restart_project
+      ].freeze
+
       def enqueue(type, payload = {})
-        job = Valpo::Job.create(
-          type: type,
-          payload_json: JSON.generate(payload)
-        )
-        event(job.id, "system", "Job queued")
-        find(job.id)
+        Valpo::Database.connection.transaction(mode: :immediate) do
+          create_job(type, payload)
+        end
+      end
+
+      def enqueue_project_operation(type, project_id:, payload: {})
+        project_id = project_id.to_s
+        Valpo::Database.connection.transaction(mode: :immediate) do
+          active_job = active_project_job(project_id)
+          if active_job
+            raise Valpo::ConflictError, "Project already has an active #{active_job.type} job: #{active_job.id}"
+          end
+
+          yield if block_given?
+
+          create_job(type, payload.merge(project_id: project_id))
+        end
+      end
+
+      def active_project_job(project_id, types: PROJECT_OPERATION_TYPES)
+        project_id = project_id.to_s
+        Valpo::Job.where(status: ACTIVE_PROJECT_JOB_STATUSES, type: types)
+                  .order(:created_at)
+                  .all
+                  .find { |job| job.payload["project_id"].to_s == project_id }
       end
 
       def list
@@ -86,6 +115,15 @@ module Valpo
       end
 
       private
+
+      def create_job(type, payload)
+        job = Valpo::Job.create(
+          type: type,
+          payload_json: JSON.generate(payload)
+        )
+        event(job.id, "system", "Job queued")
+        find(job.id)
+      end
 
       def now
         Time.now.utc

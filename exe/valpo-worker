@@ -19,5 +19,5 @@ Valpo::Boot.run(config: config, migrate: options[:migrate])
 
 require "valpo/jobs/worker"
 
-worker = Valpo::Jobs::Worker.new(poll_interval: config.worker_poll_interval)
+worker = Valpo::Jobs::Worker.new(config: config, poll_interval: config.worker_poll_interval)
 worker.run(once: options[:once])

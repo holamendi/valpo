@@ -39,4 +39,60 @@ class ValpoJobsQueueTest < Minitest::Test
 
     assert_equal "succeeded", queue.succeed(job[:id], worker_id: "worker-1")[:status]
   end
+
+  def test_project_operations_are_serialized_per_project
+    project = Valpo::Project.create(name: "hello")
+    other_project = Valpo::Project.create(name: "other")
+    queue = Valpo::Jobs::Queue.new
+
+    first = queue.enqueue_project_operation(
+      "deploy_registry_image",
+      project_id: project.id,
+      payload: { image: "example/hello:v1", internal_port: 3000 }
+    )
+
+    error = assert_raises Valpo::ConflictError do
+      queue.enqueue_project_operation(
+        "deploy_registry_image",
+        project_id: project.id,
+        payload: { image: "example/hello:v2", internal_port: 3000 }
+      )
+    end
+
+    assert_match "already has an active deploy_registry_image job", error.message
+
+    other = queue.enqueue_project_operation(
+      "deploy_registry_image",
+      project_id: other_project.id,
+      payload: { image: "example/other:v1", internal_port: 3000 }
+    )
+
+    assert_equal other_project.id, other.payload.fetch("project_id")
+
+    locked = queue.lock_next("worker-1")
+    assert_equal first.id, locked.id
+    queue.succeed(first.id, worker_id: "worker-1")
+
+    next_job = queue.enqueue_project_operation(
+      "deploy_registry_image",
+      project_id: project.id,
+      payload: { image: "example/hello:v2", internal_port: 3000 }
+    )
+
+    assert_equal project.id, next_job.payload.fetch("project_id")
+  end
+
+  def test_project_operation_block_does_not_run_when_project_is_busy
+    project = Valpo::Project.create(name: "hello")
+    queue = Valpo::Jobs::Queue.new
+    queue.enqueue_project_operation("deploy_registry_image", project_id: project.id, payload: { image: "example/hello:v1", internal_port: 3000 })
+
+    assert_raises Valpo::ConflictError do
+      queue.enqueue_project_operation("apply_caddy_config", project_id: project.id) do
+        Valpo::Domain.create(project_id: project.id, hostname: "hello.example.com")
+      end
+    end
+
+    assert_empty Valpo::Domain.where(project_id: project.id).all
+  end
 end

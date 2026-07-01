@@ -2,6 +2,7 @@
 
 require "securerandom"
 require "socket"
+require "valpo/deployments/orchestrator"
 require "valpo/jobs/queue"
 
 module Valpo
@@ -12,18 +13,108 @@ module Valpo
       end
     end
 
+    class DeployRegistryImage
+      def initialize(orchestrator:)
+        @orchestrator = orchestrator
+      end
+
+      def call(job, queue:)
+        payload = job.payload
+        orchestrator.deploy_registry_image(
+          project_id: payload.fetch("project_id"),
+          image: payload.fetch("image"),
+          internal_port: Integer(payload.fetch("internal_port")),
+          healthcheck_path: payload["healthcheck_path"],
+          queue: queue,
+          job_id: job[:id]
+        )
+      end
+
+      private
+
+      attr_reader :orchestrator
+    end
+
+    class RollbackRelease
+      def initialize(orchestrator:)
+        @orchestrator = orchestrator
+      end
+
+      def call(job, queue:)
+        payload = job.payload
+        orchestrator.rollback_project(project_id: payload.fetch("project_id"), queue: queue, job_id: job[:id])
+      end
+
+      private
+
+      attr_reader :orchestrator
+    end
+
+    class ApplyCaddyConfig
+      def initialize(orchestrator:)
+        @orchestrator = orchestrator
+      end
+
+      def call(job, queue:)
+        orchestrator.apply_caddy_config(queue: queue, job_id: job[:id])
+      end
+
+      private
+
+      attr_reader :orchestrator
+    end
+
+    class StopProject
+      def initialize(orchestrator:)
+        @orchestrator = orchestrator
+      end
+
+      def call(job, queue:)
+        payload = job.payload
+        orchestrator.stop_project(project_id: payload.fetch("project_id"), queue: queue, job_id: job[:id])
+      end
+
+      private
+
+      attr_reader :orchestrator
+    end
+
+    class RestartProject
+      def initialize(orchestrator:)
+        @orchestrator = orchestrator
+      end
+
+      def call(job, queue:)
+        payload = job.payload
+        orchestrator.restart_project(project_id: payload.fetch("project_id"), queue: queue, job_id: job[:id])
+      end
+
+      private
+
+      attr_reader :orchestrator
+    end
+
     class Worker
       DEFAULT_STALE_LOCK_TIMEOUT = 6 * 60 * 60
-      DEFAULT_HANDLERS = {
-        "system_check" => SystemCheck.new
-      }.freeze
 
-      def initialize(queue: Valpo::Jobs::Queue.new, handlers: DEFAULT_HANDLERS, worker_id: nil, poll_interval: 2, stale_lock_timeout: DEFAULT_STALE_LOCK_TIMEOUT)
+      def initialize(queue: Valpo::Jobs::Queue.new, handlers: nil, worker_id: nil, poll_interval: 2, stale_lock_timeout: DEFAULT_STALE_LOCK_TIMEOUT, config: Valpo.config || Valpo::Config.load)
         @queue = queue
-        @handlers = handlers
+        @handlers = handlers || self.class.default_handlers(config: config)
         @worker_id = worker_id || default_worker_id
         @poll_interval = poll_interval
         @stale_lock_timeout = stale_lock_timeout
+      end
+
+      def self.default_handlers(config:)
+        orchestrator = Valpo::Deployments::Orchestrator.new(config: config)
+        {
+          "system_check" => SystemCheck.new,
+          "deploy_registry_image" => DeployRegistryImage.new(orchestrator: orchestrator),
+          "rollback_release" => RollbackRelease.new(orchestrator: orchestrator),
+          "apply_caddy_config" => ApplyCaddyConfig.new(orchestrator: orchestrator),
+          "stop_project" => StopProject.new(orchestrator: orchestrator),
+          "restart_project" => RestartProject.new(orchestrator: orchestrator)
+        }
       end
 
       def run(once: false)

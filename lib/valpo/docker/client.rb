@@ -52,6 +52,10 @@ module Valpo
         command("network", "create", name)
       end
 
+      def network_inspect_command(name)
+        command("network", "inspect", name)
+      end
+
       def volume_create_command(name)
         command("volume", "create", name)
       end

@@ -12,6 +12,30 @@ module Valpo
         fields(record, :id, :name, :type, :status, :created_at, :updated_at)
       end
 
+      def release(record)
+        fields(
+          record,
+          :id,
+          :project_id,
+          :version,
+          :source_type,
+          :source_ref,
+          :artifact_ref,
+          :image_digest,
+          :status,
+          :internal_port,
+          :healthcheck_path,
+          :container_name,
+          :route_target,
+          :activated_at,
+          :created_at
+        )
+      end
+
+      def domain(record)
+        fields(record, :id, :project_id, :hostname, :route_target, :tls_status, :created_at, :updated_at)
+      end
+
       def job(record)
         fields(record, :id, :type, :status, :progress, :error, :locked_by, :locked_at, :started_at, :finished_at, :created_at)
           .merge(payload: parse_payload(record[:payload_json]))

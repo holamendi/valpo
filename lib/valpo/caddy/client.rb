@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require "open3"
 require "valpo/caddy/renderer"
 
 module Valpo
@@ -23,6 +24,11 @@ module Valpo
 
       def reload_command
         [binary, "reload", "--config", config_path]
+      end
+
+      def execute(command)
+        stdout, stderr, status = Open3.capture3(*command)
+        { stdout: stdout, stderr: stderr, status: status.exitstatus, success: status.success? }
       end
 
       private

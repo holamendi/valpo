@@ -21,6 +21,11 @@ module Valpo
     map "projects:list" => :projects_list
     map "projects:create" => :projects_create
     map "projects:show" => :projects_show
+    map "projects:stop" => :projects_stop
+    map "projects:restart" => :projects_restart
+    map "domains:add" => :domains_add
+    map "domains:list" => :domains_list
+    map "domains:remove" => :domains_remove
     map "jobs:list" => :jobs_list
     map "jobs:show" => :jobs_show
     map "jobs:events" => :jobs_events
@@ -40,6 +45,64 @@ module Valpo
     desc "projects:show ID_OR_NAME", "Show a project"
     def projects_show(id_or_name)
       say_json(request(:get, "/projects/#{id_or_name}"))
+    end
+
+    desc "projects:stop PROJECT", "Stop the active project container"
+    def projects_stop(project)
+      say_json(request(:post, "/projects/#{project}/stop"))
+    end
+
+    desc "projects:restart PROJECT", "Restart the active project container"
+    def projects_restart(project)
+      say_json(request(:post, "/projects/#{project}/restart"))
+    end
+
+    desc "deploy PROJECT", "Deploy a prebuilt Docker image"
+    option :image, type: :string, required: true
+    option :port, type: :numeric, required: true
+    option :healthcheck_path, type: :string
+    def deploy(project)
+      payload = {
+        "image" => options[:image],
+        "internal_port" => options[:port],
+        "healthcheck_path" => options[:healthcheck_path]
+      }.compact
+      say_json(request(:post, "/projects/#{project}/deployments", payload))
+    end
+
+    desc "releases PROJECT", "List project releases"
+    def releases(project)
+      say_json(request(:get, "/projects/#{project}/releases"))
+    end
+
+    desc "rollback PROJECT", "Roll back to the previous release"
+    def rollback(project)
+      say_json(request(:post, "/projects/#{project}/rollback"))
+    end
+
+    desc "domains:add PROJECT HOSTNAME", "Add a project domain"
+    def domains_add(project, hostname)
+      say_json(request(:post, "/projects/#{project}/domains", "hostname" => hostname))
+    end
+
+    desc "domains:list PROJECT", "List project domains"
+    def domains_list(project)
+      say_json(request(:get, "/projects/#{project}/domains"))
+    end
+
+    desc "domains:remove PROJECT HOSTNAME_OR_ID", "Remove a project domain"
+    def domains_remove(project, hostname_or_id)
+      say_json(request(:delete, "/projects/#{project}/domains/#{hostname_or_id}"))
+    end
+
+    desc "logs PROJECT", "Print active app container logs"
+    option :tail, type: :numeric
+    def logs(project)
+      path = "/projects/#{project}/logs"
+      path = "#{path}?tail=#{options[:tail]}" if options[:tail]
+      payload = request(:get, path)
+      say payload.fetch("stdout")
+      warn payload.fetch("stderr") unless payload.fetch("stderr").to_s.empty?
     end
 
     desc "jobs:list", "List jobs"
@@ -88,7 +151,8 @@ module Valpo
     def request_class(method)
       {
         get: Net::HTTP::Get,
-        post: Net::HTTP::Post
+        post: Net::HTTP::Post,
+        delete: Net::HTTP::Delete
       }.fetch(method)
     end
 

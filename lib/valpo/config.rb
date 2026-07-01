@@ -7,6 +7,10 @@ module Valpo
     DEFAULT_ENV = "development"
     DEFAULT_API_PORT = 7092
     DEFAULT_WORKER_POLL_INTERVAL = 2
+    DEFAULT_APP_PORT_START = 20_000
+    DEFAULT_APP_PORT_END = 29_999
+    DEFAULT_HEALTHCHECK_TIMEOUT = 30
+    DEFAULT_DEPLOY_DRAIN_DELAY = 0
 
     attr_reader :env,
                 :root,
@@ -15,7 +19,11 @@ module Valpo
                 :api_port,
                 :caddy_config_path,
                 :docker_network,
-                :worker_poll_interval
+                :worker_poll_interval,
+                :app_port_start,
+                :app_port_end,
+                :healthcheck_timeout,
+                :deploy_drain_delay
 
     def self.load(path: ENV["VALPO_CONFIG"], env: ENV.fetch("VALPO_ENV", DEFAULT_ENV))
       data = path && File.exist?(path) ? YAML.safe_load_file(path, aliases: false) || {} : {}
@@ -29,7 +37,11 @@ module Valpo
         api_port: Integer(value(env_data, "api_port", ENV["VALPO_API_PORT"], DEFAULT_API_PORT)),
         caddy_config_path: value(env_data, "caddy_config_path", ENV["VALPO_CADDY_CONFIG_PATH"], default_caddy_config_path(env)),
         docker_network: value(env_data, "docker_network", ENV["VALPO_DOCKER_NETWORK"], "valpo"),
-        worker_poll_interval: Float(value(env_data, "worker_poll_interval", ENV["VALPO_WORKER_POLL_INTERVAL"], DEFAULT_WORKER_POLL_INTERVAL))
+        worker_poll_interval: Float(value(env_data, "worker_poll_interval", ENV["VALPO_WORKER_POLL_INTERVAL"], DEFAULT_WORKER_POLL_INTERVAL)),
+        app_port_start: Integer(value(env_data, "app_port_start", ENV["VALPO_APP_PORT_START"], DEFAULT_APP_PORT_START)),
+        app_port_end: Integer(value(env_data, "app_port_end", ENV["VALPO_APP_PORT_END"], DEFAULT_APP_PORT_END)),
+        healthcheck_timeout: Integer(value(env_data, "healthcheck_timeout", ENV["VALPO_HEALTHCHECK_TIMEOUT"], DEFAULT_HEALTHCHECK_TIMEOUT)),
+        deploy_drain_delay: Float(value(env_data, "deploy_drain_delay", ENV["VALPO_DEPLOY_DRAIN_DELAY"], DEFAULT_DEPLOY_DRAIN_DELAY))
       )
     end
 
@@ -46,7 +58,7 @@ module Valpo
     end
     private_class_method :value
 
-    def initialize(env:, root:, database_path:, api_host:, api_port:, caddy_config_path:, docker_network:, worker_poll_interval:)
+    def initialize(env:, root:, database_path:, api_host:, api_port:, caddy_config_path:, docker_network:, worker_poll_interval:, app_port_start:, app_port_end:, healthcheck_timeout:, deploy_drain_delay:)
       @env = env
       @root = root
       @database_path = expand_path(database_path)
@@ -55,6 +67,10 @@ module Valpo
       @caddy_config_path = expand_path(caddy_config_path)
       @docker_network = docker_network
       @worker_poll_interval = worker_poll_interval
+      @app_port_start = app_port_start
+      @app_port_end = app_port_end
+      @healthcheck_timeout = healthcheck_timeout
+      @deploy_drain_delay = deploy_drain_delay
     end
 
     private

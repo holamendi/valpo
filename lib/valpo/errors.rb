@@ -3,4 +3,5 @@
 module Valpo
   class Error < StandardError; end
   class ValidationError < Error; end
+  class ConflictError < Error; end
 end

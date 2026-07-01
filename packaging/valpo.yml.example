@@ -6,3 +6,7 @@ production:
   caddy_config_path: /etc/caddy/valpo.caddy
   docker_network: valpo
   worker_poll_interval: 2
+  app_port_start: 20000
+  app_port_end: 29999
+  healthcheck_timeout: 30
+  deploy_drain_delay: 2

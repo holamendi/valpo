@@ -1,6 +1,10 @@
 # frozen_string_literal: true
 
 module Valpo
+  class << self
+    attr_accessor :config
+  end
+
   def self.root
     File.expand_path("..", __dir__)
   end

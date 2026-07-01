@@ -17,7 +17,11 @@ VALPO_TEST_CONFIG = Valpo::Config.new(
   api_port: 7092,
   caddy_config_path: File.join(VALPO_TEST_DIR, "Caddyfile"),
   docker_network: "valpo",
-  worker_poll_interval: 0.01
+  worker_poll_interval: 0.01,
+  app_port_start: 20_000,
+  app_port_end: 20_099,
+  healthcheck_timeout: 1,
+  deploy_drain_delay: 0
 )
 
 Valpo::Boot.run(config: VALPO_TEST_CONFIG, migrate: true)
