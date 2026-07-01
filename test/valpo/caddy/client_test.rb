@@ -8,4 +8,13 @@ class ValpoCaddyClientTest < Minitest::Test
 
     assert_equal ["caddy", "reload", "--config", "/etc/caddy/valpo.caddy"], client.reload_command
   end
+
+  def test_reload_command_can_use_main_caddyfile
+    client = Valpo::Caddy::Client.new(
+      config_path: "/var/lib/valpo/caddy/valpo.caddy",
+      reload_config_path: "/etc/caddy/Caddyfile"
+    )
+
+    assert_equal ["caddy", "reload", "--config", "/etc/caddy/Caddyfile"], client.reload_command
+  end
 end

@@ -11,9 +11,11 @@ Group=valpo
 WorkingDirectory=/opt/valpo
 Environment=VALPO_ENV=production
 Environment=VALPO_CONFIG=/etc/valpo/valpo.yml
+Environment=HOME=/var/lib/valpo
+Environment=MISE_RUBY_COMPILE=false
 StateDirectory=valpo
 LogsDirectory=valpo
-ExecStart=/usr/bin/env bundle exec exe/valpo-api --config /etc/valpo/valpo.yml
+ExecStart=/var/lib/valpo/.local/bin/mise x ruby@4.0.5 -- bundle exec exe/valpo-api --config /etc/valpo/valpo.yml
 Restart=on-failure
 RestartSec=5
 

@@ -7,8 +7,9 @@ require "valpo/caddy/renderer"
 module Valpo
   module Caddy
     class Client
-      def initialize(config_path:, binary: "caddy", renderer: Renderer.new)
+      def initialize(config_path:, reload_config_path: nil, binary: "caddy", renderer: Renderer.new)
         @config_path = config_path
+        @reload_config_path = reload_config_path || config_path
         @binary = binary
         @renderer = renderer
       end
@@ -23,7 +24,7 @@ module Valpo
       end
 
       def reload_command
-        [binary, "reload", "--config", config_path]
+        [binary, "reload", "--config", reload_config_path]
       end
 
       def execute(command)
@@ -33,7 +34,7 @@ module Valpo
 
       private
 
-      attr_reader :config_path, :binary, :renderer
+      attr_reader :config_path, :reload_config_path, :binary, :renderer
     end
   end
 end

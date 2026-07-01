@@ -64,7 +64,7 @@ module Valpo
       def initialize(
         config: Valpo.config || Valpo::Config.load,
         docker: Valpo::Docker::Client.new,
-        caddy: Valpo::Caddy::Client.new(config_path: config.caddy_config_path),
+        caddy: Valpo::Caddy::Client.new(config_path: config.caddy_config_path, reload_config_path: config.caddy_reload_config_path),
         health_checker: HealthChecker.new,
         sleeper: Kernel
       )

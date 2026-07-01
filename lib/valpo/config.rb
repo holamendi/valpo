@@ -18,6 +18,7 @@ module Valpo
                 :api_host,
                 :api_port,
                 :caddy_config_path,
+                :caddy_reload_config_path,
                 :docker_network,
                 :worker_poll_interval,
                 :app_port_start,
@@ -36,6 +37,7 @@ module Valpo
         api_host: value(env_data, "api_host", ENV["VALPO_API_HOST"], "127.0.0.1"),
         api_port: Integer(value(env_data, "api_port", ENV["VALPO_API_PORT"], DEFAULT_API_PORT)),
         caddy_config_path: value(env_data, "caddy_config_path", ENV["VALPO_CADDY_CONFIG_PATH"], default_caddy_config_path(env)),
+        caddy_reload_config_path: value(env_data, "caddy_reload_config_path", ENV["VALPO_CADDY_RELOAD_CONFIG_PATH"], nil),
         docker_network: value(env_data, "docker_network", ENV["VALPO_DOCKER_NETWORK"], "valpo"),
         worker_poll_interval: Float(value(env_data, "worker_poll_interval", ENV["VALPO_WORKER_POLL_INTERVAL"], DEFAULT_WORKER_POLL_INTERVAL)),
         app_port_start: Integer(value(env_data, "app_port_start", ENV["VALPO_APP_PORT_START"], DEFAULT_APP_PORT_START)),
@@ -58,13 +60,14 @@ module Valpo
     end
     private_class_method :value
 
-    def initialize(env:, root:, database_path:, api_host:, api_port:, caddy_config_path:, docker_network:, worker_poll_interval:, app_port_start:, app_port_end:, healthcheck_timeout:, deploy_drain_delay:)
+    def initialize(env:, root:, database_path:, api_host:, api_port:, caddy_config_path:, caddy_reload_config_path: nil, docker_network:, worker_poll_interval:, app_port_start:, app_port_end:, healthcheck_timeout:, deploy_drain_delay:)
       @env = env
       @root = root
       @database_path = expand_path(database_path)
       @api_host = api_host
       @api_port = api_port
       @caddy_config_path = expand_path(caddy_config_path)
+      @caddy_reload_config_path = caddy_reload_config_path ? expand_path(caddy_reload_config_path) : @caddy_config_path
       @docker_network = docker_network
       @worker_poll_interval = worker_poll_interval
       @app_port_start = app_port_start
