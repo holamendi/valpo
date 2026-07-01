@@ -10,6 +10,7 @@ PREFIX="/opt/valpo"
 CONFIG_PATH="/etc/valpo/valpo.yml"
 STATE_DIR="/var/lib/valpo"
 LOG_DIR="/var/log/valpo"
+CLI_PATH="/usr/local/bin/valpo"
 SKIP_DEPS=0
 NO_START=0
 
@@ -128,7 +129,7 @@ ensure_user_and_dirs() {
   fi
 
   install -d -m 0755 "$PREFIX"
-  install -d -m 0755 "$CONFIG_DIR" /etc/caddy /etc/systemd/system
+  install -d -m 0755 "$CONFIG_DIR" /etc/caddy /etc/systemd/system /usr/local/bin
   install -d -o "$VALPO_USER" -g "$VALPO_GROUP" -m 0755 "$STATE_DIR" "${STATE_DIR}/caddy"
   install -d -o "$VALPO_USER" -g "$VALPO_GROUP" -m 0750 "${STATE_DIR}/bundle" "$LOG_DIR"
 }
@@ -295,6 +296,44 @@ install_gems() {
   run_as_valpo_shell "cd '${PREFIX}' && '${MISE_BIN}' x ruby@${RUBY_VERSION} -- bundle _${bundler_version}_ install --jobs 4 --retry 3"
 }
 
+install_cli_wrapper() {
+  log "Installing ${CLI_PATH}"
+  tmp="$(mktemp)"
+  cat > "$tmp" <<SCRIPT
+#!/usr/bin/env bash
+set -euo pipefail
+
+VALPO_USER="${VALPO_USER}"
+STATE_DIR="${STATE_DIR}"
+PREFIX="${PREFIX}"
+CONFIG_PATH="${CONFIG_PATH}"
+RUBY_VERSION="${RUBY_VERSION}"
+MISE_BIN="${MISE_BIN}"
+
+if [[ "\$(id -un)" != "\${VALPO_USER}" ]]; then
+  if [[ "\${EUID}" -ne 0 ]]; then
+    printf 'valpo must run as %s. Try: sudo valpo %s\n' "\${VALPO_USER}" "\$*" >&2
+    exit 1
+  fi
+  exec runuser -u "\${VALPO_USER}" -- "\$0" "\$@"
+fi
+
+export HOME="\${STATE_DIR}"
+export USER="\${VALPO_USER}"
+export PATH="\${STATE_DIR}/.local/bin:\${PATH}"
+export MISE_RUBY_COMPILE=false
+export MISE_YES=1
+export VALPO_ENV="\${VALPO_ENV:-production}"
+export VALPO_CONFIG="\${VALPO_CONFIG:-\${CONFIG_PATH}}"
+
+cd "\${PREFIX}"
+exec "\${MISE_BIN}" x ruby@"\${RUBY_VERSION}" -- bundle exec exe/valpo "\$@"
+SCRIPT
+
+  install -m 0755 "$tmp" "$CLI_PATH"
+  rm -f "$tmp"
+}
+
 run_migrations() {
   log "Running database migrations"
   run_as_valpo_shell "cd '${PREFIX}' && VALPO_ENV=production VALPO_CONFIG='${CONFIG_PATH}' '${MISE_BIN}' x ruby@${RUBY_VERSION} -- bundle exec rake db:migrate"
@@ -330,6 +369,7 @@ main() {
   ensure_caddy_import
   install_systemd_units
   install_gems
+  install_cli_wrapper
   run_migrations
   start_services
   log "Valpo installation complete"

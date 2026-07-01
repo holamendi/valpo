@@ -49,6 +49,16 @@ class ValpoPackagingInstallScriptTest < Minitest::Test
     assert_includes script, "bundle _${bundler_version}_ install --jobs 4 --retry 3"
   end
 
+  def test_installer_installs_valpo_cli_wrapper_on_path
+    script = File.read(INSTALL_SCRIPT)
+
+    assert_includes script, 'CLI_PATH="/usr/local/bin/valpo"'
+    assert_includes script, "install_cli_wrapper()"
+    assert_includes script, 'install -m 0755 "$tmp" "$CLI_PATH"'
+    assert_includes script, 'exec runuser -u "\${VALPO_USER}" -- "\$0" "\$@"'
+    assert_includes script, 'exec "\${MISE_BIN}" x ruby@"\${RUBY_VERSION}" -- bundle exec exe/valpo "\$@"'
+  end
+
   def test_installer_uses_valpo_owned_caddy_import
     script = File.read(INSTALL_SCRIPT)
     config = File.read(EXAMPLE_CONFIG)
