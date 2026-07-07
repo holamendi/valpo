@@ -9,6 +9,10 @@ require "valpo/api/serializers"
 
 module Valpo
   class CLI < Thor
+    def self.exit_on_failure?
+      true
+    end
+
     class_option :api_url,
                  type: :string,
                  default: ENV.fetch("VALPO_API_URL", "http://127.0.0.1:7092"),
