@@ -14,6 +14,7 @@ module Valpo
         apply_caddy_config
         stop_project
         restart_project
+        delete_project
       ].freeze
 
       def enqueue(type, payload = {})

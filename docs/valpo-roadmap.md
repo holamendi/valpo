@@ -78,6 +78,8 @@ Exit criteria:
 
 ### Phase 1B: Single-Server Operability
 
+Status: in progress. Project deletion cleanup, `jobs:wait`, and wait-capable job commands are implemented; reboot/recovery behavior, state repair/regeneration, API auth posture, and repeatable VPS smoke testing remain.
+
 Deliverables:
 
 - Delete project and clean up its active container, domains, releases, and generated routes.

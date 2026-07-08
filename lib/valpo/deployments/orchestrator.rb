@@ -179,8 +179,31 @@ module Valpo
         raise
       end
 
-      def apply_caddy_config(queue:, job_id:, override_release: nil)
-        routes, route_targets = caddy_routes(override_release: override_release)
+      def delete_project(project_id:, queue:, job_id:)
+        project = Valpo::Project[project_id]
+        raise Valpo::ValidationError, "Project not found: #{project_id}" unless project
+
+        project_name = project.name
+        container_names = Valpo::Release.where(project_id: project.id)
+                                        .exclude(container_name: nil)
+                                        .select_map(:container_name)
+                                        .uniq
+
+        project.update(status: "deleting")
+        event(queue, job_id, "system", "Deleting #{project_name}")
+        apply_caddy_config(queue: queue, job_id: job_id, exclude_project_id: project.id)
+
+        container_names.each do |container_name|
+          stop_container(container_name, queue: queue, job_id: job_id, ignore_missing: true)
+        end
+
+        project.destroy
+        event(queue, job_id, "system", "Deleted #{project_name}")
+        true
+      end
+
+      def apply_caddy_config(queue:, job_id:, override_release: nil, exclude_project_id: nil)
+        routes, route_targets = caddy_routes(override_release: override_release, exclude_project_id: exclude_project_id)
         event(queue, job_id, "system", "Applying Caddy config")
         caddy.write_config(routes)
         result = caddy.execute(caddy.reload_command)
@@ -270,11 +293,17 @@ module Valpo
         nil
       end
 
-      def caddy_routes(override_release:)
+      def caddy_routes(override_release:, exclude_project_id: nil)
         routes = []
         route_targets = {}
+        exclude_project_id = exclude_project_id&.to_s
 
         Valpo::Domain.order(:hostname).each do |domain|
+          if exclude_project_id == domain.project_id.to_s
+            route_targets[domain.id] = nil
+            next
+          end
+
           project = Valpo::Project[domain.project_id]
           release = override_release&.project_id == domain.project_id ? override_release : Valpo::Release.active_for_project(domain.project_id)
 

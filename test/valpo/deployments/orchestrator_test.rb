@@ -155,6 +155,56 @@ class ValpoDeploymentsOrchestratorTest < Minitest::Test
     assert_equal "app log\n", logs.fetch(:stdout)
   end
 
+  def test_delete_project_removes_routes_containers_and_records
+    project = Valpo::Project.create(name: "hello", status: "running")
+    Valpo::Release.create(
+      project_id: project.id,
+      source_type: "registry",
+      source_ref: "ghcr.io/example/hello:v1",
+      status: "active",
+      internal_port: 3000,
+      container_name: "active",
+      route_target: "127.0.0.1:20000"
+    )
+    Valpo::Release.create(
+      project_id: project.id,
+      source_type: "registry",
+      source_ref: "ghcr.io/example/hello:v0",
+      status: "inactive",
+      internal_port: 3000,
+      container_name: "old",
+      route_target: "127.0.0.1:20001"
+    )
+    Valpo::Domain.create(project_id: project.id, hostname: "hello.example.com", route_target: "127.0.0.1:20000")
+    other = Valpo::Project.create(name: "other", status: "running")
+    Valpo::Release.create(
+      project_id: other.id,
+      source_type: "registry",
+      source_ref: "ghcr.io/example/other:v1",
+      status: "active",
+      internal_port: 3000,
+      container_name: "other-active",
+      route_target: "127.0.0.1:20050"
+    )
+    Valpo::Domain.create(project_id: other.id, hostname: "other.example.com", route_target: "127.0.0.1:20050")
+    docker = FakeDocker.new
+    caddy = FakeCaddy.new
+    queue = Valpo::Jobs::Queue.new
+    job = queue.enqueue("test")
+
+    orchestrator(docker: docker, caddy: caddy).delete_project(project_id: project.id, queue: queue, job_id: job.id)
+
+    assert_nil Valpo::Project[project.id]
+    assert_empty Valpo::Release.where(project_id: project.id).all
+    assert_empty Valpo::Domain.where(project_id: project.id).all
+    assert_equal [{ hostname: "other.example.com", kind: "container", upstream: "127.0.0.1:20050" }], caddy.routes
+    assert docker.commands.any? { |command| command == [:stop, "active"] }
+    assert docker.commands.any? { |command| command == [:rm, "active", true] }
+    assert docker.commands.any? { |command| command == [:stop, "old"] }
+    assert docker.commands.any? { |command| command == [:rm, "old", true] }
+    assert_includes queue.events(job.id).map(&:message), "Deleted hello"
+  end
+
   private
 
   def orchestrator(docker:, caddy: FakeCaddy.new, health_checker: FakeHealthChecker.new)

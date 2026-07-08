@@ -38,6 +38,16 @@ class ValpoAPIAppTest < Minitest::Test
     assert_equal project.fetch("id"), json.fetch("id")
   end
 
+  def test_project_delete_enqueues_cleanup_job
+    project = Valpo::Project.create(name: "hello")
+
+    delete "/projects/hello"
+
+    assert_equal 202, last_response.status
+    assert_equal "delete_project", json.fetch("type")
+    assert_equal project.id, json.fetch("payload").fetch("project_id")
+  end
+
   def test_project_validation_error
     post "/projects", JSON.generate(name: "Hello"), "CONTENT_TYPE" => "application/json"
 

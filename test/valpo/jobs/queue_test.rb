@@ -53,9 +53,9 @@ class ValpoJobsQueueTest < Minitest::Test
 
     error = assert_raises Valpo::ConflictError do
       queue.enqueue_project_operation(
-        "deploy_registry_image",
+        "delete_project",
         project_id: project.id,
-        payload: { image: "example/hello:v2", internal_port: 3000 }
+        payload: {}
       )
     end
 

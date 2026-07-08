@@ -94,6 +94,21 @@ module Valpo
       attr_reader :orchestrator
     end
 
+    class DeleteProject
+      def initialize(orchestrator:)
+        @orchestrator = orchestrator
+      end
+
+      def call(job, queue:)
+        payload = job.payload
+        orchestrator.delete_project(project_id: payload.fetch("project_id"), queue: queue, job_id: job[:id])
+      end
+
+      private
+
+      attr_reader :orchestrator
+    end
+
     class Worker
       DEFAULT_STALE_LOCK_TIMEOUT = 6 * 60 * 60
 
@@ -113,7 +128,8 @@ module Valpo
           "rollback_release" => RollbackRelease.new(orchestrator: orchestrator),
           "apply_caddy_config" => ApplyCaddyConfig.new(orchestrator: orchestrator),
           "stop_project" => StopProject.new(orchestrator: orchestrator),
-          "restart_project" => RestartProject.new(orchestrator: orchestrator)
+          "restart_project" => RestartProject.new(orchestrator: orchestrator),
+          "delete_project" => DeleteProject.new(orchestrator: orchestrator)
         }
       end
 

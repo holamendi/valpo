@@ -63,6 +63,12 @@ module Valpo
               r.get do
                 Serializers.project(project)
               end
+
+              if r.delete?
+                job = jobs.enqueue_project_operation("delete_project", project_id: project.id)
+                response.status = 202
+                Serializers.job(job)
+              end
             end
 
             r.on "deployments" do
