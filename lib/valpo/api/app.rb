@@ -38,6 +38,16 @@ module Valpo
           end
         end
 
+        r.on "system" do
+          r.on "repair" do
+            r.post do
+              job = jobs.enqueue("repair_system")
+              response.status = 202
+              Serializers.job(job)
+            end
+          end
+        end
+
         r.on "projects" do
           r.is do
             r.get do

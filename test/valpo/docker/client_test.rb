@@ -8,6 +8,9 @@ class ValpoDockerClientTest < Minitest::Test
 
     assert_equal ["docker", "pull", "ghcr.io/example/app:latest"], client.pull_command("ghcr.io/example/app:latest")
     assert_equal ["docker", "image", "inspect", "ghcr.io/example/app:latest"], client.image_inspect_command("ghcr.io/example/app:latest")
+    assert_equal ["docker", "container", "inspect", "valpo-hello"], client.container_inspect_command("valpo-hello")
+    assert_equal ["docker", "start", "valpo-hello"], client.start_command("valpo-hello")
+    assert_equal ["docker", "update", "--restart", "unless-stopped", "valpo-hello"], client.update_restart_policy_command("valpo-hello", "unless-stopped")
     assert_equal ["docker", "network", "create", "valpo"], client.network_create_command("valpo")
     assert_equal ["docker", "volume", "create", "valpo-data"], client.volume_create_command("valpo-data")
   end
@@ -21,11 +24,13 @@ class ValpoDockerClientTest < Minitest::Test
       network: "valpo",
       labels: { "valpo.release_id" => "r1", "valpo.project_id" => "p1" },
       env: { "RACK_ENV" => "production" },
-      ports: { 8080 => 3000 }
+      ports: { 8080 => 3000 },
+      restart_policy: "unless-stopped"
     )
 
     assert_equal [
       "docker", "run", "--detach", "--name", "valpo-hello", "--network", "valpo",
+      "--restart", "unless-stopped",
       "--label", "valpo.project_id=p1", "--label", "valpo.release_id=r1",
       "--env", "RACK_ENV=production", "--publish", "8080:3000",
       "ghcr.io/example/hello:latest"

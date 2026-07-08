@@ -202,6 +202,13 @@ module Valpo
         true
       end
 
+      def repair_system(queue:, job_id:)
+        event(queue, job_id, "system", "Repairing system state")
+        repair_active_containers(queue: queue, job_id: job_id)
+        apply_caddy_config(queue: queue, job_id: job_id)
+        true
+      end
+
       def apply_caddy_config(queue:, job_id:, override_release: nil, exclude_project_id: nil)
         routes, route_targets = caddy_routes(override_release: override_release, exclude_project_id: exclude_project_id)
         event(queue, job_id, "system", "Applying Caddy config")
@@ -256,7 +263,8 @@ module Valpo
             RELEASE_LABEL => release.id,
             SERVICE_LABEL => "web"
           },
-          ports: { "127.0.0.1:#{host_port}" => release.internal_port }
+          ports: { "127.0.0.1:#{host_port}" => release.internal_port },
+          restart_policy: "unless-stopped"
         ))
         emit_command_output(result, queue: queue, job_id: job_id)
         raise_command_error("Docker run failed", result) unless result.fetch(:success)
@@ -319,6 +327,59 @@ module Valpo
         [routes, route_targets]
       end
 
+      def repair_active_containers(queue:, job_id:)
+        Valpo::Project.where(type: "container").exclude(status: "stopped").order(:name).each do |project|
+          release = Valpo::Release.active_for_project(project.id)
+          next unless release
+
+          repair_release_container(project, release, queue: queue, job_id: job_id)
+        end
+      end
+
+      def repair_release_container(project, release, queue:, job_id:)
+        inspection = inspect_container(release.container_name, queue: queue, job_id: job_id) if release.container_name
+
+        if inspection && release.route_target
+          update_restart_policy(release.container_name, queue: queue, job_id: job_id)
+          unless inspection.dig("State", "Running")
+            event(queue, job_id, "system", "Starting #{release.container_name}")
+            run_docker(docker.start_command(release.container_name), queue: queue, job_id: job_id)
+            wait_for_release(release, queue: queue, job_id: job_id)
+          end
+          project.update(status: "running") unless project.status == "running"
+          return
+        end
+
+        if inspection
+          event(queue, job_id, "system", "Recreating unroutable runtime for #{project.name}")
+          stop_container(release.container_name, queue: queue, job_id: job_id, ignore_missing: true)
+          release.update(container_name: nil, route_target: nil)
+        end
+
+        event(queue, job_id, "system", "Recreating runtime for #{project.name}")
+        start_release_container(release, queue: queue, job_id: job_id)
+        wait_for_release(release, queue: queue, job_id: job_id)
+        project.update(status: "running")
+      end
+
+      def inspect_container(container_name, queue:, job_id:)
+        result = docker.execute(docker.container_inspect_command(container_name))
+        return nil if !result.fetch(:success) && missing_container?(result)
+
+        emit_command_output(result, queue: queue, job_id: job_id) unless result.fetch(:success)
+        raise_command_error("Docker inspect failed", result) unless result.fetch(:success)
+
+        JSON.parse(result.fetch(:stdout)).first
+      rescue JSON::ParserError => e
+        raise Valpo::ValidationError, "Docker inspect returned invalid JSON for #{container_name}: #{e.message}"
+      end
+
+      def update_restart_policy(container_name, queue:, job_id:)
+        result = docker.execute(docker.update_restart_policy_command(container_name, "unless-stopped"))
+        emit_command_output(result, queue: queue, job_id: job_id)
+        raise_command_error("Docker update failed", result) unless result.fetch(:success)
+      end
+
       def run_docker(command, queue:, job_id:)
         result = docker.execute(command)
         emit_command_output(result, queue: queue, job_id: job_id)
@@ -349,7 +410,8 @@ module Valpo
       end
 
       def missing_container?(result)
-        result.fetch(:stderr).include?("No such container")
+        stderr = result.fetch(:stderr)
+        stderr.include?("No such container") || stderr.include?("No such object")
       end
 
       def emit_command_output(result, queue:, job_id:)

@@ -17,16 +17,29 @@ module Valpo
         command("image", "inspect", image)
       end
 
-      def run_command(name:, image:, network:, labels: {}, env: {}, ports: {}, detach: true, command_args: [])
+      def run_command(name:, image:, network:, labels: {}, env: {}, ports: {}, detach: true, restart_policy: nil, command_args: [])
         args = ["run"]
         args << "--detach" if detach
         args += ["--name", name, "--network", network]
+        args += ["--restart", restart_policy] if restart_policy
         labels.sort.each { |key, value| args += ["--label", "#{key}=#{value}"] }
         env.sort.each { |key, value| args += ["--env", "#{key}=#{value}"] }
         ports.sort.each { |host, container| args += ["--publish", "#{host}:#{container}"] }
         args << image
         args.concat(command_args)
         command(*args)
+      end
+
+      def container_inspect_command(name)
+        command("container", "inspect", name)
+      end
+
+      def start_command(name)
+        command("start", name)
+      end
+
+      def update_restart_policy_command(name, restart_policy)
+        command("update", "--restart", restart_policy, name)
       end
 
       def stop_command(name)

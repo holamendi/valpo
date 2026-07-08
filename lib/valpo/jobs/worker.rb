@@ -13,6 +13,20 @@ module Valpo
       end
     end
 
+    class RepairSystem
+      def initialize(orchestrator:)
+        @orchestrator = orchestrator
+      end
+
+      def call(job, queue:)
+        orchestrator.repair_system(queue: queue, job_id: job[:id])
+      end
+
+      private
+
+      attr_reader :orchestrator
+    end
+
     class DeployRegistryImage
       def initialize(orchestrator:)
         @orchestrator = orchestrator
@@ -124,6 +138,7 @@ module Valpo
         orchestrator = Valpo::Deployments::Orchestrator.new(config: config)
         {
           "system_check" => SystemCheck.new,
+          "repair_system" => RepairSystem.new(orchestrator: orchestrator),
           "deploy_registry_image" => DeployRegistryImage.new(orchestrator: orchestrator),
           "rollback_release" => RollbackRelease.new(orchestrator: orchestrator),
           "apply_caddy_config" => ApplyCaddyConfig.new(orchestrator: orchestrator),

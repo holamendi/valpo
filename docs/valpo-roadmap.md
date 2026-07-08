@@ -78,7 +78,7 @@ Exit criteria:
 
 ### Phase 1B: Single-Server Operability
 
-Status: in progress. Project deletion cleanup, `jobs:wait`, and wait-capable job commands are implemented; reboot/recovery behavior, state repair/regeneration, API auth posture, and repeatable VPS smoke testing remain.
+Status: in progress. Project deletion cleanup, `jobs:wait`, wait-capable job commands, and `system:repair` for Caddy regeneration plus active-container Docker reconciliation are implemented; reboot verification, API auth posture, and repeatable VPS smoke testing remain.
 
 Deliverables:
 

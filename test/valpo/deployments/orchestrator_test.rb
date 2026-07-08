@@ -33,6 +33,7 @@ class ValpoDeploymentsOrchestratorTest < Minitest::Test
 
     run_command = docker.commands.find { |command| command.first == :run }
     assert_equal({ "127.0.0.1:20000" => 3000 }, run_command.fetch(5))
+    assert_equal "unless-stopped", run_command.fetch(6)
   end
 
   def test_failed_deploy_keeps_existing_active_release
@@ -205,6 +206,91 @@ class ValpoDeploymentsOrchestratorTest < Minitest::Test
     assert_includes queue.events(job.id).map(&:message), "Deleted hello"
   end
 
+  def test_repair_system_regenerates_caddy_routes_from_database_state
+    project = Valpo::Project.create(name: "hello", status: "running")
+    Valpo::Release.create(
+      project_id: project.id,
+      source_type: "registry",
+      source_ref: "ghcr.io/example/hello:v1",
+      status: "active",
+      internal_port: 3000,
+      container_name: "active",
+      route_target: "127.0.0.1:20000"
+    )
+    domain = Valpo::Domain.create(project_id: project.id, hostname: "hello.example.com", route_target: nil)
+    stopped = Valpo::Project.create(name: "stopped", status: "stopped")
+    Valpo::Release.create(
+      project_id: stopped.id,
+      source_type: "registry",
+      source_ref: "ghcr.io/example/stopped:v1",
+      status: "active",
+      internal_port: 3000,
+      container_name: "stopped-active",
+      route_target: "127.0.0.1:20001"
+    )
+    stopped_domain = Valpo::Domain.create(project_id: stopped.id, hostname: "stopped.example.com", route_target: "127.0.0.1:20001")
+    caddy = FakeCaddy.new
+    queue = Valpo::Jobs::Queue.new
+    job = queue.enqueue("test")
+
+    orchestrator(docker: FakeDocker.new, caddy: caddy).repair_system(queue: queue, job_id: job.id)
+
+    assert_equal [{ hostname: "hello.example.com", kind: "container", upstream: "127.0.0.1:20000" }], caddy.routes
+    assert_equal "127.0.0.1:20000", domain.refresh.route_target
+    assert_nil stopped_domain.refresh.route_target
+    assert_includes queue.events(job.id).map(&:message), "Repairing system state"
+  end
+
+  def test_repair_system_restarts_stopped_containers_and_recreates_missing_containers
+    stopped_project = Valpo::Project.create(name: "stopped-runtime", status: "failed")
+    stopped_release = Valpo::Release.create(
+      project_id: stopped_project.id,
+      source_type: "registry",
+      source_ref: "ghcr.io/example/stopped-runtime:v1",
+      artifact_ref: "ghcr.io/example/stopped-runtime:v1@sha256:old",
+      status: "active",
+      internal_port: 3000,
+      healthcheck_path: "/health",
+      container_name: "stopped-runtime-container",
+      route_target: "127.0.0.1:20000"
+    )
+    missing_project = Valpo::Project.create(name: "missing-runtime", status: "running")
+    missing_release = Valpo::Release.create(
+      project_id: missing_project.id,
+      source_type: "registry",
+      source_ref: "ghcr.io/example/missing-runtime:v1",
+      artifact_ref: "ghcr.io/example/missing-runtime:v1@sha256:old",
+      status: "active",
+      internal_port: 3000,
+      healthcheck_path: "/health",
+      container_name: "missing-runtime-container",
+      route_target: "127.0.0.1:20001"
+    )
+    Valpo::Domain.create(project_id: stopped_project.id, hostname: "stopped-runtime.example.com")
+    Valpo::Domain.create(project_id: missing_project.id, hostname: "missing-runtime.example.com")
+    docker = FakeDocker.new(container_states: {
+      "stopped-runtime-container" => false,
+      "missing-runtime-container" => :missing
+    })
+    caddy = FakeCaddy.new
+    queue = Valpo::Jobs::Queue.new
+    job = queue.enqueue("test")
+
+    orchestrator(docker: docker, caddy: caddy).repair_system(queue: queue, job_id: job.id)
+
+    assert docker.commands.any? { |command| command == [:update_restart_policy, "stopped-runtime-container", "unless-stopped"] }
+    assert docker.commands.any? { |command| command == [:start, "stopped-runtime-container"] }
+    assert_equal "running", stopped_project.refresh.status
+    assert_equal "stopped-runtime-container", stopped_release.refresh.container_name
+
+    run_command = docker.commands.find { |command| command.first == :run && command.fetch(2) == "ghcr.io/example/missing-runtime:v1@sha256:old" }
+    refute_nil run_command
+    assert_equal "unless-stopped", run_command.fetch(6)
+    assert_equal "running", missing_project.refresh.status
+    refute_equal "missing-runtime-container", missing_release.refresh.container_name
+    assert caddy.routes.any? { |route| route.fetch(:hostname) == "missing-runtime.example.com" && route.fetch(:upstream) == missing_release.refresh.route_target }
+  end
+
   private
 
   def orchestrator(docker:, caddy: FakeCaddy.new, health_checker: FakeHealthChecker.new)
@@ -219,8 +305,9 @@ class ValpoDeploymentsOrchestratorTest < Minitest::Test
   class FakeDocker
     attr_reader :commands
 
-    def initialize(fail_on: nil)
+    def initialize(fail_on: nil, container_states: {})
       @fail_on = fail_on
+      @container_states = container_states
       @commands = []
     end
 
@@ -232,12 +319,24 @@ class ValpoDeploymentsOrchestratorTest < Minitest::Test
       [:inspect, image]
     end
 
-    def run_command(name:, image:, network:, labels:, ports:, **)
-      [:run, name, image, network, labels, ports]
+    def run_command(name:, image:, network:, labels:, ports:, restart_policy: nil, **)
+      [:run, name, image, network, labels, ports, restart_policy]
     end
 
     def network_create_command(name)
       [:network_create, name]
+    end
+
+    def container_inspect_command(name)
+      [:container_inspect, name]
+    end
+
+    def start_command(name)
+      [:start, name]
+    end
+
+    def update_restart_policy_command(name, restart_policy)
+      [:update_restart_policy, name, restart_policy]
     end
 
     def stop_command(name)
@@ -259,6 +358,11 @@ class ValpoDeploymentsOrchestratorTest < Minitest::Test
       case command.first
       when :inspect
         success(JSON.generate([{ "RepoDigests" => ["#{command.fetch(1)}@sha256:abc"] }]))
+      when :container_inspect
+        container_state = @container_states.fetch(command.fetch(1), true)
+        return failure("No such object: #{command.fetch(1)}") if container_state == :missing
+
+        success(JSON.generate([{ "State" => { "Running" => container_state == true } }]))
       when :logs
         success("app log\n")
       else

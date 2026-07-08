@@ -39,6 +39,7 @@ module Valpo
     map "jobs:wait" => :jobs_wait
     map "jobs:events" => :jobs_events
     map "jobs:enqueue-system-check" => :jobs_enqueue_system_check
+    map "system:repair" => :system_repair
 
     desc "projects:list", "List projects"
     def projects_list
@@ -171,6 +172,14 @@ module Valpo
       say_json(Valpo::API::Serializers.job(job))
     ensure
       Valpo::Database.disconnect
+    end
+
+    desc "system:repair", "Regenerate runtime config from Valpo state"
+    option :wait, type: :boolean, default: false, desc: "Wait for the repair job to finish"
+    option :wait_timeout, type: :numeric, default: DEFAULT_WAIT_TIMEOUT, desc: "Seconds to wait for job completion"
+    option :wait_interval, type: :numeric, default: DEFAULT_WAIT_INTERVAL, desc: "Seconds between job status polls"
+    def system_repair
+      say_json(maybe_wait_job(request(:post, "/system/repair")))
     end
 
     private

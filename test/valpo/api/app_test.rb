@@ -69,6 +69,13 @@ class ValpoAPIAppTest < Minitest::Test
     assert_equal ["Job queued"], json.map { |item| item.fetch("message") }
   end
 
+  def test_system_repair_enqueues_job
+    post "/system/repair"
+
+    assert_equal 202, last_response.status
+    assert_equal "repair_system", json.fetch("type")
+  end
+
   def test_deploy_rollback_stop_and_restart_enqueue_jobs
     project = Valpo::Project.create(name: "hello")
 

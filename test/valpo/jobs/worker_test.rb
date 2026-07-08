@@ -29,6 +29,21 @@ class ValpoJobsWorkerTest < Minitest::Test
     assert_equal "Unknown job type: missing_handler", finished[:error]
   end
 
+  def test_repair_system_handler_dispatches_to_orchestrator
+    queue = Valpo::Jobs::Queue.new
+    job = queue.enqueue("repair_system")
+    orchestrator = FakeRepairOrchestrator.new
+
+    Valpo::Jobs::Worker.new(
+      queue: queue,
+      handlers: { "repair_system" => Valpo::Jobs::RepairSystem.new(orchestrator: orchestrator) },
+      worker_id: "worker-1"
+    ).run(once: true)
+
+    assert_equal "succeeded", queue.find(job[:id])[:status]
+    assert_equal job.id, orchestrator.job_id
+  end
+
   def test_delete_project_handler_dispatches_to_orchestrator
     project = Valpo::Project.create(name: "hello")
     queue = Valpo::Jobs::Queue.new
@@ -56,6 +71,15 @@ class ValpoJobsWorkerTest < Minitest::Test
 
     assert_equal "succeeded", queue.find(stale[:id])[:status]
     assert_equal "queued", queue.find(queued[:id])[:status]
+  end
+
+  class FakeRepairOrchestrator
+    attr_reader :job_id
+
+    def repair_system(queue:, job_id:)
+      @job_id = job_id
+      queue.event(job_id, "system", "fake repair")
+    end
   end
 
   class FakeDeleteOrchestrator
