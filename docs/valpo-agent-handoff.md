@@ -50,16 +50,15 @@ Follow these rules unless a later decision explicitly changes them:
 
 ## First Implementation Goal
 
-Phase 0 scaffold now exists. The next implementation goal is the smallest server-side deploy MVP:
+Phase 1A now exists. The next implementation goal is single-server operability:
 
 ```text
-create project
-deploy Docker image
-route domain through Caddy
-show job/deploy logs
-show app logs
-track releases
-rollback release
+delete project and clean up runtime state
+wait for long-running CLI jobs with useful exit codes
+verify apps after host reboot
+repair or regenerate Docker/Caddy state from SQLite
+keep the API private unless authenticated exposure is configured
+run repeatable VPS smoke tests
 ```
 
 Do not start with GitHub/GitLab OAuth, buildpacks, managed databases, static uploads, or the multi-server dashboard. Those depend on the core deploy lifecycle.
@@ -280,9 +279,8 @@ When starting implementation, read these documents first:
 5. `valpo-architecture-decisions.md`
 6. `valpo-roadmap.md`
 
-Then continue with Phase 1 only:
+Then continue with Phase 1B only:
 
-- Phase 1A: finish and stabilize the single-server container deploy path.
-- Phase 1B: complete single-server operability before expanding product surface.
+- Complete single-server operability before expanding product surface.
 
 Do not move to static uploads, GitHub/GitLab, managed services, or dashboard work until project cleanup, wait-capable CLI flows, reboot/recovery behavior, API auth posture, and a repeatable VPS smoke test are in place.

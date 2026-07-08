@@ -36,9 +36,11 @@ Exit criteria:
 
 Goal: deploy a prebuilt Docker image to one VPS, route HTTPS traffic to it, and make the server safe to operate repeatedly.
 
-Status: in progress. The registry-image deploy path exists and has been validated on a public VPS, but Phase 1 is not complete until the Phase 1B operability criteria are met.
+Status: Phase 1A is complete. Phase 1 remains in progress until the Phase 1B operability criteria are met.
 
 ### Phase 1A: Container Deploy Path
+
+Status: complete.
 
 Deliverables:
 
@@ -55,7 +57,6 @@ Deliverables:
 - Retrieve app logs.
 - Stop/restart project.
 - Installer creates an operator-friendly `valpo` CLI command on `PATH`.
-- CLI failures exit non-zero without framework deprecation warnings.
 
 Example target flow:
 
