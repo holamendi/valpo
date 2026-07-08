@@ -20,6 +20,21 @@ class ValpoAPIAppTest < Minitest::Test
     assert_equal true, json.fetch("ok")
   end
 
+  def test_api_requires_bearer_token_when_configured
+    with_api_token("secret-token") do
+      get "/health"
+
+      assert_equal 401, last_response.status
+      assert_equal "unauthorized", json.fetch("error")
+
+      header "Authorization", "Bearer secret-token"
+      get "/health"
+
+      assert_equal 200, last_response.status
+      assert_equal true, json.fetch("ok")
+    end
+  end
+
   def test_project_create_list_and_show
     post "/projects", JSON.generate(name: "hello"), "CONTENT_TYPE" => "application/json"
 
@@ -63,7 +78,7 @@ class ValpoAPIAppTest < Minitest::Test
 
     get "/jobs/#{job[:id]}"
     assert_equal "system_check", json.fetch("type")
-    assert_equal({ "source" => "test" }, json.fetch("payload"))
+    assert_equal({"source" => "test"}, json.fetch("payload"))
 
     get "/jobs/#{job[:id]}/events"
     assert_equal ["Job queued"], json.map { |item| item.fetch("message") }
@@ -80,8 +95,8 @@ class ValpoAPIAppTest < Minitest::Test
     project = Valpo::Project.create(name: "hello")
 
     post "/projects/hello/deployments",
-         JSON.generate(image: "ghcr.io/example/hello:latest", internal_port: 3000, healthcheck_path: "/health"),
-         "CONTENT_TYPE" => "application/json"
+      JSON.generate(image: "ghcr.io/example/hello:latest", internal_port: 3000, healthcheck_path: "/health"),
+      "CONTENT_TYPE" => "application/json"
 
     assert_equal 202, last_response.status
     assert_equal "deploy_registry_image", json.fetch("type")
@@ -108,15 +123,15 @@ class ValpoAPIAppTest < Minitest::Test
     Valpo::Project.create(name: "hello")
 
     post "/projects/hello/deployments",
-         JSON.generate(image: "ghcr.io/example/hello:latest", internal_port: 0),
-         "CONTENT_TYPE" => "application/json"
+      JSON.generate(image: "ghcr.io/example/hello:latest", internal_port: 0),
+      "CONTENT_TYPE" => "application/json"
 
     assert_equal 422, last_response.status
     assert_match "between 1 and 65535", json.fetch("message")
 
     post "/projects/hello/deployments",
-         JSON.generate(image: "ghcr.io/example/hello:latest", internal_port: 3000, healthcheck_path: "health"),
-         "CONTENT_TYPE" => "application/json"
+      JSON.generate(image: "ghcr.io/example/hello:latest", internal_port: 3000, healthcheck_path: "health"),
+      "CONTENT_TYPE" => "application/json"
 
     assert_equal 422, last_response.status
     assert_match "healthcheck_path", json.fetch("message")
@@ -128,14 +143,14 @@ class ValpoAPIAppTest < Minitest::Test
     Valpo::Project.create(name: "hello")
 
     post "/projects/hello/deployments",
-         JSON.generate(image: "ghcr.io/example/hello:v1", internal_port: 3000),
-         "CONTENT_TYPE" => "application/json"
+      JSON.generate(image: "ghcr.io/example/hello:v1", internal_port: 3000),
+      "CONTENT_TYPE" => "application/json"
 
     assert_equal 202, last_response.status
 
     post "/projects/hello/deployments",
-         JSON.generate(image: "ghcr.io/example/hello:v2", internal_port: 3000),
-         "CONTENT_TYPE" => "application/json"
+      JSON.generate(image: "ghcr.io/example/hello:v2", internal_port: 3000),
+      "CONTENT_TYPE" => "application/json"
 
     assert_equal 409, last_response.status
     assert_match "already has an active deploy_registry_image job", json.fetch("message")
@@ -147,7 +162,7 @@ class ValpoAPIAppTest < Minitest::Test
     Valpo::Jobs::Queue.new.enqueue_project_operation(
       "deploy_registry_image",
       project_id: Valpo::Project.find_by_id_or_name("hello").id,
-      payload: { image: "ghcr.io/example/hello:v1", internal_port: 3000 }
+      payload: {image: "ghcr.io/example/hello:v1", internal_port: 3000}
     )
 
     post "/projects/hello/domains", JSON.generate(hostname: "hello.example.com"), "CONTENT_TYPE" => "application/json"
@@ -161,8 +176,8 @@ class ValpoAPIAppTest < Minitest::Test
     Valpo::Project.create(name: "site", type: "static")
 
     post "/projects/site/deployments",
-         JSON.generate(image: "ghcr.io/example/site:latest", internal_port: 3000),
-         "CONTENT_TYPE" => "application/json"
+      JSON.generate(image: "ghcr.io/example/site:latest", internal_port: 3000),
+      "CONTENT_TYPE" => "application/json"
 
     assert_equal 422, last_response.status
     assert_match "Only container projects", json.fetch("message")
@@ -248,13 +263,37 @@ class ValpoAPIAppTest < Minitest::Test
     queue.succeed(job_id, worker_id: "api-test-worker")
   end
 
+  def with_api_token(token)
+    previous = Valpo.config
+    Valpo.config = Valpo::Config.new(
+      env: previous.env,
+      root: previous.root,
+      database_path: previous.database_path,
+      api_host: previous.api_host,
+      api_port: previous.api_port,
+      api_token: token,
+      caddy_config_path: previous.caddy_config_path,
+      caddy_reload_config_path: previous.caddy_reload_config_path,
+      docker_network: previous.docker_network,
+      worker_poll_interval: previous.worker_poll_interval,
+      app_port_start: previous.app_port_start,
+      app_port_end: previous.app_port_end,
+      healthcheck_timeout: previous.healthcheck_timeout,
+      deploy_drain_delay: previous.deploy_drain_delay
+    )
+    yield
+  ensure
+    Valpo.config = previous
+    header "Authorization", nil
+  end
+
   class FakeLogOrchestrator
     attr_reader :project_id, :tail
 
     def app_logs(project_id:, tail:)
       @project_id = project_id
       @tail = tail
-      { "stdout" => "app log\n", "stderr" => "" }
+      {"stdout" => "app log\n", "stderr" => ""}
     end
   end
 end

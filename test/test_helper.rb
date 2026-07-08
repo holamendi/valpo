@@ -32,6 +32,8 @@ require "valpo/docker/client"
 require "valpo/caddy/renderer"
 require "valpo/caddy/client"
 
+Dir[File.expand_path("support/**/*.rb", __dir__)].sort.each { |path| require path }
+
 Minitest.after_run do
   Valpo::Database.disconnect
   FileUtils.remove_entry(VALPO_TEST_DIR) if Dir.exist?(VALPO_TEST_DIR)

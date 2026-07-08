@@ -1,10 +1,9 @@
 # frozen_string_literal: true
 
 require "json"
-require "net/http"
 require "thor"
-require "uri"
 require "valpo"
+require "valpo/api/client"
 require "valpo/api/serializers"
 
 module Valpo
@@ -17,13 +16,17 @@ module Valpo
     end
 
     class_option :api_url,
-                 type: :string,
-                 default: ENV.fetch("VALPO_API_URL", "http://127.0.0.1:7092"),
-                 desc: "Valpo API URL"
+      type: :string,
+      default: ENV.fetch("VALPO_API_URL", "http://127.0.0.1:7092"),
+      desc: "Valpo API URL"
     class_option :config,
-                 type: :string,
-                 default: ENV["VALPO_CONFIG"],
-                 desc: "Path to valpo.yml"
+      type: :string,
+      default: ENV["VALPO_CONFIG"],
+      desc: "Path to valpo.yml"
+    class_option :api_token,
+      type: :string,
+      default: ENV["VALPO_API_TOKEN"],
+      desc: "Bearer token for Valpo API"
 
     map "projects:list" => :projects_list
     map "projects:create" => :projects_create
@@ -243,26 +246,17 @@ module Valpo
     end
 
     def request(method, path, payload = nil)
-      uri = URI.join(options[:api_url], path)
-      http = Net::HTTP.new(uri.host, uri.port)
-      http.use_ssl = uri.scheme == "https"
-      request = request_class(method).new(uri)
-      request["Content-Type"] = "application/json"
-      request.body = JSON.generate(payload) if payload
-
-      response = http.request(request)
-      parsed = JSON.parse(response.body)
-      return parsed if response.code.to_i < 400
-
-      raise Thor::Error, "#{response.code}: #{parsed.fetch("message", response.body)}"
+      api_client.request(method, path, payload)
+    rescue Valpo::API::Client::Error => e
+      raise Thor::Error, e.message
     end
 
-    def request_class(method)
-      {
-        get: Net::HTTP::Get,
-        post: Net::HTTP::Post,
-        delete: Net::HTTP::Delete
-      }.fetch(method)
+    def api_client
+      @api_client ||= Valpo::API::Client.new(
+        base_url: options[:api_url],
+        api_token: options[:api_token],
+        config_path: options[:config]
+      )
     end
 
     def say_json(value)

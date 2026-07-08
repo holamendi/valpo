@@ -40,9 +40,9 @@ module Valpo
       def active_project_job(project_id, types: PROJECT_OPERATION_TYPES)
         project_id = project_id.to_s
         Valpo::Job.where(status: ACTIVE_PROJECT_JOB_STATUSES, type: types)
-                  .order(:created_at)
-                  .all
-                  .find { |job| job.payload["project_id"].to_s == project_id }
+          .order(:created_at)
+          .all
+          .find { |job| job.payload["project_id"].to_s == project_id }
       end
 
       def list
@@ -69,15 +69,15 @@ module Valpo
             locked_at: timestamp,
             started_at: timestamp
           )
-          updated == 1 ? find(job.id) : nil
+          (updated == 1) ? find(job.id) : nil
         end
       end
 
       def release_stale_locks(older_than:)
         cutoff = now - older_than
         Valpo::Job.where(status: "running")
-                  .where { locked_at < cutoff }
-                  .update(status: "queued", locked_by: nil, locked_at: nil, started_at: nil)
+          .where { locked_at < cutoff }
+          .update(status: "queued", locked_by: nil, locked_at: nil, started_at: nil)
       end
 
       def succeed(job_id, worker_id:, progress: 100)

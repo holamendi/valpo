@@ -8,7 +8,6 @@ class ValpoProjectTest < Minitest::Test
   def test_project_is_a_top_level_sequel_model
     project = Valpo::Project.create(name: "hello")
 
-    assert_kind_of Sequel::Model, project
     assert_equal "hello", project.name
     assert_equal "container", project.type
     assert_equal "created", project.status

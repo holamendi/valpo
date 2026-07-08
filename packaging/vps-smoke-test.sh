@@ -1,0 +1,264 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage: packaging/vps-smoke-test.sh USER@HOST DOMAIN_SUFFIX [options]
+
+Runs a repeatable Valpo VPS smoke test over SSH:
+  install/update Valpo from the current checkout
+  create a unique project
+  deploy nginx:alpine
+  add an HTTPS domain under DOMAIN_SUFFIX
+  verify releases and logs
+  optionally reboot and verify recovery
+  delete the project and verify cleanup
+
+Options:
+  --source PATH          Source checkout to copy. Default: repository root.
+  --remote-source PATH   Remote source path. Default: /tmp/valpo-src
+  --full-install         Run the installer with dependencies. Default: --skip-deps.
+  --reboot               Reboot the VPS and verify the app returns.
+  --project NAME         Use a specific project name. Default: valpo-smoke-<UTC timestamp>.
+  -h, --help             Show this help.
+USAGE
+}
+
+if [[ $# -eq 1 && ( "$1" == "-h" || "$1" == "--help" ) ]]; then
+  usage
+  exit 0
+fi
+
+if [[ $# -lt 2 ]]; then
+  usage
+  exit 64
+fi
+
+ssh_target="$1"
+domain_suffix="$2"
+shift 2
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source_dir="$repo_root"
+remote_source="/tmp/valpo-src"
+install_mode="skip-deps"
+reboot=0
+project="valpo-smoke-$(date -u +%Y%m%d%H%M%S)"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --source)
+      source_dir="$2"
+      shift 2
+      ;;
+    --remote-source)
+      remote_source="$2"
+      shift 2
+      ;;
+    --full-install)
+      install_mode="full"
+      shift
+      ;;
+    --reboot)
+      reboot=1
+      shift
+      ;;
+    --project)
+      project="$2"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 64
+      ;;
+  esac
+done
+
+domain="${project}.${domain_suffix}"
+project_id=""
+cleanup_started=0
+
+remote() {
+  ssh "$ssh_target" "$1"
+}
+
+wait_for_ssh() {
+  local attempts="${1:-90}"
+  local delay="${2:-5}"
+
+  for _ in $(seq 1 "$attempts"); do
+    if ssh -o ConnectTimeout=5 "$ssh_target" 'true' >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep "$delay"
+  done
+
+  echo "Timed out waiting for SSH on ${ssh_target}" >&2
+  return 1
+}
+
+wait_for_ssh_down() {
+  local attempts="${1:-30}"
+  local delay="${2:-2}"
+
+  for _ in $(seq 1 "$attempts"); do
+    if ! ssh -o ConnectTimeout=5 "$ssh_target" 'true' >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep "$delay"
+  done
+
+  echo "Timed out waiting for SSH on ${ssh_target} to go down" >&2
+  return 1
+}
+
+wait_for_services() {
+  local attempts="${1:-90}"
+  local delay="${2:-5}"
+
+  for _ in $(seq 1 "$attempts"); do
+    if ssh -o ConnectTimeout=5 "$ssh_target" 'systemctl is-active docker caddy valpo-api valpo-worker' >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep "$delay"
+  done
+
+  echo "Timed out waiting for Valpo services on ${ssh_target}" >&2
+  return 1
+}
+
+wait_for_https() {
+  local url="$1"
+  local attempts="${2:-60}"
+
+  for _ in $(seq 1 "$attempts"); do
+    if curl -fsSL "$url" | grep -i nginx >/dev/null; then
+      return 0
+    fi
+    sleep 2
+  done
+
+  echo "Timed out waiting for ${url}" >&2
+  return 1
+}
+
+project_id_from_json() {
+  sed -n 's/.*"id": "\([^"]*\)".*/\1/p' | head -n 1
+}
+
+cleanup() {
+  local exit_code=$?
+  trap - EXIT
+
+  if [[ "$cleanup_started" -eq 1 ]]; then
+    exit "$exit_code"
+  fi
+  cleanup_started=1
+
+  echo "[smoke] cleaning up ${project}"
+  wait_for_services || true
+
+  if remote "valpo projects:show '${project}' >/dev/null 2>&1"; then
+    remote "valpo projects:delete '${project}' --wait --wait-timeout 180 --wait-interval 2" || true
+  fi
+
+  if [[ -n "$project_id" ]]; then
+    if remote "docker ps -a --filter 'label=valpo.project_id=${project_id}' --format '{{.Names}}' | grep ."; then
+      echo "[smoke] containers remain for ${project_id}" >&2
+      exit 1
+    fi
+  fi
+
+  if remote "grep -F '${domain}' /var/lib/valpo/caddy/valpo.caddy"; then
+    echo "[smoke] route remains for ${domain}" >&2
+    exit 1
+  fi
+
+  exit "$exit_code"
+}
+trap cleanup EXIT
+
+echo "[smoke] target=${ssh_target}"
+echo "[smoke] project=${project}"
+echo "[smoke] domain=${domain}"
+
+echo "[smoke] copying source"
+rsync -az --delete \
+  --exclude .git \
+  --exclude vendor/bundle \
+  --exclude tmp \
+  "${source_dir}/" "${ssh_target}:${remote_source}/"
+
+install_args="--source '${remote_source}'"
+if [[ "$install_mode" == "skip-deps" ]]; then
+  install_args="${install_args} --skip-deps"
+fi
+
+echo "[smoke] installing Valpo"
+remote "'${remote_source}/packaging/install.sh' ${install_args}"
+
+echo "[smoke] verifying services"
+remote "systemctl is-active docker caddy valpo-api valpo-worker"
+remote "curl -fsS http://127.0.0.1:7092/health"
+
+echo "[smoke] creating project"
+project_json="$(remote "valpo projects:create '${project}'")"
+printf '%s\n' "$project_json"
+project_id="$(printf '%s\n' "$project_json" | project_id_from_json)"
+if [[ -z "$project_id" ]]; then
+  echo "Could not parse project id" >&2
+  exit 1
+fi
+
+echo "[smoke] deploying nginx"
+remote "valpo deploy '${project}' --image nginx:alpine --port 80 --healthcheck-path / --wait --wait-timeout 300 --wait-interval 2"
+
+echo "[smoke] adding domain"
+remote "valpo domains:add '${project}' '${domain}' --wait --wait-timeout 180 --wait-interval 2"
+
+echo "[smoke] verifying HTTPS"
+wait_for_https "https://${domain}/"
+
+echo "[smoke] checking releases and logs"
+remote "valpo releases '${project}'"
+remote "valpo logs '${project}' --tail 50"
+
+if [[ "$reboot" -eq 1 ]]; then
+  echo "[smoke] rebooting ${ssh_target}"
+  remote "systemctl reboot" || true
+  wait_for_ssh_down
+  wait_for_ssh
+  wait_for_services
+
+  echo "[smoke] verifying post-reboot services and app"
+  remote "systemctl is-active docker caddy valpo-api valpo-worker"
+  remote "curl -fsS http://127.0.0.1:7092/health"
+  wait_for_https "https://${domain}/"
+  remote "valpo system:repair --wait --wait-timeout 180 --wait-interval 2"
+  wait_for_https "https://${domain}/"
+fi
+
+echo "[smoke] deleting project"
+remote "valpo projects:delete '${project}' --wait --wait-timeout 180 --wait-interval 2"
+
+echo "[smoke] verifying cleanup"
+if remote "valpo projects:show '${project}' >/dev/null 2>&1"; then
+  echo "[smoke] project still exists after delete" >&2
+  exit 1
+fi
+if remote "docker ps -a --filter 'label=valpo.project_id=${project_id}' --format '{{.Names}}' | grep ."; then
+  echo "[smoke] containers still exist after delete" >&2
+  exit 1
+fi
+if remote "grep -F '${domain}' /var/lib/valpo/caddy/valpo.caddy"; then
+  echo "[smoke] route still exists after delete" >&2
+  exit 1
+fi
+
+trap - EXIT
+echo "[smoke] ok"

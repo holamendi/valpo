@@ -22,9 +22,9 @@ class ValpoDockerClientTest < Minitest::Test
       name: "valpo-hello",
       image: "ghcr.io/example/hello:latest",
       network: "valpo",
-      labels: { "valpo.release_id" => "r1", "valpo.project_id" => "p1" },
-      env: { "RACK_ENV" => "production" },
-      ports: { 8080 => 3000 },
+      labels: {"valpo.release_id" => "r1", "valpo.project_id" => "p1"},
+      env: {"RACK_ENV" => "production"},
+      ports: {8080 => 3000},
       restart_policy: "unless-stopped"
     )
 

@@ -36,6 +36,12 @@ mise settings set ruby.compile false
 
 If mise falls back to compiling Ruby from source, the installer fails.
 
+## API Binding And Auth
+
+The installer binds `valpo-api` to `127.0.0.1` by default. If you change `api_host` to a non-local address, configure `api_token` in `/etc/valpo/valpo.yml` or set `VALPO_API_TOKEN`; Valpo refuses to boot a non-local API without a token.
+
+CLI calls use `--api-token`, `VALPO_API_TOKEN`, or the `api_token` in the loaded config file.
+
 ## Templates
 
 The current templates assume:
@@ -49,3 +55,13 @@ The current templates assume:
 Adjust the `ExecStart` paths or service `PATH` for the Ruby manager used on the host.
 
 `valpo-migrate.service` is a one-shot unit that runs before the API and worker. Keep migrations owned by that unit instead of adding `--migrate` to both long-running services.
+
+## VPS Smoke Test
+
+Run the repeatable VPS smoke test from a local checkout:
+
+```bash
+packaging/vps-smoke-test.sh root@162.55.43.108 apps.valpo.dev --reboot
+```
+
+By default the smoke test copies the current checkout to `/tmp/valpo-src`, reinstalls with `--skip-deps`, deploys `nginx:alpine`, verifies HTTPS, releases, logs, optional reboot recovery, and then deletes the project. Use `--full-install` for a fresh Ubuntu host that still needs dependencies.

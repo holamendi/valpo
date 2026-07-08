@@ -36,7 +36,7 @@ class ValpoJobsWorkerTest < Minitest::Test
 
     Valpo::Jobs::Worker.new(
       queue: queue,
-      handlers: { "repair_system" => Valpo::Jobs::RepairSystem.new(orchestrator: orchestrator) },
+      handlers: {"repair_system" => Valpo::Jobs::RepairSystem.new(orchestrator: orchestrator)},
       worker_id: "worker-1"
     ).run(once: true)
 
@@ -52,7 +52,7 @@ class ValpoJobsWorkerTest < Minitest::Test
 
     Valpo::Jobs::Worker.new(
       queue: queue,
-      handlers: { "delete_project" => Valpo::Jobs::DeleteProject.new(orchestrator: orchestrator) },
+      handlers: {"delete_project" => Valpo::Jobs::DeleteProject.new(orchestrator: orchestrator)},
       worker_id: "worker-1"
     ).run(once: true)
 

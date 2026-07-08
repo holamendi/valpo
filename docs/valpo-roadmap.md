@@ -36,7 +36,7 @@ Exit criteria:
 
 Goal: deploy a prebuilt Docker image to one VPS, route HTTPS traffic to it, and make the server safe to operate repeatedly.
 
-Status: Phase 1A is complete. Phase 1 remains in progress until the Phase 1B operability criteria are met.
+Status: complete.
 
 ### Phase 1A: Container Deploy Path
 
@@ -78,7 +78,7 @@ Exit criteria:
 
 ### Phase 1B: Single-Server Operability
 
-Status: in progress. Project deletion cleanup, `jobs:wait`, wait-capable job commands, and `system:repair` for Caddy regeneration plus active-container Docker reconciliation are implemented; reboot verification, API auth posture, and repeatable VPS smoke testing remain.
+Status: complete. Project deletion cleanup, `jobs:wait`, wait-capable job commands, `system:repair` for Caddy regeneration plus active-container Docker reconciliation, reboot verification, private API defaults, token-gated non-local API binding, and repeatable VPS smoke testing are implemented.
 
 Deliverables:
 

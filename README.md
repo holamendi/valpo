@@ -18,6 +18,7 @@ mise install
 mise exec -- bundle install
 mise exec -- bundle exec rake db:migrate
 mise exec -- bundle exec rake test
+mise exec -- bundle exec rake standard
 ```
 
 After trusting `.mise.toml`, shell integration can run `bundle` directly. The examples below use `mise exec --` explicitly so they also work in automation.
@@ -25,6 +26,19 @@ After trusting `.mise.toml`, shell integration can run `bundle` directly. The ex
 Local defaults keep state under `tmp/`, bind the API to `127.0.0.1:7092`, render generated Caddy config under `tmp/`, and assume a shared Docker network named `valpo`.
 
 Useful development commands:
+
+Install the repo-managed Git hooks:
+
+```bash
+mise exec -- bundle exec rake hooks:install
+```
+
+Run or auto-fix Ruby style with Standard:
+
+```bash
+mise exec -- bundle exec rake standard
+mise exec -- bundle exec rake standard:fix
+```
 
 Terminal 1:
 

@@ -7,8 +7,8 @@ class ValpoCaddyRendererTest < Minitest::Test
     renderer = Valpo::Caddy::Renderer.new
 
     output = renderer.render([
-      { hostname: "hello.example.com", kind: "container", upstream: "valpo-hello:3000" },
-      { hostname: "static.example.com", kind: "static", root: "/var/lib/valpo/releases/static" }
+      {hostname: "hello.example.com", kind: "container", upstream: "valpo-hello:3000"},
+      {hostname: "static.example.com", kind: "static", root: "/var/lib/valpo/releases/static"}
     ])
 
     assert_includes output, "hello.example.com {\n  reverse_proxy valpo-hello:3000\n}"

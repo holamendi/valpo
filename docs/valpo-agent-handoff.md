@@ -50,18 +50,17 @@ Follow these rules unless a later decision explicitly changes them:
 
 ## First Implementation Goal
 
-Phase 1A now exists. The next implementation goal is single-server operability:
+Phase 1 is complete. The next implementation goal is first-class static-site hosting:
 
 ```text
-delete project and clean up runtime state
-wait for long-running CLI jobs with useful exit codes
-verify apps after host reboot
-repair or regenerate Docker/Caddy state from SQLite
-keep the API private unless authenticated exposure is configured
-run repeatable VPS smoke tests
+create static project
+upload a zipped dist directory
+validate and extract zip releases safely
+route static files through Caddy
+support static release rollback
 ```
 
-Do not start with GitHub/GitLab OAuth, buildpacks, managed databases, static uploads, or the multi-server dashboard. Those depend on the core deploy lifecycle.
+Do not start with GitHub/GitLab OAuth, buildpacks, managed databases, or the multi-server dashboard. Those depend on the core deploy lifecycle and static-site release model.
 
 Do preserve modular boundaries for source adapters, build adapters, service definitions, backup targets, notification sinks, and lifecycle events. Those are future extension points, not v1 product scope.
 
@@ -279,8 +278,8 @@ When starting implementation, read these documents first:
 5. `valpo-architecture-decisions.md`
 6. `valpo-roadmap.md`
 
-Then continue with Phase 1B only:
+Then continue with Phase 2 only:
 
-- Complete single-server operability before expanding product surface.
+- Add static-site hosting before moving to Git providers, managed services, or dashboard work.
 
-Do not move to static uploads, GitHub/GitLab, managed services, or dashboard work until project cleanup, wait-capable CLI flows, reboot/recovery behavior, API auth posture, and a repeatable VPS smoke test are in place.
+Do not move to GitHub/GitLab, managed services, or dashboard work until static projects, zip upload, safe extraction, Caddy static routing, and static rollback are in place.

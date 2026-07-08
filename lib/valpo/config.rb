@@ -13,21 +13,22 @@ module Valpo
     DEFAULT_DEPLOY_DRAIN_DELAY = 0
 
     attr_reader :env,
-                :root,
-                :database_path,
-                :api_host,
-                :api_port,
-                :caddy_config_path,
-                :caddy_reload_config_path,
-                :docker_network,
-                :worker_poll_interval,
-                :app_port_start,
-                :app_port_end,
-                :healthcheck_timeout,
-                :deploy_drain_delay
+      :root,
+      :database_path,
+      :api_host,
+      :api_port,
+      :api_token,
+      :caddy_config_path,
+      :caddy_reload_config_path,
+      :docker_network,
+      :worker_poll_interval,
+      :app_port_start,
+      :app_port_end,
+      :healthcheck_timeout,
+      :deploy_drain_delay
 
     def self.load(path: ENV["VALPO_CONFIG"], env: ENV.fetch("VALPO_ENV", DEFAULT_ENV))
-      data = path && File.exist?(path) ? YAML.safe_load_file(path, aliases: false) || {} : {}
+      data = (path && File.exist?(path)) ? YAML.safe_load_file(path, aliases: false) || {} : {}
       env_data = data.fetch(env, data)
 
       new(
@@ -36,6 +37,7 @@ module Valpo
         database_path: value(env_data, "database_path", ENV["VALPO_DATABASE_PATH"], default_database_path(env)),
         api_host: value(env_data, "api_host", ENV["VALPO_API_HOST"], "127.0.0.1"),
         api_port: Integer(value(env_data, "api_port", ENV["VALPO_API_PORT"], DEFAULT_API_PORT)),
+        api_token: blank_to_nil(value(env_data, "api_token", ENV["VALPO_API_TOKEN"], nil)),
         caddy_config_path: value(env_data, "caddy_config_path", ENV["VALPO_CADDY_CONFIG_PATH"], default_caddy_config_path(env)),
         caddy_reload_config_path: value(env_data, "caddy_reload_config_path", ENV["VALPO_CADDY_RELOAD_CONFIG_PATH"], nil),
         docker_network: value(env_data, "docker_network", ENV["VALPO_DOCKER_NETWORK"], "valpo"),
@@ -60,12 +62,18 @@ module Valpo
     end
     private_class_method :value
 
-    def initialize(env:, root:, database_path:, api_host:, api_port:, caddy_config_path:, caddy_reload_config_path: nil, docker_network:, worker_poll_interval:, app_port_start:, app_port_end:, healthcheck_timeout:, deploy_drain_delay:)
+    def self.blank_to_nil(value)
+      (value.nil? || value.to_s.strip.empty?) ? nil : value.to_s
+    end
+    private_class_method :blank_to_nil
+
+    def initialize(env:, root:, database_path:, api_host:, api_port:, caddy_config_path:, docker_network:, worker_poll_interval:, app_port_start:, app_port_end:, healthcheck_timeout:, deploy_drain_delay:, api_token: nil, caddy_reload_config_path: nil)
       @env = env
       @root = root
       @database_path = expand_path(database_path)
       @api_host = api_host
       @api_port = api_port
+      @api_token = self.class.send(:blank_to_nil, api_token)
       @caddy_config_path = expand_path(caddy_config_path)
       @caddy_reload_config_path = caddy_reload_config_path ? expand_path(caddy_reload_config_path) : @caddy_config_path
       @docker_network = docker_network

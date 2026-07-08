@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require "json"
 require "test_helper"
 require "valpo/deployments/orchestrator"
 
@@ -10,8 +9,8 @@ class ValpoDeploymentsOrchestratorTest < Minitest::Test
   def test_successful_deploy_activates_release_and_routes_domains
     project = Valpo::Project.create(name: "hello")
     domain = Valpo::Domain.create(project_id: project.id, hostname: "hello.example.com")
-    docker = FakeDocker.new
-    caddy = FakeCaddy.new
+    docker = ValpoTestSupport::FakeDocker.new
+    caddy = ValpoTestSupport::FakeCaddy.new
     queue = Valpo::Jobs::Queue.new
     job = queue.enqueue("test")
 
@@ -29,11 +28,11 @@ class ValpoDeploymentsOrchestratorTest < Minitest::Test
     assert_equal "ghcr.io/example/hello:latest@sha256:abc", release.image_digest
     assert_equal "127.0.0.1:20000", release.route_target
     assert_equal "127.0.0.1:20000", domain.refresh.route_target
-    assert_equal [{ hostname: "hello.example.com", kind: "container", upstream: "127.0.0.1:20000" }], caddy.routes
+    assert_equal [{hostname: "hello.example.com", kind: "container", upstream: "127.0.0.1:20000"}], caddy.routes
 
-    run_command = docker.commands.find { |command| command.first == :run }
-    assert_equal({ "127.0.0.1:20000" => 3000 }, run_command.fetch(5))
-    assert_equal "unless-stopped", run_command.fetch(6)
+    run_request = docker.run_requests.first
+    assert_equal({"127.0.0.1:20000" => 3000}, run_request.fetch(:ports))
+    assert_equal "unless-stopped", run_request.fetch(:restart_policy)
   end
 
   def test_failed_deploy_keeps_existing_active_release
@@ -48,8 +47,8 @@ class ValpoDeploymentsOrchestratorTest < Minitest::Test
       route_target: "127.0.0.1:20000"
     )
     domain = Valpo::Domain.create(project_id: project.id, hostname: "hello.example.com", route_target: "127.0.0.1:20000")
-    docker = FakeDocker.new(fail_on: :run)
-    caddy = FakeCaddy.new
+    docker = ValpoTestSupport::FakeDocker.new(fail_on: :run)
+    caddy = ValpoTestSupport::FakeCaddy.new
     queue = Valpo::Jobs::Queue.new
     job = queue.enqueue("test")
 
@@ -94,8 +93,8 @@ class ValpoDeploymentsOrchestratorTest < Minitest::Test
       route_target: "127.0.0.1:20001"
     )
     Valpo::Domain.create(project_id: project.id, hostname: "hello.example.com")
-    docker = FakeDocker.new
-    caddy = FakeCaddy.new
+    docker = ValpoTestSupport::FakeDocker.new
+    caddy = ValpoTestSupport::FakeCaddy.new
     queue = Valpo::Jobs::Queue.new
     job = queue.enqueue("test")
 
@@ -105,7 +104,7 @@ class ValpoDeploymentsOrchestratorTest < Minitest::Test
     assert_equal "active", previous.refresh.status
     assert_equal "inactive", current.refresh.status
     assert_equal "127.0.0.1:20000", previous.refresh.route_target
-    assert docker.commands.any? { |command| command == [:stop, "current"] }
+    assert docker.executed?(:stop, "current")
   end
 
   def test_stop_and_restart_project_update_caddy_routes
@@ -121,8 +120,8 @@ class ValpoDeploymentsOrchestratorTest < Minitest::Test
       route_target: "127.0.0.1:20000"
     )
     domain = Valpo::Domain.create(project_id: project.id, hostname: "hello.example.com", route_target: "127.0.0.1:20000")
-    docker = FakeDocker.new
-    caddy = FakeCaddy.new
+    docker = ValpoTestSupport::FakeDocker.new
+    caddy = ValpoTestSupport::FakeCaddy.new
     queue = Valpo::Jobs::Queue.new
     job = queue.enqueue("test")
     service = orchestrator(docker: docker, caddy: caddy)
@@ -151,7 +150,7 @@ class ValpoDeploymentsOrchestratorTest < Minitest::Test
       internal_port: 3000
     )
 
-    logs = orchestrator(docker: FakeDocker.new).app_logs(project_id: project.id, tail: 10)
+    logs = orchestrator(docker: ValpoTestSupport::FakeDocker.new).app_logs(project_id: project.id, tail: 10)
 
     assert_equal "app log\n", logs.fetch(:stdout)
   end
@@ -188,8 +187,8 @@ class ValpoDeploymentsOrchestratorTest < Minitest::Test
       route_target: "127.0.0.1:20050"
     )
     Valpo::Domain.create(project_id: other.id, hostname: "other.example.com", route_target: "127.0.0.1:20050")
-    docker = FakeDocker.new
-    caddy = FakeCaddy.new
+    docker = ValpoTestSupport::FakeDocker.new
+    caddy = ValpoTestSupport::FakeCaddy.new
     queue = Valpo::Jobs::Queue.new
     job = queue.enqueue("test")
 
@@ -198,11 +197,11 @@ class ValpoDeploymentsOrchestratorTest < Minitest::Test
     assert_nil Valpo::Project[project.id]
     assert_empty Valpo::Release.where(project_id: project.id).all
     assert_empty Valpo::Domain.where(project_id: project.id).all
-    assert_equal [{ hostname: "other.example.com", kind: "container", upstream: "127.0.0.1:20050" }], caddy.routes
-    assert docker.commands.any? { |command| command == [:stop, "active"] }
-    assert docker.commands.any? { |command| command == [:rm, "active", true] }
-    assert docker.commands.any? { |command| command == [:stop, "old"] }
-    assert docker.commands.any? { |command| command == [:rm, "old", true] }
+    assert_equal [{hostname: "other.example.com", kind: "container", upstream: "127.0.0.1:20050"}], caddy.routes
+    assert docker.executed?(:stop, "active")
+    assert docker.executed?(:rm, "active", true)
+    assert docker.executed?(:stop, "old")
+    assert docker.executed?(:rm, "old", true)
     assert_includes queue.events(job.id).map(&:message), "Deleted hello"
   end
 
@@ -229,13 +228,13 @@ class ValpoDeploymentsOrchestratorTest < Minitest::Test
       route_target: "127.0.0.1:20001"
     )
     stopped_domain = Valpo::Domain.create(project_id: stopped.id, hostname: "stopped.example.com", route_target: "127.0.0.1:20001")
-    caddy = FakeCaddy.new
+    caddy = ValpoTestSupport::FakeCaddy.new
     queue = Valpo::Jobs::Queue.new
     job = queue.enqueue("test")
 
-    orchestrator(docker: FakeDocker.new, caddy: caddy).repair_system(queue: queue, job_id: job.id)
+    orchestrator(docker: ValpoTestSupport::FakeDocker.new, caddy: caddy).repair_system(queue: queue, job_id: job.id)
 
-    assert_equal [{ hostname: "hello.example.com", kind: "container", upstream: "127.0.0.1:20000" }], caddy.routes
+    assert_equal [{hostname: "hello.example.com", kind: "container", upstream: "127.0.0.1:20000"}], caddy.routes
     assert_equal "127.0.0.1:20000", domain.refresh.route_target
     assert_nil stopped_domain.refresh.route_target
     assert_includes queue.events(job.id).map(&:message), "Repairing system state"
@@ -268,24 +267,24 @@ class ValpoDeploymentsOrchestratorTest < Minitest::Test
     )
     Valpo::Domain.create(project_id: stopped_project.id, hostname: "stopped-runtime.example.com")
     Valpo::Domain.create(project_id: missing_project.id, hostname: "missing-runtime.example.com")
-    docker = FakeDocker.new(container_states: {
+    docker = ValpoTestSupport::FakeDocker.new(container_states: {
       "stopped-runtime-container" => false,
       "missing-runtime-container" => :missing
     })
-    caddy = FakeCaddy.new
+    caddy = ValpoTestSupport::FakeCaddy.new
     queue = Valpo::Jobs::Queue.new
     job = queue.enqueue("test")
 
     orchestrator(docker: docker, caddy: caddy).repair_system(queue: queue, job_id: job.id)
 
-    assert docker.commands.any? { |command| command == [:update_restart_policy, "stopped-runtime-container", "unless-stopped"] }
-    assert docker.commands.any? { |command| command == [:start, "stopped-runtime-container"] }
+    assert docker.executed?(:update_restart_policy, "stopped-runtime-container", "unless-stopped")
+    assert docker.executed?(:start, "stopped-runtime-container")
     assert_equal "running", stopped_project.refresh.status
     assert_equal "stopped-runtime-container", stopped_release.refresh.container_name
 
-    run_command = docker.commands.find { |command| command.first == :run && command.fetch(2) == "ghcr.io/example/missing-runtime:v1@sha256:old" }
-    refute_nil run_command
-    assert_equal "unless-stopped", run_command.fetch(6)
+    run_request = docker.run_requests.find { |request| request.fetch(:image) == "ghcr.io/example/missing-runtime:v1@sha256:old" }
+    refute_nil run_request
+    assert_equal "unless-stopped", run_request.fetch(:restart_policy)
     assert_equal "running", missing_project.refresh.status
     refute_equal "missing-runtime-container", missing_release.refresh.container_name
     assert caddy.routes.any? { |route| route.fetch(:hostname) == "missing-runtime.example.com" && route.fetch(:upstream) == missing_release.refresh.route_target }
@@ -293,116 +292,12 @@ class ValpoDeploymentsOrchestratorTest < Minitest::Test
 
   private
 
-  def orchestrator(docker:, caddy: FakeCaddy.new, health_checker: FakeHealthChecker.new)
+  def orchestrator(docker:, caddy: ValpoTestSupport::FakeCaddy.new, health_checker: ValpoTestSupport::FakeHealthChecker.new)
     Valpo::Deployments::Orchestrator.new(
       config: VALPO_TEST_CONFIG,
       docker: docker,
       caddy: caddy,
       health_checker: health_checker
     )
-  end
-
-  class FakeDocker
-    attr_reader :commands
-
-    def initialize(fail_on: nil, container_states: {})
-      @fail_on = fail_on
-      @container_states = container_states
-      @commands = []
-    end
-
-    def pull_command(image)
-      [:pull, image]
-    end
-
-    def image_inspect_command(image)
-      [:inspect, image]
-    end
-
-    def run_command(name:, image:, network:, labels:, ports:, restart_policy: nil, **)
-      [:run, name, image, network, labels, ports, restart_policy]
-    end
-
-    def network_create_command(name)
-      [:network_create, name]
-    end
-
-    def container_inspect_command(name)
-      [:container_inspect, name]
-    end
-
-    def start_command(name)
-      [:start, name]
-    end
-
-    def update_restart_policy_command(name, restart_policy)
-      [:update_restart_policy, name, restart_policy]
-    end
-
-    def stop_command(name)
-      [:stop, name]
-    end
-
-    def rm_command(name, force:)
-      [:rm, name, force]
-    end
-
-    def logs_command(name, tail: nil, **)
-      [:logs, name, tail]
-    end
-
-    def execute(command)
-      @commands << command
-      return failure("#{command.first} failed") if command.first == @fail_on
-
-      case command.first
-      when :inspect
-        success(JSON.generate([{ "RepoDigests" => ["#{command.fetch(1)}@sha256:abc"] }]))
-      when :container_inspect
-        container_state = @container_states.fetch(command.fetch(1), true)
-        return failure("No such object: #{command.fetch(1)}") if container_state == :missing
-
-        success(JSON.generate([{ "State" => { "Running" => container_state == true } }]))
-      when :logs
-        success("app log\n")
-      else
-        success("ok\n")
-      end
-    end
-
-    private
-
-    def success(stdout)
-      { stdout: stdout, stderr: "", status: 0, success: true }
-    end
-
-    def failure(stderr)
-      { stdout: "", stderr: stderr, status: 1, success: false }
-    end
-  end
-
-  class FakeCaddy
-    attr_reader :routes
-
-    def write_config(routes)
-      @routes = routes
-    end
-
-    def reload_command
-      [:reload_caddy]
-    end
-
-    def execute(_command)
-      { stdout: "reloaded\n", stderr: "", status: 0, success: true }
-    end
-  end
-
-  class FakeHealthChecker
-    def wait(route_target:, path:, timeout:)
-      @route_target = route_target
-      @path = path
-      @timeout = timeout
-      true
-    end
   end
 end

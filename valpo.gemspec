@@ -41,4 +41,5 @@ Gem::Specification.new do |spec|
   spec.add_development_dependency "minitest", ">= 5.25", "< 6"
   spec.add_development_dependency "rack-test", ">= 2.1", "< 3"
   spec.add_development_dependency "rake", ">= 13.2", "< 14"
+  spec.add_development_dependency "standard", ">= 1.42", "< 2"
 end

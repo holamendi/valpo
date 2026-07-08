@@ -176,7 +176,7 @@ module Valpo
         if queue.succeed(job[:id], worker_id: worker_id)
           queue.event(job[:id], "system", "Job succeeded")
         end
-      rescue StandardError => e
+      rescue => e
         queue.event(job[:id], "stderr", "#{e.class}: #{e.message}")
         queue.fail(job[:id], e.message, worker_id: worker_id)
       end

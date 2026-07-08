@@ -3,6 +3,8 @@ production:
   database_path: /var/lib/valpo/valpo.db
   api_host: 127.0.0.1
   api_port: 7092
+  # Required before binding api_host to a non-local address.
+  # api_token: change-me
   caddy_config_path: /var/lib/valpo/caddy/valpo.caddy
   caddy_reload_config_path: /etc/caddy/Caddyfile
   docker_network: valpo

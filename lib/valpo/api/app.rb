@@ -3,6 +3,8 @@
 require "json"
 require "roda"
 require "valpo"
+require "valpo/api/authentication"
+require "valpo/api/request_helpers"
 require "valpo/api/serializers"
 require "valpo/deployments/orchestrator"
 require "valpo/jobs/queue"
@@ -10,6 +12,9 @@ require "valpo/jobs/queue"
 module Valpo
   module API
     class App < Roda
+      include Authentication
+      include RequestHelpers
+
       plugin :json
       plugin :error_handler do |error|
         response.status =
@@ -22,19 +27,21 @@ module Valpo
             500
           end
 
-        { error: error.class.name, message: error.message }
+        {error: error.class.name, message: error.message}
       end
 
       route do |r|
         response["Content-Type"] = "application/json"
+        unauthorized = authenticate_request
+        next unauthorized if unauthorized
 
         r.root do
-          { service: "valpo-api", version: Valpo::VERSION }
+          {service: "valpo-api", version: Valpo::VERSION}
         end
 
         r.on "health" do
           r.get do
-            { ok: true, service: "valpo-api", version: Valpo::VERSION }
+            {ok: true, service: "valpo-api", version: Valpo::VERSION}
           end
         end
 
@@ -146,7 +153,7 @@ module Valpo
                     domain = Valpo::Domain.create(project_id: project.id, hostname: required_string(payload, "hostname"))
                   end
                   response.status = 201
-                  { domain: Serializers.domain(domain), job: Serializers.job(job) }
+                  {domain: Serializers.domain(domain), job: Serializers.job(job)}
                 end
               end
 
@@ -155,13 +162,13 @@ module Valpo
                   next unless r.delete?
 
                   domain = Valpo::Domain.where(project_id: project.id, id: domain_id).first ||
-                           Valpo::Domain.where(project_id: project.id, hostname: domain_id.downcase).first
+                    Valpo::Domain.where(project_id: project.id, hostname: domain_id.downcase).first
                   next not_found("Domain not found") unless domain
 
                   job = jobs.enqueue_project_operation("apply_caddy_config", project_id: project.id) do
                     domain.destroy
                   end
-                  { deleted: true, job: Serializers.job(job) }
+                  {deleted: true, job: Serializers.job(job)}
                 end
               end
             end
@@ -213,69 +220,6 @@ module Valpo
 
       def deploy_orchestrator
         Valpo::Deployments::Orchestrator.new(config: Valpo.config || Valpo::Config.load)
-      end
-
-      def parse_json_body
-        body = request.body.read
-        return {} if body.nil? || body.empty?
-
-        JSON.parse(body)
-      rescue JSON::ParserError
-        raise Valpo::ValidationError, "Request body must be valid JSON"
-      end
-
-      def not_found(message)
-        response.status = 404
-        { error: "not_found", message: message }
-      end
-
-      def required_string(payload, key)
-        value = payload[key]
-        raise Valpo::ValidationError, "#{key} is required" if value.nil? || value.to_s.strip.empty?
-
-        value
-      end
-
-      def required_integer(payload, key, fallback_key: nil)
-        value = payload[key]
-        value = payload[fallback_key] if value.nil? && fallback_key
-        raise Valpo::ValidationError, "#{key} is required" if value.nil? || value.to_s.strip.empty?
-
-        parse_integer(value, key)
-      end
-
-      def optional_positive_integer(value, key)
-        return nil if value.nil? || value.to_s.strip.empty?
-
-        integer = parse_integer(value, key)
-        raise Valpo::ValidationError, "#{key} must be greater than 0" unless integer.positive?
-
-        integer
-      end
-
-      def parse_integer(value, key)
-        Integer(value)
-      rescue ArgumentError, TypeError
-        raise Valpo::ValidationError, "#{key} must be an integer"
-      end
-
-      def validate_port!(value, key)
-        raise Valpo::ValidationError, "#{key} must be between 1 and 65535" unless value.between?(1, 65_535)
-
-        value
-      end
-
-      def optional_healthcheck_path(value)
-        return nil if value.nil? || value.to_s.strip.empty?
-
-        path = value.to_s
-        raise Valpo::ValidationError, "healthcheck_path must start with /" unless path.start_with?("/")
-
-        path
-      end
-
-      def validate_container_project!(project)
-        raise Valpo::ValidationError, "Only container projects can use this endpoint" unless project.type == "container"
       end
     end
   end

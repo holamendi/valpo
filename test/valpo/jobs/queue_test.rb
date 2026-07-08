@@ -48,7 +48,7 @@ class ValpoJobsQueueTest < Minitest::Test
     first = queue.enqueue_project_operation(
       "deploy_registry_image",
       project_id: project.id,
-      payload: { image: "example/hello:v1", internal_port: 3000 }
+      payload: {image: "example/hello:v1", internal_port: 3000}
     )
 
     error = assert_raises Valpo::ConflictError do
@@ -64,7 +64,7 @@ class ValpoJobsQueueTest < Minitest::Test
     other = queue.enqueue_project_operation(
       "deploy_registry_image",
       project_id: other_project.id,
-      payload: { image: "example/other:v1", internal_port: 3000 }
+      payload: {image: "example/other:v1", internal_port: 3000}
     )
 
     assert_equal other_project.id, other.payload.fetch("project_id")
@@ -76,7 +76,7 @@ class ValpoJobsQueueTest < Minitest::Test
     next_job = queue.enqueue_project_operation(
       "deploy_registry_image",
       project_id: project.id,
-      payload: { image: "example/hello:v2", internal_port: 3000 }
+      payload: {image: "example/hello:v2", internal_port: 3000}
     )
 
     assert_equal project.id, next_job.payload.fetch("project_id")
@@ -85,7 +85,7 @@ class ValpoJobsQueueTest < Minitest::Test
   def test_project_operation_block_does_not_run_when_project_is_busy
     project = Valpo::Project.create(name: "hello")
     queue = Valpo::Jobs::Queue.new
-    queue.enqueue_project_operation("deploy_registry_image", project_id: project.id, payload: { image: "example/hello:v1", internal_port: 3000 })
+    queue.enqueue_project_operation("deploy_registry_image", project_id: project.id, payload: {image: "example/hello:v1", internal_port: 3000})
 
     assert_raises Valpo::ConflictError do
       queue.enqueue_project_operation("apply_caddy_config", project_id: project.id) do
