@@ -280,4 +280,9 @@ When starting implementation, read these documents first:
 5. `valpo-architecture-decisions.md`
 6. `valpo-roadmap.md`
 
-Then continue with Phase 1 only. Keep changes aligned with the single-server deploy MVP before expanding into GitHub/GitLab, static uploads, managed services, or dashboard work.
+Then continue with Phase 1 only:
+
+- Phase 1A: finish and stabilize the single-server container deploy path.
+- Phase 1B: complete single-server operability before expanding product surface.
+
+Do not move to static uploads, GitHub/GitLab, managed services, or dashboard work until project cleanup, wait-capable CLI flows, reboot/recovery behavior, API auth posture, and a repeatable VPS smoke test are in place.

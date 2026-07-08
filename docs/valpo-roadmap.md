@@ -2,9 +2,9 @@
 
 ## Roadmap Philosophy
 
-Build from the smallest useful self-contained VPS platform outward. Avoid starting with GitHub/GitLab, managed database features, or the multi-server dashboard until the local server deploy lifecycle is solid.
+Build from the smallest useful self-contained VPS platform outward. Avoid starting with GitHub/GitLab, managed database features, static-site expansion, or the multi-server dashboard until the single-server deploy lifecycle is solid and repeatably operable.
 
-The first milestone should prove that Valpo can reliably take an artifact, run it, route traffic to it, show logs, and roll it back. The next product-defining milestone is managed services that feel like Heroku add-ons rather than raw container setup.
+The first milestone should prove that Valpo can reliably take an artifact, run it, route traffic to it, show logs, roll it back, survive routine host operations, and clean up after itself. The next product-defining milestone is managed services that feel like Heroku add-ons rather than raw container setup.
 
 ## Phase 0: Architecture And Scaffold
 
@@ -34,9 +34,11 @@ Exit criteria:
 
 ## Phase 1: Single-Server Container Deploy MVP
 
-Goal: deploy a prebuilt Docker image to one VPS and route HTTP traffic to it.
+Goal: deploy a prebuilt Docker image to one VPS, route HTTPS traffic to it, and make the server safe to operate repeatedly.
 
-Status: next implementation phase.
+Status: in progress. The registry-image deploy path exists and has been validated on a public VPS, but Phase 1 is not complete until the Phase 1B operability criteria are met.
+
+### Phase 1A: Container Deploy Path
 
 Deliverables:
 
@@ -52,6 +54,8 @@ Deliverables:
 - Stream or retrieve deployment logs.
 - Retrieve app logs.
 - Stop/restart project.
+- Installer creates an operator-friendly `valpo` CLI command on `PATH`.
+- CLI failures exit non-zero without framework deprecation warnings.
 
 Example target flow:
 
@@ -69,10 +73,33 @@ Exit criteria:
 - A user can deploy an existing container image behind HTTPS.
 - A failed deploy does not break the currently active release.
 - Rollback works without rebuilding.
+- Core install/deploy/domain/log/release operations work from the installed CLI on a fresh Ubuntu VPS.
+
+### Phase 1B: Single-Server Operability
+
+Deliverables:
+
+- Delete project and clean up its active container, domains, releases, and generated routes.
+- Add `jobs:wait JOB_ID` and wait-capable deploy/domain commands with timeouts and useful exit codes.
+- Verify active apps after host reboot.
+- Reconcile Valpo metadata with Docker and Caddy state on startup or through an explicit repair command.
+- Regenerate Caddy config from SQLite state and reload Caddy.
+- Keep the API private by default and add token-based API authentication before any non-local API exposure.
+- Add a repeatable VPS smoke test for install, deploy, domain, HTTPS, logs, reboot, and cleanup.
+
+Exit criteria:
+
+- A fresh VPS can install Valpo, deploy `nginx:alpine`, add a public HTTPS domain, reboot, and continue serving the app.
+- A test project can be deleted without leaving containers, routes, or domains behind.
+- Long-running CLI workflows can wait for completion and fail with non-zero status on job failure or timeout.
+- The Valpo API is not publicly reachable unless explicit authentication has been configured.
+- The smoke test can be rerun on the same host without manual cleanup.
 
 ## Phase 2: Static Sites
 
 Goal: support static-site hosting as a first-class path.
+
+Start this phase only after Phase 1B is complete.
 
 Deliverables:
 
