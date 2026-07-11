@@ -3,12 +3,11 @@
 require "open3"
 require "rbconfig"
 require "test_helper"
-require "valpo/cli"
 
 class ValpoCLITest < Minitest::Test
   def test_cli_exits_nonzero_and_loads_without_database
     assert_equal true, Valpo::CLI.exit_on_failure?
-    stdout, stderr, status = Open3.capture3(RbConfig.ruby, "-Ilib", "-e", "require 'valpo/cli'; puts 'ok'")
+    stdout, stderr, status = Open3.capture3(RbConfig.ruby, "-Ilib", "-e", "require 'valpo'; Valpo::CLI; puts 'ok'")
     assert status.success?, stderr
     assert_equal "ok\n", stdout
   end

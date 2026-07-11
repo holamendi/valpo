@@ -1,8 +1,6 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require "valpo/manifests/project_manifest"
-require "valpo/manifests/reconciler"
 
 class ValpoManifestReconcilerTest < Minitest::Test
   include ValpoTestDatabase

@@ -20,7 +20,5 @@ end.parse!(ARGV)
 config = Valpo::Config.load(path: options[:config])
 Valpo::Boot.run(config: config, migrate: options[:migrate])
 
-require "valpo/jobs/worker"
-
 worker = Valpo::Jobs::Worker.new(config: config, poll_interval: config.worker_poll_interval)
 worker.run(once: options[:once])

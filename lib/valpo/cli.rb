@@ -3,9 +3,6 @@
 require "json"
 require "thor"
 require "uri"
-require "valpo"
-require "valpo/api/client"
-require "valpo/api/serializers"
 
 module Valpo
   class CLI < Thor
@@ -237,7 +234,6 @@ module Valpo
     def jobs_enqueue_system_check
       config = Valpo::Config.load(path: options[:config])
       Valpo::Boot.run(config: config)
-      require "valpo/jobs/queue"
       say_json(Valpo::API::Serializers.job(Valpo::Jobs::Queue.new.enqueue("system_check", source: "cli")))
     ensure
       Valpo::Database.disconnect

@@ -2,9 +2,6 @@
 
 require "sequel/model"
 require "time"
-require "valpo/identifier"
-require "valpo/models/project"
-require "valpo/models/source"
 
 module Valpo
   class BuildTarget < Sequel::Model(:build_targets)

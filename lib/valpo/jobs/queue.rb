@@ -2,8 +2,6 @@
 
 require "json"
 require "time"
-require "valpo/errors"
-require "valpo/models/project"
 
 module Valpo
   module Jobs

@@ -4,7 +4,6 @@ require "json"
 require "net/http"
 require "openssl"
 require "uri"
-require "valpo"
 
 module Valpo
   module API

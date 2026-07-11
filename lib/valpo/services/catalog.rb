@@ -2,10 +2,6 @@
 
 require "json"
 require "securerandom"
-require "valpo"
-require "valpo/models/app_service_config"
-require "valpo/models/managed_service_config"
-require "valpo/models/service"
 
 module Valpo
   module Services

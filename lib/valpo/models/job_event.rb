@@ -2,7 +2,6 @@
 
 require "sequel/model"
 require "time"
-require "valpo/identifier"
 
 module Valpo
   class JobEvent < Sequel::Model(:job_events)

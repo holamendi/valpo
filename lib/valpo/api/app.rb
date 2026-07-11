@@ -2,24 +2,6 @@
 
 require "json"
 require "roda"
-require "valpo"
-require "valpo/api/authentication"
-require "valpo/api/request_helpers"
-require "valpo/api/serializers"
-require "valpo/deployments/orchestrator"
-require "valpo/jobs/queue"
-require "valpo/manifests/project_manifest"
-require "valpo/manifests/reconciler"
-require "valpo/models/build_target"
-require "valpo/models/domain"
-require "valpo/models/release"
-require "valpo/models/service"
-require "valpo/models/service_dependency"
-require "valpo/models/source"
-require "valpo/references"
-require "valpo/services/catalog"
-require "valpo/services/environment"
-require "valpo/services/orchestrator"
 
 module Valpo
   module API

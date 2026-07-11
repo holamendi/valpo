@@ -3,7 +3,6 @@
 require "json"
 require "rack/test"
 require "test_helper"
-require "valpo/api/app"
 
 class ValpoAPIAppTest < Minitest::Test
   include Rack::Test::Methods

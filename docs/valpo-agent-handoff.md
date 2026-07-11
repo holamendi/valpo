@@ -72,6 +72,8 @@ Do preserve modular boundaries for source adapters, build adapters, service defi
 
 The current implementation keeps API, worker, CLI, and shared library code in one Ruby gem-style repository rather than separate `apps/` directories.
 
+Valpo-owned constants are loaded lazily through Zeitwerk. Keep filenames aligned with constants, preserve the `API` and `CLI` inflections, and do not reintroduce internal `require "valpo/..."` chains. Standard-library and third-party gem requires remain explicit. The `models/` directory is collapsed so `models/project.rb` defines `Valpo::Project` rather than `Valpo::Models::Project`.
+
 ```text
 valpo/
   lib/

@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require "valpo/manifests/project_manifest"
 
 class ValpoProjectManifestTest < Minitest::Test
   def test_normalizes_sources_builds_services_and_dependencies

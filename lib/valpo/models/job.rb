@@ -3,7 +3,6 @@
 require "json"
 require "sequel/model"
 require "time"
-require "valpo/identifier"
 
 module Valpo
   class Job < Sequel::Model(:jobs)

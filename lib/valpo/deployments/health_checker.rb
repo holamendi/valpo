@@ -3,7 +3,6 @@
 require "net/http"
 require "socket"
 require "time"
-require "valpo"
 
 module Valpo
   module Deployments

@@ -2,7 +2,6 @@
 
 require "json"
 require "test_helper"
-require "valpo/api/client"
 
 class ValpoAPIClientTest < Minitest::Test
   def test_request_uses_api_token_from_config

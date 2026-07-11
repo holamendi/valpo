@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require "rack/utils"
-require "valpo"
 
 module Valpo
   module API

@@ -2,11 +2,6 @@
 
 require "securerandom"
 require "socket"
-require "valpo/deployments/orchestrator"
-require "valpo/jobs/queue"
-require "valpo/manifests/reconciler"
-require "valpo/models/service"
-require "valpo/services/orchestrator"
 
 module Valpo
   module Jobs

@@ -1,11 +1,5 @@
 # frozen_string_literal: true
 
-require "valpo"
-require "valpo/deployments/command_output"
-require "valpo/models/domain"
-require "valpo/models/release"
-require "valpo/models/service"
-
 module Valpo
   module Deployments
     class RouteProjector

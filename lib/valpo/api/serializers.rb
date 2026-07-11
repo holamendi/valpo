@@ -9,8 +9,6 @@ module Valpo
       module_function
 
       def project(record)
-        require "valpo/models/service"
-        require "valpo/models/source"
         fields(record, :id, :name, :manifest_digest, :last_applied_at, :created_at, :updated_at).merge(
           service_count: Valpo::Service.where(project_id: record.id).count,
           source_count: Valpo::Source.where(project_id: record.id).count
@@ -26,9 +24,6 @@ module Valpo
       end
 
       def service(record)
-        require "valpo/models/app_service_config"
-        require "valpo/models/managed_service_config"
-        require "valpo/models/service_dependency"
         output = fields(record, :id, :project_id, :name, :kind, :status, :created_at, :updated_at)
         output[:reference] = "#{record.project.name}/#{record.name}"
         if record.app?

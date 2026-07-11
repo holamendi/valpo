@@ -2,7 +2,6 @@
 
 require "json"
 require "sequel/model"
-require "valpo/models/service"
 
 module Valpo
   class AppServiceConfig < Sequel::Model(:app_service_configs)

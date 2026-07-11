@@ -2,7 +2,6 @@
 
 require "sequel/model"
 require "time"
-require "valpo/identifier"
 
 module Valpo
   class Project < Sequel::Model(:projects)

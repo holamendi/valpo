@@ -1,9 +1,5 @@
 # frozen_string_literal: true
 
-require "valpo/models/project"
-require "valpo/models/service"
-require "valpo/identifier"
-
 module Valpo
   module References
     module_function

@@ -2,8 +2,6 @@
 
 require "sequel/model"
 require "time"
-require "valpo/identifier"
-require "valpo/models/service"
 
 module Valpo
   class Domain < Sequel::Model(:domains)

@@ -2,9 +2,6 @@
 
 require "json"
 require "time"
-require "valpo"
-require "valpo/deployments/command_output"
-require "valpo/services/catalog"
 
 module Valpo
   module Services

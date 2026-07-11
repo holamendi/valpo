@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require "valpo/deployments/orchestrator"
 
 class ValpoDeploymentsOrchestratorTest < Minitest::Test
   include ValpoTestDatabase

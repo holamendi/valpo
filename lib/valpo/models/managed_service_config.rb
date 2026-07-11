@@ -2,7 +2,6 @@
 
 require "json"
 require "sequel/model"
-require "valpo/models/service"
 
 module Valpo
   class ManagedServiceConfig < Sequel::Model(:managed_service_configs)

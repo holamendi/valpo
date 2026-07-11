@@ -2,14 +2,6 @@
 
 require "json"
 require "time"
-require "valpo/deployments/orchestrator"
-require "valpo/models/build_target"
-require "valpo/models/project"
-require "valpo/models/release"
-require "valpo/models/service"
-require "valpo/models/source"
-require "valpo/services/catalog"
-require "valpo/services/orchestrator"
 
 module Valpo
   module Manifests

@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require "valpo"
-
 module Valpo
   module Deployments
     module CommandOutput

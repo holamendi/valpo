@@ -2,12 +2,6 @@
 
 require "json"
 require "securerandom"
-require "valpo"
-require "valpo/deployments/command_output"
-require "valpo/models/app_service_config"
-require "valpo/models/release"
-require "valpo/models/service"
-require "valpo/services/environment"
 
 module Valpo
   module Deployments

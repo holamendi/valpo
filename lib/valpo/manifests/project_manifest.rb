@@ -3,10 +3,6 @@
 require "digest"
 require "json"
 require "toml-rb"
-require "valpo"
-require "valpo/models/project"
-require "valpo/models/source"
-require "valpo/services/catalog"
 
 module Valpo
   module Manifests

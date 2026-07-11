@@ -2,7 +2,6 @@
 
 require "fileutils"
 require "open3"
-require "valpo/caddy/renderer"
 
 module Valpo
   module Caddy

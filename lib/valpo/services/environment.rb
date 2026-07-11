@@ -1,9 +1,5 @@
 # frozen_string_literal: true
 
-require "valpo/models/service"
-require "valpo/models/service_dependency"
-require "valpo/services/catalog"
-
 module Valpo
   module Services
     module Environment

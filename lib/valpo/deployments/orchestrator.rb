@@ -1,15 +1,5 @@
 # frozen_string_literal: true
 
-require "valpo"
-require "valpo/caddy/client"
-require "valpo/deployments/health_checker"
-require "valpo/deployments/route_projector"
-require "valpo/deployments/runtime"
-require "valpo/docker/client"
-require "valpo/models/project"
-require "valpo/models/release"
-require "valpo/models/service"
-
 module Valpo
   module Deployments
     class Orchestrator
@@ -251,7 +241,6 @@ module Valpo
       def service_orchestrator_for
         return service_orchestrator if service_orchestrator
 
-        require "valpo/services/orchestrator"
         Valpo::Services::Orchestrator.new(config: config, docker: docker, sleeper: sleeper)
       end
 

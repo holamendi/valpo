@@ -27,12 +27,6 @@ VALPO_TEST_CONFIG = Valpo::Config.new(
 
 Valpo::Boot.run(config: VALPO_TEST_CONFIG, migrate: true)
 
-require "valpo/jobs/worker"
-require "valpo/docker/client"
-require "valpo/caddy/renderer"
-require "valpo/caddy/client"
-require "valpo/services/catalog"
-
 Dir[File.expand_path("support/**/*.rb", __dir__)].sort.each { |path| require path }
 
 Minitest.after_run do

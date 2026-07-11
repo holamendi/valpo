@@ -1,16 +1,6 @@
 # frozen_string_literal: true
 
 require "json"
-require "valpo"
-require "valpo/deployments/orchestrator"
-require "valpo/docker/client"
-require "valpo/models/managed_service_config"
-require "valpo/models/release"
-require "valpo/models/service"
-require "valpo/models/service_dependency"
-require "valpo/services/catalog"
-require "valpo/services/environment"
-require "valpo/services/runtime"
 
 module Valpo
   module Services
