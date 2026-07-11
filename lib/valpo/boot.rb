@@ -8,8 +8,14 @@ module Valpo
       Valpo::Database.connect(config)
       Valpo::Migrator.run if migrate
       require "valpo/models/project"
+      require "valpo/models/source"
+      require "valpo/models/build_target"
       require "valpo/models/release"
       require "valpo/models/domain"
+      require "valpo/models/service"
+      require "valpo/models/app_service_config"
+      require "valpo/models/managed_service_config"
+      require "valpo/models/service_dependency"
       require "valpo/models/job"
       require "valpo/models/job_event"
       Valpo::Database.connection

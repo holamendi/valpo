@@ -50,17 +50,21 @@ Follow these rules unless a later decision explicitly changes them:
 
 ## First Implementation Goal
 
-Phase 1 is complete. The next implementation goal is first-class static-site hosting:
+Phase 1 is complete. Phase 2A added Postgres and Redis; Phase 2B established the multi-service project model:
 
 ```text
-create static project
-upload a zipped dist directory
-validate and extract zip releases safely
-route static files through Caddy
-support static release rollback
+create managed service records and lifecycle jobs
+provision private Postgres and Redis containers
+create persistent volumes for stateful services
+generate credentials and connection URLs
+model projects as groups of app and managed services
+bind managed dependencies explicitly to individual app services
+inject generated environment values only into dependent app services
+repair service containers after host reboot
+apply strict, add/update-only valpo.toml manifests
 ```
 
-Do not start with GitHub/GitLab OAuth, buildpacks, managed databases, or the multi-server dashboard. Those depend on the core deploy lifecycle and static-site release model.
+Do not start with GitLab, buildpacks, Procfiles, static-site hosting, backups, restore/import/export, public database exposure, or the multi-server dashboard until the GitHub App and Dockerfile path is stable.
 
 Do preserve modular boundaries for source adapters, build adapters, service definitions, backup targets, notification sinks, and lifecycle events. Those are future extension points, not v1 product scope.
 
@@ -96,12 +100,18 @@ valpo/
 
 This structure is only a starting suggestion. Prefer coherence over rigid adherence.
 
-## Initial Data Model
+## Current Data Model
 
-Minimum tables for the first slice:
+Implemented tables:
 
 ```text
 projects
+sources
+build_targets
+services
+app_service_configs
+managed_service_configs
+service_dependencies
 releases
 domains
 jobs
@@ -111,19 +121,15 @@ job_events
 Likely next tables:
 
 ```text
-services
 environment_variables
-resources
-resource_bindings
-resource_credentials
 backups
 server_settings
 api_tokens
 ```
 
-## First API Surface
+## Current API Surface
 
-Approximate v1 endpoints:
+Implemented endpoints:
 
 ```text
 GET    /health
@@ -132,10 +138,13 @@ GET    /projects
 POST   /projects
 GET    /projects/:id
 DELETE /projects/:id
+GET    /projects/:id/env
 
 POST   /projects/:id/deployments
 GET    /projects/:id/releases
-POST   /projects/:id/releases/:release_id/activate
+POST   /projects/:id/rollback
+POST   /projects/:id/stop
+POST   /projects/:id/restart
 
 GET    /projects/:id/domains
 POST   /projects/:id/domains
@@ -143,10 +152,21 @@ DELETE /projects/:id/domains/:domain_id
 
 GET    /projects/:id/logs
 
+GET    /services
+GET    /projects/:id/services
+POST   /projects/:id/services
+POST   /projects/apply
+GET    /services/:id
+GET    /services/:id/logs
+POST   /services/:id/restart
+POST   /services/:id/dependencies
+DELETE /services/:id
+
+POST   /system/repair
+
 GET    /jobs
 GET    /jobs/:id
 GET    /jobs/:id/events
-POST   /jobs/:id/cancel
 ```
 
 Deployment request example:
@@ -164,25 +184,20 @@ Deployment request example:
 
 ```text
 deploy_registry_image
-activate_release
 rollback_release
 apply_caddy_config
+stop_service
+restart_service
 delete_project
+repair_system
+provision_service
+bind_service
+unbind_service
+delete_service
+apply_project_manifest
 ```
 
-Later job types:
-
-```text
-build_from_git
-deploy_static_zip
-provision_managed_service
-bind_managed_service
-rotate_service_credentials
-backup_resource
-restore_resource
-export_project
-import_project
-```
+Later job types include `build_from_git`, `deploy_static_zip`, `rotate_service_credentials`, `backup_resource`, `restore_resource`, `export_project`, and `import_project`.
 
 ## Deployment Implementation Notes
 
@@ -205,7 +220,7 @@ Suggested Docker labels:
 ```text
 valpo.project_id
 valpo.release_id
-valpo.service
+valpo.service_id
 valpo.managed=true
 ```
 
@@ -221,14 +236,14 @@ Avoid making raw Caddy config the primary source of truth.
 
 Valpo should support arbitrary containers, but curated services should be the default experience for databases and common infrastructure.
 
-Start with a built-in service catalog in Ruby code:
+Start with a built-in service catalog in Ruby code. Phase 2A includes:
 
 ```text
 postgres
-mariadb
 redis
-volume
 ```
+
+MariaDB, volumes as first-class resources, backups, restores, exports, imports, credential rotation, and public service exposure are follow-up phases.
 
 Each service should expose friendly settings such as name, version, plan, backup preference, and binding target. The provisioner should translate those settings into Docker containers, volumes, credentials, health checks, and generated app configuration.
 
@@ -278,8 +293,9 @@ When starting implementation, read these documents first:
 5. `valpo-architecture-decisions.md`
 6. `valpo-roadmap.md`
 
-Then continue with Phase 2 only:
+Phase 2B is now implemented:
 
-- Add static-site hosting before moving to Git providers, managed services, or dashboard work.
+- Private Postgres and Redis services exist.
+- Typed IDs, multi-service projects, explicit dependencies, lifecycle jobs, generated credentials, scoped env injection, TOML reconciliation, and reboot repair are in place.
 
-Do not move to GitHub/GitLab, managed services, or dashboard work until static projects, zip upload, safe extraction, Caddy static routing, and static rollback are in place.
+Next work is Phase 3A: expose only the narrow authenticated GitHub setup/callback/webhook surface, create a per-server GitHub App through the manifest flow, fetch private repositories, build Dockerfiles, and deploy the resulting digest without disturbing an active release on build failure.

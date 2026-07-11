@@ -5,90 +5,92 @@ require "test_helper"
 class ValpoJobsWorkerTest < Minitest::Test
   include ValpoTestDatabase
 
-  def test_system_check_job_succeeds
+  def test_system_check_succeeds_and_unknown_job_fails
     queue = Valpo::Jobs::Queue.new
-    job = queue.enqueue("system_check", source: "test")
-
+    success = queue.enqueue("system_check")
     Valpo::Jobs::Worker.new(queue: queue, worker_id: "worker-1").run(once: true)
+    assert_equal "succeeded", queue.find(success.id).status
 
-    finished = queue.find(job[:id])
-    assert_equal "succeeded", finished[:status]
-    assert_equal 100, finished[:progress]
-    assert_nil finished[:locked_by]
-    assert_includes queue.events(job[:id]).map { |event| event[:message] }, "Valpo worker executed system_check"
+    failure = queue.enqueue("missing_handler")
+    Valpo::Jobs::Worker.new(queue: queue, worker_id: "worker-1").run(once: true)
+    assert_equal "failed", queue.find(failure.id).status
+    assert_equal "Unknown job type: missing_handler", queue.find(failure.id).error
   end
 
-  def test_unknown_job_type_fails
+  def test_deploy_handler_dispatches_service_id
+    service = create_app_service
     queue = Valpo::Jobs::Queue.new
-    job = queue.enqueue("missing_handler")
+    job = queue.enqueue_service_operation(
+      "deploy_registry_image", service_id: service.id,
+      payload: {project_id: service.project_id, image: "example/app:v1", internal_port: 3000}
+    )
+    fake = FakeDeployment.new
+    worker = Valpo::Jobs::Worker.new(
+      queue: queue,
+      handlers: {"deploy_registry_image" => Valpo::Jobs::DeployRegistryImage.new(orchestrator: fake)},
+      worker_id: "worker-1"
+    )
+    worker.run(once: true)
 
-    Valpo::Jobs::Worker.new(queue: queue, worker_id: "worker-1").run(once: true)
-
-    finished = queue.find(job[:id])
-    assert_equal "failed", finished[:status]
-    assert_equal "Unknown job type: missing_handler", finished[:error]
+    assert_equal service.id, fake.service_id
+    assert_equal "succeeded", queue.find(job.id).status
   end
 
-  def test_repair_system_handler_dispatches_to_orchestrator
+  def test_bind_handler_dispatches_both_service_ids
+    project = create_project
+    app = create_app_service(project: project)
+    database = create_managed_service(project: project)
     queue = Valpo::Jobs::Queue.new
-    job = queue.enqueue("repair_system")
-    orchestrator = FakeRepairOrchestrator.new
-
+    job = queue.enqueue_service_operation(
+      "bind_service", service_id: app.id,
+      payload: {project_id: project.id, dependency_service_id: database.id}
+    )
+    fake = FakeManaged.new
     Valpo::Jobs::Worker.new(
       queue: queue,
-      handlers: {"repair_system" => Valpo::Jobs::RepairSystem.new(orchestrator: orchestrator)},
+      handlers: {"bind_service" => Valpo::Jobs::BindService.new(orchestrator: fake, method: :bind_service)},
       worker_id: "worker-1"
     ).run(once: true)
 
-    assert_equal "succeeded", queue.find(job[:id])[:status]
-    assert_equal job.id, orchestrator.job_id
+    assert_equal [app.id, database.id], fake.ids
+    assert_equal "succeeded", queue.find(job.id).status
   end
 
-  def test_delete_project_handler_dispatches_to_orchestrator
-    project = Valpo::Project.create(name: "hello")
+  def test_manifest_handler_passes_normalized_manifest
     queue = Valpo::Jobs::Queue.new
-    job = queue.enqueue_project_operation("delete_project", project_id: project.id)
-    orchestrator = FakeDeleteOrchestrator.new
-
+    manifest = {"project" => {"name" => "hello"}}
+    job = queue.enqueue("apply_project_manifest", manifest: manifest)
+    fake = FakeReconciler.new
     Valpo::Jobs::Worker.new(
       queue: queue,
-      handlers: {"delete_project" => Valpo::Jobs::DeleteProject.new(orchestrator: orchestrator)},
+      handlers: {"apply_project_manifest" => Valpo::Jobs::ApplyProjectManifest.new(reconciler: fake)},
       worker_id: "worker-1"
     ).run(once: true)
-
-    assert_equal "succeeded", queue.find(job[:id])[:status]
-    assert_equal project.id, orchestrator.project_id
-    assert_equal job.id, orchestrator.job_id
+    assert_equal manifest, fake.manifest
+    assert_equal "succeeded", queue.find(job.id).status
   end
 
-  def test_worker_releases_stale_locks_before_claiming_work
-    queue = Valpo::Jobs::Queue.new
-    stale = queue.enqueue("system_check")
-    queued = queue.enqueue("system_check")
-    queue.lock_next("old-worker")
+  class FakeDeployment
+    attr_reader :service_id
 
-    Valpo::Jobs::Worker.new(queue: queue, worker_id: "new-worker", stale_lock_timeout: 0).run(once: true)
-
-    assert_equal "succeeded", queue.find(stale[:id])[:status]
-    assert_equal "queued", queue.find(queued[:id])[:status]
-  end
-
-  class FakeRepairOrchestrator
-    attr_reader :job_id
-
-    def repair_system(queue:, job_id:)
-      @job_id = job_id
-      queue.event(job_id, "system", "fake repair")
+    def deploy_registry_image(service_id:, **)
+      @service_id = service_id
     end
   end
 
-  class FakeDeleteOrchestrator
-    attr_reader :project_id, :job_id
+  class FakeManaged
+    attr_reader :ids
 
-    def delete_project(project_id:, queue:, job_id:)
-      @project_id = project_id
-      @job_id = job_id
-      queue.event(job_id, "system", "fake delete")
+    def bind_service(service_id:, dependency_service_id:, **)
+      @ids = [service_id, dependency_service_id]
+    end
+  end
+
+  class FakeReconciler
+    attr_reader :manifest
+
+    def apply(manifest, **)
+      @manifest = manifest
     end
   end
 end

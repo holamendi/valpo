@@ -17,7 +17,7 @@ module Valpo
         command("image", "inspect", image)
       end
 
-      def run_command(name:, image:, network:, labels: {}, env: {}, ports: {}, detach: true, restart_policy: nil, command_args: [])
+      def run_command(name:, image:, network:, labels: {}, env: {}, ports: {}, volumes: {}, detach: true, restart_policy: nil, command_args: [])
         args = ["run"]
         args << "--detach" if detach
         args += ["--name", name, "--network", network]
@@ -25,6 +25,7 @@ module Valpo
         labels.sort.each { |key, value| args += ["--label", "#{key}=#{value}"] }
         env.sort.each { |key, value| args += ["--env", "#{key}=#{value}"] }
         ports.sort.each { |host, container| args += ["--publish", "#{host}:#{container}"] }
+        volumes.sort.each { |source, target| args += ["--volume", "#{source}:#{target}"] }
         args << image
         args.concat(command_args)
         command(*args)
@@ -61,6 +62,10 @@ module Valpo
         command(*args)
       end
 
+      def exec_command(name, *command_args)
+        command("exec", name, *command_args)
+      end
+
       def network_create_command(name)
         command("network", "create", name)
       end
@@ -71,6 +76,13 @@ module Valpo
 
       def volume_create_command(name)
         command("volume", "create", name)
+      end
+
+      def volume_rm_command(name, force: false)
+        args = ["volume", "rm"]
+        args << "--force" if force
+        args << name
+        command(*args)
       end
 
       def execute(command)

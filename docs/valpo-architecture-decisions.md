@@ -161,7 +161,7 @@ This fits the no server-to-server communication principle and produces clear fai
 
 Implications:
 
-- Build a project manifest format.
+- Reuse the versioned `valpo.toml` project manifest and extend export with runtime artifacts.
 - Include database dumps, volume snapshots, static releases, and image references.
 - Support import preflight validation.
 - Add direct transfer only as an explicit later optimization.

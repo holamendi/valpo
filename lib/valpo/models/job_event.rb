@@ -1,13 +1,13 @@
 # frozen_string_literal: true
 
-require "securerandom"
 require "sequel/model"
 require "time"
+require "valpo/identifier"
 
 module Valpo
   class JobEvent < Sequel::Model(:job_events)
     def before_create
-      self.id ||= SecureRandom.uuid
+      self.id ||= Valpo::Identifier.generate(:job_event)
       self.created_at ||= Time.now.utc
       super
     end

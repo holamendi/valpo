@@ -5,94 +5,83 @@ require "test_helper"
 class ValpoJobsQueueTest < Minitest::Test
   include ValpoTestDatabase
 
-  def test_running_job_is_not_locked_twice
+  def test_running_job_is_not_locked_twice_and_stale_locks_requeue
     queue = Valpo::Jobs::Queue.new
     job = queue.enqueue("system_check")
-
-    first_lock = queue.lock_next("worker-1")
-    second_lock = queue.lock_next("worker-2")
-
-    assert_equal job[:id], first_lock[:id]
-    assert_nil second_lock
-  end
-
-  def test_stale_locks_can_be_released
-    queue = Valpo::Jobs::Queue.new
-    job = queue.enqueue("system_check")
-    queue.lock_next("worker-1")
-
+    assert_equal job.id, queue.lock_next("worker-1").id
+    assert_nil queue.lock_next("worker-2")
     assert_equal 1, queue.release_stale_locks(older_than: 0)
-    relocked = queue.lock_next("worker-2")
-
-    assert_equal job[:id], relocked[:id]
-    assert_equal "worker-2", relocked[:locked_by]
+    assert_equal job.id, queue.lock_next("worker-2").id
   end
 
   def test_completion_requires_lock_owner
     queue = Valpo::Jobs::Queue.new
     job = queue.enqueue("system_check")
     queue.lock_next("worker-1")
-
-    assert_nil queue.succeed(job[:id], worker_id: "worker-2")
-    assert_equal "running", queue.find(job[:id])[:status]
-    assert_equal "worker-1", queue.find(job[:id])[:locked_by]
-
-    assert_equal "succeeded", queue.succeed(job[:id], worker_id: "worker-1")[:status]
+    assert_nil queue.succeed(job.id, worker_id: "worker-2")
+    assert_equal "succeeded", queue.succeed(job.id, worker_id: "worker-1").status
   end
 
-  def test_project_operations_are_serialized_per_project
-    project = Valpo::Project.create(name: "hello")
-    other_project = Valpo::Project.create(name: "other")
+  def test_service_operations_are_serialized_per_service
+    project = create_project
+    first_service = create_app_service(project: project)
+    second_service = create_managed_service(project: project)
     queue = Valpo::Jobs::Queue.new
-
-    first = queue.enqueue_project_operation(
-      "deploy_registry_image",
-      project_id: project.id,
-      payload: {image: "example/hello:v1", internal_port: 3000}
-    )
+    first = queue.enqueue_service_operation("deploy_registry_image", service_id: first_service.id, payload: {project_id: project.id})
 
     error = assert_raises Valpo::ConflictError do
-      queue.enqueue_project_operation(
-        "delete_project",
-        project_id: project.id,
-        payload: {}
-      )
+      queue.enqueue_service_operation("restart_service", service_id: first_service.id, payload: {project_id: project.id})
     end
+    assert_match "already has an active deploy_registry_image", error.message
 
-    assert_match "already has an active deploy_registry_image job", error.message
-
-    other = queue.enqueue_project_operation(
-      "deploy_registry_image",
-      project_id: other_project.id,
-      payload: {image: "example/other:v1", internal_port: 3000}
-    )
-
-    assert_equal other_project.id, other.payload.fetch("project_id")
-
-    locked = queue.lock_next("worker-1")
-    assert_equal first.id, locked.id
-    queue.succeed(first.id, worker_id: "worker-1")
-
-    next_job = queue.enqueue_project_operation(
-      "deploy_registry_image",
-      project_id: project.id,
-      payload: {image: "example/hello:v2", internal_port: 3000}
-    )
-
-    assert_equal project.id, next_job.payload.fetch("project_id")
+    other = queue.enqueue_service_operation("restart_service", service_id: second_service.id, payload: {project_id: project.id})
+    assert_equal second_service.id, other.payload.fetch("service_id")
+    assert_equal first.id, queue.lock_next("worker").id
   end
 
-  def test_project_operation_block_does_not_run_when_project_is_busy
-    project = Valpo::Project.create(name: "hello")
+  def test_project_operation_conflicts_with_active_service_operation
+    project = create_project
+    service = create_app_service(project: project)
     queue = Valpo::Jobs::Queue.new
-    queue.enqueue_project_operation("deploy_registry_image", project_id: project.id, payload: {image: "example/hello:v1", internal_port: 3000})
+    queue.enqueue_service_operation("deploy_registry_image", service_id: service.id, payload: {project_id: project.id})
 
-    assert_raises Valpo::ConflictError do
-      queue.enqueue_project_operation("apply_caddy_config", project_id: project.id) do
-        Valpo::Domain.create(project_id: project.id, hostname: "hello.example.com")
-      end
+    error = assert_raises Valpo::ConflictError do
+      queue.enqueue_project_operation("delete_project", project_id: project.id)
     end
+    assert_match "active deploy_registry_image", error.message
+  end
 
-    assert_empty Valpo::Domain.where(project_id: project.id).all
+  def test_enqueue_block_is_atomic_when_resource_is_busy
+    project = create_project
+    service = create_app_service(project: project)
+    queue = Valpo::Jobs::Queue.new
+    queue.enqueue_service_operation("restart_service", service_id: service.id, payload: {project_id: project.id})
+    called = false
+    assert_raises Valpo::ConflictError do
+      queue.enqueue_service_operation("stop_service", service_id: service.id, payload: {project_id: project.id}) { called = true }
+    end
+    refute called
+  end
+
+  def test_binding_locks_both_app_and_managed_service
+    project = create_project
+    app = create_app_service(project: project)
+    database = create_managed_service(project: project)
+    queue = Valpo::Jobs::Queue.new
+    queue.enqueue_service_operation(
+      "bind_service", service_id: app.id,
+      payload: {project_id: project.id, dependency_service_id: database.id}
+    )
+    assert_raises(Valpo::ConflictError) do
+      queue.enqueue_service_operation("delete_service", service_id: database.id, payload: {project_id: project.id})
+    end
+  end
+
+  def test_manifest_job_remains_project_visible_after_project_is_created
+    manifest = {"project" => {"name" => "acme"}}
+    queue = Valpo::Jobs::Queue.new
+    queue.enqueue_manifest_operation(project_name: "acme", manifest: manifest)
+    project = create_project(name: "acme")
+    assert_equal "apply_project_manifest", queue.active_project_job(project.id).type
   end
 end

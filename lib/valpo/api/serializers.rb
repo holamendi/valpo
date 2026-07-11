@@ -9,31 +9,55 @@ module Valpo
       module_function
 
       def project(record)
-        fields(record, :id, :name, :type, :status, :created_at, :updated_at)
+        require "valpo/models/service"
+        require "valpo/models/source"
+        fields(record, :id, :name, :manifest_digest, :last_applied_at, :created_at, :updated_at).merge(
+          service_count: Valpo::Service.where(project_id: record.id).count,
+          source_count: Valpo::Source.where(project_id: record.id).count
+        )
+      end
+
+      def source(record)
+        fields(record, :id, :project_id, :name, :provider, :repository, :ref, :auto_deploy, :status, :created_at, :updated_at)
+      end
+
+      def build_target(record)
+        fields(record, :id, :project_id, :source_id, :name, :dockerfile, :context, :created_at, :updated_at)
+      end
+
+      def service(record)
+        require "valpo/models/app_service_config"
+        require "valpo/models/managed_service_config"
+        require "valpo/models/service_dependency"
+        output = fields(record, :id, :project_id, :name, :kind, :status, :created_at, :updated_at)
+        output[:reference] = "#{record.project.name}/#{record.name}"
+        if record.app?
+          config = Valpo::AppServiceConfig[record.id]
+          output[:app] = fields(config, :build_target_id, :internal_port, :healthcheck_path).merge(command: config.command)
+        else
+          config = Valpo::ManagedServiceConfig[record.id]
+          output[:managed] = fields(
+            config, :version, :image, :plan, :container_name, :volume_name, :internal_host, :internal_port
+          )
+        end
+        output[:dependencies] = Valpo::ServiceDependency.where(service_id: record.id).order(:created_at).all.map { |dependency| service_dependency(dependency) }
+        output
+      end
+
+      def service_dependency(record)
+        fields(record, :id, :service_id, :dependency_service_id, :status, :created_at, :updated_at)
       end
 
       def release(record)
         fields(
-          record,
-          :id,
-          :project_id,
-          :version,
-          :source_type,
-          :source_ref,
-          :artifact_ref,
-          :image_digest,
-          :status,
-          :internal_port,
-          :healthcheck_path,
-          :container_name,
-          :route_target,
-          :activated_at,
-          :created_at
+          record, :id, :service_id, :build_target_id, :version, :source_type, :source_ref, :artifact_ref,
+          :image_digest, :status, :internal_port, :healthcheck_path, :container_name, :route_target,
+          :activated_at, :created_at
         )
       end
 
       def domain(record)
-        fields(record, :id, :project_id, :hostname, :route_target, :tls_status, :created_at, :updated_at)
+        fields(record, :id, :service_id, :hostname, :route_target, :tls_status, :created_at, :updated_at)
       end
 
       def job(record)
@@ -46,9 +70,7 @@ module Valpo
       end
 
       def fields(record, *keys)
-        keys.each_with_object({}) do |key, output|
-          output[key] = value(record[key])
-        end
+        keys.each_with_object({}) { |key, output| output[key] = value(record[key]) }
       end
 
       def value(input)

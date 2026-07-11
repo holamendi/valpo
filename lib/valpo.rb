@@ -12,6 +12,7 @@ end
 
 require "valpo/version"
 require "valpo/errors"
+require "valpo/identifier"
 require "valpo/config"
 require "valpo/database"
 require "valpo/migrator"

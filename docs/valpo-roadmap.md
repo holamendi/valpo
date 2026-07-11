@@ -2,7 +2,7 @@
 
 ## Roadmap Philosophy
 
-Build from the smallest useful self-contained VPS platform outward. Avoid starting with GitHub/GitLab, managed database features, static-site expansion, or the multi-server dashboard until the single-server deploy lifecycle is solid and repeatably operable.
+Build from the smallest useful self-contained VPS platform outward. Avoid starting with GitHub/GitLab, static-site expansion, or the multi-server dashboard until the single-server deploy lifecycle and managed-service foundation are solid and repeatably operable.
 
 The first milestone should prove that Valpo can reliably take an artifact, run it, route traffic to it, show logs, roll it back, survive routine host operations, and clean up after itself. The next product-defining milestone is managed services that feel like Heroku add-ons rather than raw container setup.
 
@@ -62,11 +62,12 @@ Example target flow:
 
 ```bash
 valpo projects:create hello
-valpo deploy hello --image ghcr.io/example/hello:latest --port 3000
-valpo domains:add hello hello.example.com
-valpo logs hello
-valpo releases hello
-valpo rollback hello
+valpo services:create hello/web --type web --port 3000
+valpo deploy hello/web --image ghcr.io/example/hello:latest
+valpo domains:add hello/web hello.example.com
+valpo logs hello/web
+valpo releases hello/web
+valpo rollback hello/web
 ```
 
 Exit criteria:
@@ -98,11 +99,85 @@ Exit criteria:
 - The Valpo API is not publicly reachable unless explicit authentication has been configured.
 - The smoke test can be rerun on the same host without manual cleanup.
 
-## Phase 2: Static Sites
+## Phase 2: Managed Services And Unified Project Foundation
 
-Goal: support static-site hosting as a first-class path.
+Goal: make Postgres and Redis feel like Heroku-style add-ons instead of raw container setup.
+
+Status: implemented. Phase 2A introduced private Postgres and Redis services. Phase 2B changed projects into grouping boundaries containing multiple app and managed services.
 
 Start this phase only after Phase 1B is complete.
+
+Deliverables:
+
+- Built-in service catalog for curated service definitions.
+- Service records and lifecycle jobs.
+- Private Docker runtime for service containers.
+- Persistent Docker volumes for stateful services.
+- Postgres managed service.
+- Redis managed service.
+- Supported version catalog: Postgres `16`, `17`, `18`; Redis `7`, `8`.
+- Friendly plans and defaults.
+- Generate service credentials and connection URLs.
+- Shared service identity with typed UUIDv7 IDs.
+- App-service kinds `web` and `worker`, plus managed `postgres` and `redis` kinds.
+- Project-scoped service names addressed as `PROJECT/SERVICE` by the CLI.
+- Explicit app-to-managed-service dependencies.
+- Inject managed environment values only into dependent app services.
+- Restart or redeploy affected apps after binding.
+- Strict `valpo.toml` project manifest with dry-run and add/update-only reconciliation.
+- GitHub source and Docker build-target metadata, initially stored as unconnected configuration.
+- Health checks and readiness polling for service containers.
+- Refuse project deletion while any services remain.
+
+Exit criteria:
+
+- A project can contain multiple app services and managed dependencies.
+- A user can add Postgres without manually setting `DATABASE_URL`.
+- An app service can depend on Redis without manually assembling a Redis URL.
+- Managed service containers survive host reboot and are repaired by the same operability path as apps.
+- Services are private by default and do not expose public ports.
+- Services can be deleted with explicit confirmation, removing their containers and volumes before project cleanup.
+
+## Phase 3A: GitHub App And Dockerfile Deployments
+
+Goal: connect repositories and build/deploy on demand or webhook push.
+
+Deliverables:
+
+- GitHub repository connection.
+- Per-server GitHub App manifest setup and installation selection.
+- Branch selection.
+- Manual deploy from branch or commit SHA.
+- Webhook endpoint.
+- Dockerfile build job.
+- Build logs.
+- Image tagging by project and commit.
+- Release created from built image digest.
+
+Initial constraint:
+
+- Support Dockerfile builds only.
+- Defer buildpacks until the Dockerfile path is reliable.
+
+Exit criteria:
+
+- A user can connect a private GitHub repo and deploy a branch.
+- Push webhooks can enqueue deployment jobs.
+- Failed builds leave the active release untouched.
+
+## Phase 3B: Additional Source Providers
+
+Goal: add GitLab and other source adapters after the GitHub build path is stable.
+
+Deliverables:
+
+- GitLab repository connection and webhooks.
+- Provider-neutral source credentials and events.
+- Equivalent build/release behavior across supported providers.
+
+## Phase 4: Static Sites
+
+Goal: support static-site hosting as a first-class path.
 
 Deliverables:
 
@@ -121,68 +196,13 @@ Exit criteria:
 - Rollback between static releases works.
 - Static hosting does not require a container.
 
-## Phase 3: GitHub And GitLab Deployments
-
-Goal: connect repositories and build/deploy on demand or webhook push.
-
-Deliverables:
-
-- GitHub repository connection.
-- GitLab repository connection.
-- Branch selection.
-- Manual deploy from branch or commit SHA.
-- Webhook endpoint.
-- Dockerfile build job.
-- Build logs.
-- Image tagging by project and commit.
-- Release created from built image digest.
-
-Initial constraint:
-
-- Support Dockerfile builds only.
-- Defer buildpacks until the Dockerfile path is reliable.
-
-Exit criteria:
-
-- A user can connect a GitHub or GitLab repo and deploy a branch.
-- Push webhooks can enqueue deployment jobs.
-- Failed builds leave the active release untouched.
-
-## Phase 4: Resources And Backups
-
-Goal: manage common single-server resources through high-level, Heroku-style service flows.
-
-Deliverables:
-
-- Built-in service catalog.
-- Friendly plans and defaults.
-- Postgres managed service.
-- MariaDB managed service.
-- Redis managed service.
-- Named volume resource.
-- Attach resource to project.
-- Bind resource to project.
-- Generate and inject managed connection settings.
-- Rotate service credentials.
-- Manual backups.
-- Scheduled backups.
-- Restore from backup.
-- Backup retention policy.
-
-Exit criteria:
-
-- A project can be deployed with a managed Postgres container.
-- A user can add Postgres without manually setting `DATABASE_URL`.
-- Backups and restores are visible as jobs with logs.
-- Backup artifacts are stored predictably.
-
 ## Phase 5: Project Export And Import
 
 Goal: make migration between servers understandable and robust.
 
 Deliverables:
 
-- Project manifest format.
+- Export the existing project manifest with runtime state references.
 - Export project bundle.
 - Import project bundle.
 - Export database dumps.

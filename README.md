@@ -6,7 +6,9 @@ The current intent is to make one appropriately sized server feel like a tastefu
 
 ## Current Status
 
-Phase 0 implementation has started. The repository now contains the first Ruby scaffold for the local server API, worker, CLI, SQLite migrations, and Docker/Caddy wrapper boundaries.
+Phase 2B is implemented. A Valpo project can contain multiple app and managed services, apply a strict `valpo.toml` manifest, deploy registry images, route web services through Caddy, and provision private Postgres and Redis dependencies.
+
+This pre-release schema is a clean break from the earlier project-as-app model. Existing development installations must back up and reset their SQLite database before upgrading; Valpo detects the retired schema and refuses to discard it automatically.
 
 ## Development
 
@@ -50,6 +52,8 @@ Terminal 2:
 
 ```bash
 mise exec -- bundle exec exe/valpo projects:create hello
+mise exec -- bundle exec exe/valpo services:create hello/web --type web --port 3000
+mise exec -- bundle exec exe/valpo deploy hello/web --image nginx:alpine
 mise exec -- bundle exec exe/valpo jobs:enqueue-system-check
 mise exec -- bundle exec exe/valpo-worker --once
 mise exec -- bundle exec exe/valpo jobs:list
@@ -60,6 +64,7 @@ mise exec -- bundle exec exe/valpo jobs:list
 - [Product brief](docs/valpo-product-brief.md)
 - [Technical architecture](docs/valpo-technical-architecture.md)
 - [Managed services](docs/valpo-managed-services.md)
+- [Project manifest](docs/valpo-project-manifest.md)
 - [Extensibility and positioning](docs/valpo-extensibility-and-positioning.md)
 - [Roadmap](docs/valpo-roadmap.md)
 - [Architecture decisions](docs/valpo-architecture-decisions.md)

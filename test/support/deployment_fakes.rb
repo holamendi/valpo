@@ -21,14 +21,17 @@ module ValpoTestSupport
       [:inspect, image]
     end
 
-    def run_command(name:, image:, network:, labels:, ports:, restart_policy: nil, **)
+    def run_command(name:, image:, network:, labels:, ports:, env: {}, volumes: {}, restart_policy: nil, command_args: [], **)
       run_requests << {
         name: name,
         image: image,
         network: network,
         labels: labels,
+        env: env,
         ports: ports,
-        restart_policy: restart_policy
+        volumes: volumes,
+        restart_policy: restart_policy,
+        command_args: command_args
       }
       [:run, name]
     end
@@ -61,6 +64,18 @@ module ValpoTestSupport
       [:logs, name, tail]
     end
 
+    def exec_command(name, *command_args)
+      [:exec, name, *command_args]
+    end
+
+    def volume_create_command(name)
+      [:volume_create, name]
+    end
+
+    def volume_rm_command(name, force:)
+      [:volume_rm, name, force]
+    end
+
     def executed?(*command)
       commands.include?(command)
     end
@@ -79,6 +94,8 @@ module ValpoTestSupport
         success(JSON.generate([{"State" => {"Running" => container_state == true}}]))
       when :logs
         success("app log\n")
+      when :exec
+        success("ready\n")
       else
         success("ok\n")
       end

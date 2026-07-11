@@ -82,13 +82,13 @@ CLI examples:
 ```bash
 valpo servers:add production root@example.com
 valpo projects:create hello
-valpo deploy hello --image ghcr.io/example/hello:latest
-valpo domains:add hello hello.example.com
-valpo services:create hello-db --type postgres --project hello
-valpo services:bind hello hello-db
-valpo env:set hello RAILS_ENV=production
-valpo logs hello
-valpo rollback hello
+valpo services:create hello/web --type web --port 3000
+valpo services:create hello/database --type postgres
+valpo services:bind hello/web hello/database
+valpo deploy hello/web --image ghcr.io/example/hello:latest
+valpo domains:add hello/web hello.example.com
+valpo logs hello/web
+valpo rollback hello/web
 ```
 
 Dashboard examples:

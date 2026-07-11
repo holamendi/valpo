@@ -47,7 +47,12 @@ module Valpo
       end
 
       def parse_integer(value, key)
-        Integer(value)
+        integer = Integer(value)
+        if value.is_a?(Numeric) && value != integer
+          raise Valpo::ValidationError, "#{key} must be an integer"
+        end
+
+        integer
       rescue ArgumentError, TypeError
         raise Valpo::ValidationError, "#{key} must be an integer"
       end
@@ -65,10 +70,6 @@ module Valpo
         raise Valpo::ValidationError, "healthcheck_path must start with /" unless path.start_with?("/")
 
         path
-      end
-
-      def validate_container_project!(project)
-        raise Valpo::ValidationError, "Only container projects can use this endpoint" unless project.type == "container"
       end
     end
   end

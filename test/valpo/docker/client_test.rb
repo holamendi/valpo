@@ -13,6 +13,8 @@ class ValpoDockerClientTest < Minitest::Test
     assert_equal ["docker", "update", "--restart", "unless-stopped", "valpo-hello"], client.update_restart_policy_command("valpo-hello", "unless-stopped")
     assert_equal ["docker", "network", "create", "valpo"], client.network_create_command("valpo")
     assert_equal ["docker", "volume", "create", "valpo-data"], client.volume_create_command("valpo-data")
+    assert_equal ["docker", "volume", "rm", "--force", "valpo-data"], client.volume_rm_command("valpo-data", force: true)
+    assert_equal ["docker", "exec", "valpo-db", "pg_isready"], client.exec_command("valpo-db", "pg_isready")
   end
 
   def test_run_command_includes_sorted_options
@@ -25,6 +27,7 @@ class ValpoDockerClientTest < Minitest::Test
       labels: {"valpo.release_id" => "r1", "valpo.project_id" => "p1"},
       env: {"RACK_ENV" => "production"},
       ports: {8080 => 3000},
+      volumes: {"valpo-data" => "/data"},
       restart_policy: "unless-stopped"
     )
 
@@ -33,6 +36,7 @@ class ValpoDockerClientTest < Minitest::Test
       "--restart", "unless-stopped",
       "--label", "valpo.project_id=p1", "--label", "valpo.release_id=r1",
       "--env", "RACK_ENV=production", "--publish", "8080:3000",
+      "--volume", "valpo-data:/data",
       "ghcr.io/example/hello:latest"
     ], command
   end

@@ -1,10 +1,13 @@
 # frozen_string_literal: true
 
 require "json"
+require "securerandom"
 require "valpo"
 require "valpo/deployments/command_output"
-require "valpo/models/project"
+require "valpo/models/app_service_config"
 require "valpo/models/release"
+require "valpo/models/service"
+require "valpo/services/environment"
 
 module Valpo
   module Deployments
@@ -12,7 +15,7 @@ module Valpo
       MANAGED_LABEL = "valpo.managed"
       PROJECT_LABEL = "valpo.project_id"
       RELEASE_LABEL = "valpo.release_id"
-      SERVICE_LABEL = "valpo.service"
+      SERVICE_LABEL = "valpo.service_id"
 
       include CommandOutput
 
@@ -40,24 +43,28 @@ module Valpo
 
       def start_release_container(release)
         ensure_network
-        host_port = allocate_port
-        route_target = "127.0.0.1:#{host_port}"
+        host_port = allocate_port if release.internal_port
+        route_target = "127.0.0.1:#{host_port}" if host_port
         container_name = container_name_for(release)
         image = release.artifact_ref || release.source_ref
+        service = Valpo::Service[release.service_id]
+        app_config = Valpo::AppServiceConfig[release.service_id]
 
-        event("system", "Starting #{container_name} on #{route_target}")
+        event("system", ["Starting #{container_name}", ("on #{route_target}" if route_target)].compact.join(" "))
         result = docker.execute(docker.run_command(
           name: container_name,
           image: image,
           network: config.docker_network,
           labels: {
             MANAGED_LABEL => "true",
-            PROJECT_LABEL => release.project_id,
+            PROJECT_LABEL => service.project_id,
             RELEASE_LABEL => release.id,
-            SERVICE_LABEL => "web"
+            SERVICE_LABEL => service.id
           },
-          ports: {"127.0.0.1:#{host_port}" => release.internal_port},
-          restart_policy: "unless-stopped"
+          env: Valpo::Services::Environment.raw_for_service(service.id),
+          ports: host_port ? {"127.0.0.1:#{host_port}" => release.internal_port} : {},
+          restart_policy: "unless-stopped",
+          command_args: app_config&.command || []
         ))
         emit_command_output(result)
         raise_command_error("Docker run failed", result) unless result.fetch(:success)
@@ -155,8 +162,9 @@ module Valpo
       end
 
       def container_name_for(release)
-        project = Valpo::Project[release.project_id]
-        "valpo-#{project.name}-web-r#{release.version}-#{release.id[0, 8]}"
+        service = Valpo::Service[release.service_id]
+        project = service.project
+        "valpo-#{project.name}-#{service.name}-r#{release.version}-#{release.id.split("_").last[0, 8]}-#{SecureRandom.hex(4)}"
       end
     end
   end

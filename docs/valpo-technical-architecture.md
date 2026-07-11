@@ -65,11 +65,13 @@ Use existing host tools for what they already do well:
 
 Valpo should support arbitrary containers, but curated managed services should be the primary experience for common infrastructure.
 
+Phase 2A starts with private Postgres and Redis services.
+
 Examples:
 
 - Postgres
-- MariaDB
 - Redis
+- MariaDB later
 - named persistent volumes
 - object-storage credentials later
 
@@ -78,8 +80,10 @@ A user should be able to create a database with friendly settings instead of man
 Example:
 
 ```bash
-valpo services:create main-db --type postgres --project myapp --plan small
-valpo services:bind myapp main-db
+valpo services:create myapp/web --type web --port 3000
+valpo services:create myapp/database --type postgres --version 18 --wait
+valpo services:bind myapp/web myapp/database --wait
+valpo env myapp/web
 ```
 
 Valpo should provision the container, create credentials, create the volume, attach it to the right Docker network, generate connection configuration, inject the binding into the app, and include the service in backup/export/import workflows.
@@ -125,30 +129,64 @@ All adapters should produce a release. This keeps deploy logic consistent across
 
 ## Project Model
 
-Initial domain objects:
+Current domain objects:
 
 ```text
 Project
   id
   name
-  type: container or static
-  status
+  manifest_digest
+  last_applied_at
   created_at
   updated_at
+
+Source
+  id
+  project_id
+  name
+  provider
+  repository
+  ref
+  auto_deploy
+  status
+
+BuildTarget
+  id
+  project_id
+  source_id
+  name
+  dockerfile
+  context
 
 Service
   id
   project_id
-  name: web, worker, etc.
-  image
+  name
+  kind: web, worker, postgres, or redis
+  status
+
+AppServiceConfig
+  service_id
+  build_target_id
   command
   internal_port
   healthcheck
-  scale
+
+ManagedServiceConfig
+  service_id
+  version
+  image
+  plan
+  container_name
+  volume_name
+  internal_host
+  internal_port
+  credentials_json
 
 Release
   id
-  project_id
+  service_id
+  build_target_id
   version
   source_type
   source_ref
@@ -160,45 +198,19 @@ Release
 
 Domain
   id
-  project_id
+  service_id
   hostname
   route_target
   tls_status
 
-EnvironmentVariable
+ServiceDependency
   id
-  project_id
-  key
-  encrypted_value
-  scope
-  managed_by
-
-Resource
-  id
-  project_id
-  type: postgres, mariadb, redis, volume, custom_container
-  name
-  version
-  plan
-  status
-  config_json
-  created_at
-  updated_at
-
-ResourceBinding
-  id
-  project_id
-  resource_id
+  service_id
+  dependency_service_id
   status
   env_json
   created_at
-
-ResourceCredential
-  id
-  resource_id
-  name
-  encrypted_value_json
-  created_at
+  updated_at
 
 Job
   id
@@ -221,7 +233,9 @@ JobEvent
   created_at
 ```
 
-For the first version, support one `web` service per project. Workers, scheduled jobs, and multiple process types can come later.
+Projects are grouping boundaries, not runtime containers. Every runtime unit has one `svc_` identity. Shared operations such as status, logs, restart, and deletion operate on that identity; deployment and domains are app capabilities, while versions, credentials, and volumes are managed-service capabilities.
+
+The CLI uses `PROJECT/SERVICE` references for people and accepts immutable `svc_` IDs for scripts. API identity routes use service IDs.
 
 ## Background Jobs
 
@@ -423,7 +437,7 @@ A project export can include:
 - project manifest
 - services and image references
 - managed resource manifests
-- resource bindings
+- service dependencies
 - release metadata
 - domains
 - encrypted env vars

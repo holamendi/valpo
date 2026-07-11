@@ -17,8 +17,8 @@ class ValpoDatabaseTest < Minitest::Test
   def test_foreign_keys_are_enforced
     assert_raises(Sequel::ForeignKeyConstraintViolation) do
       db[:releases].insert(
-        id: "release-1",
-        project_id: "missing-project",
+        id: "rel_01900000000070008000000000000000",
+        service_id: "svc_01900000000070008000000000000000",
         version: 1,
         source_type: "registry",
         status: "pending",

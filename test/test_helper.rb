@@ -31,6 +31,7 @@ require "valpo/jobs/worker"
 require "valpo/docker/client"
 require "valpo/caddy/renderer"
 require "valpo/caddy/client"
+require "valpo/services/catalog"
 
 Dir[File.expand_path("support/**/*.rb", __dir__)].sort.each { |path| require path }
 
@@ -40,7 +41,10 @@ Minitest.after_run do
 end
 
 module ValpoTestDatabase
-  TABLE_DELETE_ORDER = %i[job_events jobs domains releases projects].freeze
+  TABLE_DELETE_ORDER = %i[
+    job_events jobs service_dependencies domains releases app_service_configs managed_service_configs
+    services build_targets sources projects
+  ].freeze
 
   def setup
     super
@@ -49,6 +53,42 @@ module ValpoTestDatabase
 
   def db
     Valpo::Database.connection
+  end
+
+  def create_project(name: "hello")
+    Valpo::Project.create(name: name)
+  end
+
+  def create_app_service(project: nil, name: "web", kind: "web", status: "created", port: 3000, command: [])
+    project ||= create_project
+    service = Valpo::Services::Catalog.create_service(
+      project_id: project.id,
+      name: name,
+      type: kind,
+      internal_port: (port if kind == "web"),
+      command: command
+    )
+    service.update(status: status)
+    service
+  end
+
+  def create_managed_service(project: nil, name: "database", kind: "postgres", version: nil, status: "running", runtime: true)
+    project ||= create_project
+    service = Valpo::Services::Catalog.create_service(project_id: project.id, name: name, type: kind, version: version)
+    Valpo::Services::Catalog.managed_config(service).update(Valpo::Services::Catalog.runtime_attributes(service)) if runtime
+    service.update(status: status)
+    service
+  end
+
+  def create_release(service:, image: "example/app:v1", status: "pending", **attributes)
+    Valpo::Release.create({
+      service_id: service.id,
+      source_type: "registry",
+      source_ref: image,
+      artifact_ref: image,
+      status: status,
+      internal_port: Valpo::AppServiceConfig[service.id]&.internal_port
+    }.merge(attributes))
   end
 
   private

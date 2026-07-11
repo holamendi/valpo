@@ -37,6 +37,7 @@ Gem::Specification.new do |spec|
   spec.add_dependency "sequel", ">= 5.90", "< 6"
   spec.add_dependency "sqlite3", ">= 2.0", "< 3"
   spec.add_dependency "thor", ">= 1.3", "< 2"
+  spec.add_dependency "toml-rb", ">= 4.2", "< 5"
 
   spec.add_development_dependency "minitest", ">= 5.25", "< 6"
   spec.add_development_dependency "rack-test", ">= 2.1", "< 3"
