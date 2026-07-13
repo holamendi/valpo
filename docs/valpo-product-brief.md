@@ -80,15 +80,14 @@ Valpo should not initially attempt to provide:
 CLI examples:
 
 ```bash
-valpo servers:add production root@example.com
-valpo projects:create hello
-valpo services:create hello/web --type web --port 3000
-valpo services:create hello/database --type postgres
-valpo services:bind hello/web hello/database
-valpo deploy hello/web --image ghcr.io/example/hello:latest
-valpo domains:add hello/web hello.example.com
-valpo logs hello/web
-valpo rollback hello/web
+valpo project create hello
+valpo service create hello/web --type web --port 3000
+valpo service create hello/database --type postgres
+valpo service bind hello/web hello/database
+valpo service deploy hello/web --image ghcr.io/example/hello:latest
+valpo domain add hello/web hello.example.com
+valpo service logs hello/web
+valpo release rollback hello/web
 ```
 
 Dashboard examples:

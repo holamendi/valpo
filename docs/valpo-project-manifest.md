@@ -45,8 +45,8 @@ version = "8"
 Preview and apply it with:
 
 ```bash
-valpo projects:apply valpo.toml --dry-run
-valpo projects:apply valpo.toml --wait
+valpo project apply valpo.toml --dry-run
+valpo project apply valpo.toml
 ```
 
 Applying is idempotent and creates or updates declared records. Omitted records and dependencies are retained; deletion always requires an explicit CLI operation. Service kind and managed-service version are immutable in this version.

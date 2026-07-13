@@ -6,8 +6,8 @@ require "time"
 module Valpo
   class Service < Sequel::Model(:services)
     NAME_PATTERN = Valpo::Project::NAME_PATTERN
-    APP_KINDS = %w[web worker].freeze
-    MANAGED_KINDS = %w[postgres redis].freeze
+    APP_KINDS = Valpo::Services::Definitions::APP_TYPES
+    MANAGED_KINDS = Valpo::Services::Definitions::MANAGED_TYPES
     KINDS = (APP_KINDS + MANAGED_KINDS).freeze
     STATUSES = %w[created provisioning running stopped restarting deleting failed].freeze
 

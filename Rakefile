@@ -25,6 +25,13 @@ namespace :hooks do
   end
 end
 
+namespace :cli do
+  desc "Generate the canonical CLI guide"
+  task :docs do
+    Valpo::CLI::Docs.write
+  end
+end
+
 desc "Run Standard Ruby"
 task :standard do
   sh STANDARD_ENV, "bundle exec standardrb"

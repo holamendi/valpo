@@ -6,7 +6,7 @@ The current intent is to make one appropriately sized server feel like a tastefu
 
 ## Current Status
 
-Phase 2B is implemented. A Valpo project can contain multiple app and managed services, apply a strict `valpo.toml` manifest, deploy registry images, route web services through Caddy, and provision private Postgres and Redis dependencies.
+Phase 2B is implemented. A Valpo project can contain multiple app and managed services, apply a strict `valpo.toml` manifest, deploy registry images, route web services through Caddy, and provision private Postgres and Redis dependencies. The installed CLI uses resource-first commands, synchronous operations by default, human-readable output, and explicit `--json` output for automation.
 
 This pre-release schema is a clean break from the earlier project-as-app model. Existing development installations must back up and reset their SQLite database before upgrading; Valpo detects the retired schema and refuses to discard it automatically.
 
@@ -42,6 +42,12 @@ mise exec -- bundle exec rake standard
 mise exec -- bundle exec rake standard:fix
 ```
 
+Refresh the generated CLI guide after changing commands or service definitions:
+
+```bash
+mise exec -- bundle exec rake cli:docs
+```
+
 Terminal 1:
 
 ```bash
@@ -51,12 +57,17 @@ mise exec -- bundle exec exe/valpo-api --migrate
 Terminal 2:
 
 ```bash
-mise exec -- bundle exec exe/valpo projects:create hello
-mise exec -- bundle exec exe/valpo services:create hello/web --type web --port 3000
-mise exec -- bundle exec exe/valpo deploy hello/web --image nginx:alpine
-mise exec -- bundle exec exe/valpo jobs:enqueue-system-check
-mise exec -- bundle exec exe/valpo-worker --once
-mise exec -- bundle exec exe/valpo jobs:list
+mise exec -- bundle exec exe/valpo-worker
+```
+
+Terminal 3:
+
+```bash
+mise exec -- bundle exec exe/valpo project create hello
+mise exec -- bundle exec exe/valpo service create hello/web --type web --port 3000
+mise exec -- bundle exec exe/valpo service deploy hello/web --image nginx:alpine
+mise exec -- bundle exec exe/valpo service list hello
+mise exec -- bundle exec exe/valpo system status
 ```
 
 ## Documents
@@ -65,6 +76,7 @@ mise exec -- bundle exec exe/valpo jobs:list
 - [Technical architecture](docs/valpo-technical-architecture.md)
 - [Managed services](docs/valpo-managed-services.md)
 - [Project manifest](docs/valpo-project-manifest.md)
+- [CLI guide](docs/valpo-cli.md)
 - [Extensibility and positioning](docs/valpo-extensibility-and-positioning.md)
 - [Roadmap](docs/valpo-roadmap.md)
 - [Architecture decisions](docs/valpo-architecture-decisions.md)

@@ -28,6 +28,13 @@ module Valpo
         value
       end
 
+      def validate_keys!(payload, allowed, context)
+        unknown = payload.keys - allowed
+        return if unknown.empty?
+
+        raise Valpo::ValidationError, "Unknown #{context} keys: #{unknown.sort.join(", ")}"
+      end
+
       def required_integer(payload, key, fallback_key: nil)
         value = payload[key]
         value = payload[fallback_key] if value.nil? && fallback_key

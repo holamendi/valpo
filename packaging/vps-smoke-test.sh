@@ -176,18 +176,18 @@ cleanup() {
   echo "[smoke] cleaning up ${project}"
   wait_for_services || true
 
-  if remote "valpo services:show '${postgres_service}' >/dev/null 2>&1"; then
-    remote "valpo services:delete '${postgres_service}' --force --wait --wait-timeout 180 --wait-interval 2" || true
+  if remote "valpo service show '${postgres_service}' >/dev/null 2>&1"; then
+    remote "valpo service delete '${postgres_service}' --force --timeout 180" || true
   fi
-  if remote "valpo services:show '${redis_service}' >/dev/null 2>&1"; then
-    remote "valpo services:delete '${redis_service}' --force --wait --wait-timeout 180 --wait-interval 2" || true
+  if remote "valpo service show '${redis_service}' >/dev/null 2>&1"; then
+    remote "valpo service delete '${redis_service}' --force --timeout 180" || true
   fi
-  if remote "valpo services:show '${web_service}' >/dev/null 2>&1"; then
-    remote "valpo services:delete '${web_service}' --force --wait --wait-timeout 180 --wait-interval 2" || true
+  if remote "valpo service show '${web_service}' >/dev/null 2>&1"; then
+    remote "valpo service delete '${web_service}' --force --timeout 180" || true
   fi
 
-  if remote "valpo projects:show '${project}' >/dev/null 2>&1"; then
-    remote "valpo projects:delete '${project}' --wait --wait-timeout 180 --wait-interval 2" || true
+  if remote "valpo project show '${project}' >/dev/null 2>&1"; then
+    remote "valpo project delete '${project}' --timeout 180" || true
   fi
 
   if [[ -n "$project_id" ]]; then
@@ -248,7 +248,7 @@ remote "systemctl is-active docker caddy valpo-api valpo-worker"
 remote "curl -fsS http://127.0.0.1:7092/health"
 
 echo "[smoke] applying project manifest"
-remote "umask 077; printf '%s\n' \
+remote "rm -f /tmp/valpo-smoke.toml; umask 077; printf '%s\n' \
   'schema = 1' \
   '[project]' \
   'name = \"${project}\"' \
@@ -263,9 +263,9 @@ remote "umask 077; printf '%s\n' \
   '[services.cache]' \
   'type = \"redis\"' \
   'version = \"8\"' > /tmp/valpo-smoke.toml; chown valpo:valpo /tmp/valpo-smoke.toml; chmod 0600 /tmp/valpo-smoke.toml"
-remote "valpo projects:apply /tmp/valpo-smoke.toml --dry-run"
-remote "valpo projects:apply /tmp/valpo-smoke.toml --wait --wait-timeout 600 --wait-interval 2"
-project_json="$(remote "valpo projects:show '${project}'")"
+remote "valpo project apply /tmp/valpo-smoke.toml --dry-run"
+remote "valpo project apply /tmp/valpo-smoke.toml --timeout 600"
+project_json="$(remote "valpo project show '${project}' --json")"
 printf '%s\n' "$project_json"
 project_id="$(printf '%s\n' "$project_json" | id_from_json)"
 if [[ -z "$project_id" ]]; then
@@ -274,11 +274,11 @@ if [[ -z "$project_id" ]]; then
 fi
 
 echo "[smoke] deploying nginx"
-remote "valpo deploy '${web_service}' --image nginx:alpine --wait --wait-timeout 300 --wait-interval 2"
+remote "valpo service deploy '${web_service}' --image nginx:alpine --timeout 300"
 
-web_json="$(remote "valpo services:show '${web_service}'")"
-postgres_json="$(remote "valpo services:show '${postgres_service}'")"
-redis_json="$(remote "valpo services:show '${redis_service}'")"
+web_json="$(remote "valpo service show '${web_service}' --json")"
+postgres_json="$(remote "valpo service show '${postgres_service}' --json")"
+redis_json="$(remote "valpo service show '${redis_service}' --json")"
 web_service_id="$(printf '%s\n' "$web_json" | id_from_json)"
 postgres_service_id="$(printf '%s\n' "$postgres_json" | id_from_json)"
 redis_service_id="$(printf '%s\n' "$redis_json" | id_from_json)"
@@ -288,25 +288,25 @@ if [[ -z "$web_service_id" || -z "$postgres_service_id" || -z "$redis_service_id
 fi
 
 echo "[smoke] verifying managed services"
-remote "valpo services:list '${project}'"
-remote "valpo services:show '${postgres_service}'"
-remote "valpo services:show '${redis_service}'"
-remote "valpo services:logs '${postgres_service}' --tail 50"
-remote "valpo services:logs '${redis_service}' --tail 50"
-remote "valpo env '${web_service}'"
-remote "valpo env '${web_service}' --reveal | grep -E 'DATABASE_URL|REDIS_URL'"
+remote "valpo service list '${project}'"
+remote "valpo service show '${postgres_service}'"
+remote "valpo service show '${redis_service}'"
+remote "valpo service logs '${postgres_service}' --tail 50"
+remote "valpo service logs '${redis_service}' --tail 50"
+remote "valpo service env '${web_service}'"
+remote "valpo service env '${web_service}' --reveal | grep -E 'DATABASE_URL|REDIS_URL'"
 remote "container=\$(docker ps --filter 'label=valpo.service_id=${web_service_id}' --format '{{.Names}}' | head -n 1); test -n \"\$container\"; docker inspect \"\$container\" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E 'DATABASE_URL=|REDIS_URL=' >/dev/null"
 
 echo "[smoke] adding domain"
-remote "valpo domains:add '${web_service}' '${domain}' --wait --wait-timeout 180 --wait-interval 2"
+remote "valpo domain add '${web_service}' '${domain}' --timeout 180"
 
 echo "[smoke] verifying HTTPS"
 wait_for_https "https://${domain}/"
 
 echo "[smoke] checking releases and logs"
-remote "valpo releases '${web_service}'"
-remote "valpo logs '${web_service}' --tail 50"
-remote "valpo projects:logs '${project}' --tail 50"
+remote "valpo release list '${web_service}'"
+remote "valpo service logs '${web_service}' --tail 50"
+remote "valpo project logs '${project}' --tail 50"
 
 if [[ "$reboot" -eq 1 ]]; then
   echo "[smoke] rebooting ${ssh_target}"
@@ -319,27 +319,27 @@ if [[ "$reboot" -eq 1 ]]; then
   remote "systemctl is-active docker caddy valpo-api valpo-worker"
   remote "curl -fsS http://127.0.0.1:7092/health"
   wait_for_https "https://${domain}/"
-  remote "valpo system:repair --wait --wait-timeout 180 --wait-interval 2"
-  remote "valpo services:list '${project}'"
+  remote "valpo system repair --timeout 180"
+  remote "valpo service list '${project}'"
   wait_for_https "https://${domain}/"
 fi
 
 echo "[smoke] verifying project delete is blocked while services remain"
-if remote "valpo projects:delete '${project}' --wait --wait-timeout 180 --wait-interval 2 >/tmp/valpo-bound-delete.out 2>&1"; then
+if remote "valpo project delete '${project}' --timeout 180 >/tmp/valpo-bound-delete.out 2>&1"; then
   echo "[smoke] project delete succeeded while services were bound" >&2
   exit 1
 fi
 
 echo "[smoke] deleting services"
-remote "valpo services:delete '${postgres_service}' --force --wait --wait-timeout 180 --wait-interval 2"
-remote "valpo services:delete '${redis_service}' --force --wait --wait-timeout 180 --wait-interval 2"
-remote "valpo services:delete '${web_service}' --force --wait --wait-timeout 180 --wait-interval 2"
+remote "valpo service delete '${postgres_service}' --force --timeout 180"
+remote "valpo service delete '${redis_service}' --force --timeout 180"
+remote "valpo service delete '${web_service}' --force --timeout 180"
 
 echo "[smoke] deleting project"
-remote "valpo projects:delete '${project}' --wait --wait-timeout 180 --wait-interval 2"
+remote "valpo project delete '${project}' --timeout 180"
 
 echo "[smoke] verifying cleanup"
-if remote "valpo projects:show '${project}' >/dev/null 2>&1"; then
+if remote "valpo project show '${project}' >/dev/null 2>&1"; then
   echo "[smoke] project still exists after delete" >&2
   exit 1
 fi

@@ -8,4 +8,4 @@ $LOAD_PATH.unshift(File.expand_path("../lib", __dir__))
 
 require "valpo"
 
-Valpo::CLI.start(ARGV)
+exit Valpo::CLI.call(ARGV)

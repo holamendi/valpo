@@ -40,7 +40,7 @@ If mise falls back to compiling Ruby from source, the installer fails.
 
 The installer binds `valpo-api` to `127.0.0.1` by default. If you change `api_host` to a non-local address, configure `api_token` in `/etc/valpo/valpo.yml` or set `VALPO_API_TOKEN`; Valpo refuses to boot a non-local API without a token.
 
-CLI calls use `--api-token`, `VALPO_API_TOKEN`, or the `api_token` in the loaded config file.
+CLI calls use `VALPO_API_TOKEN` first, then the `api_token` in the loaded config file. The CLI intentionally has no token command-line flag so credentials do not leak through process listings or shell history.
 
 ## Templates
 

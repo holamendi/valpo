@@ -27,8 +27,10 @@ Dashboard:
 CLI:
 
 - Ruby gem.
+- Uses explicitly registered `dry-cli` command objects with resource/action syntax.
 - Can talk directly to a server API.
 - Should support SSH tunnel or private endpoint workflows.
+- Waits for background jobs by default; machine consumers must request `--json`.
 
 ## Architecture Rules
 

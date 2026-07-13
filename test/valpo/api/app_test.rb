@@ -66,6 +66,36 @@ class ValpoAPIAppTest < Minitest::Test
 
     get "/services?project=hello"
     assert_equal %w[web database].sort, json.map { |entry| entry.fetch("name") }.sort
+
+    get "/projects/hello/services/database"
+    assert_equal database.fetch("id"), json.fetch("id")
+    get "/projects/#{project.id}/services/#{web.fetch("id")}"
+    assert_equal web.fetch("id"), json.fetch("id")
+  end
+
+  def test_service_options_are_type_specific
+    project = create_project
+
+    post_json "/projects/#{project.id}/services", name: "database", type: "postgres", command: []
+    assert_equal 422, last_response.status
+    assert_match "command", json.fetch("message")
+
+    post_json "/projects/#{project.id}/services", name: "web-version", type: "web", version: "18"
+    assert_equal 422, last_response.status
+    assert_match "version", json.fetch("message")
+
+    post_json "/projects/#{project.id}/services", name: "worker", type: "worker", port: 3000
+    assert_equal 422, last_response.status
+    assert_match "port", json.fetch("message")
+
+    worker = create_app_service(project: project, name: "jobs", kind: "worker")
+    post_json "/services/#{worker.id}/deployments", image: "example/worker:v1", healthcheck_path: "/health"
+    assert_equal 422, last_response.status
+    assert_match "healthcheck", json.fetch("message")
+
+    post_json "/projects/#{project.id}/services", name: "cache", type: "redis", image: "redis:latest"
+    assert_equal 422, last_response.status
+    assert_match "Unknown service keys: image", json.fetch("message")
   end
 
   def test_service_identity_endpoints_reject_unsupported_capabilities

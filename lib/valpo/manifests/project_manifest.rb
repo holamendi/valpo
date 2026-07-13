@@ -86,10 +86,11 @@ module Valpo
         services.sort.to_h do |name, config|
           validate_name!(name, "service name")
           validate_table!(config, "services.#{name}")
-          type = Valpo::Services::Catalog.normalize_type(required_string(config, "type"))
-          if Valpo::Services::Catalog.managed_type?(type)
+          type = Valpo::Services::Definitions.normalize_type(required_string(config, "type"))
+          Valpo::Services::Definitions.validate_options!(type: type, options: config)
+          if Valpo::Services::Definitions.managed_type?(type)
             validate_keys!(config, MANAGED_KEYS, "services.#{name}")
-            normalized = {"type" => type, "version" => Valpo::Services::Catalog.normalize_version(type, config["version"])}
+            normalized = {"type" => type, "version" => Valpo::Services::Definitions.normalize_version(type, config["version"])}
           else
             validate_keys!(config, APP_KEYS, "services.#{name}")
             command = config.fetch("command", [])
@@ -130,7 +131,7 @@ module Valpo
           service.fetch("depends_on", []).each do |dependency_name|
             dependency = services[dependency_name]
             raise Valpo::ValidationError, "services.#{name} depends on unknown service #{dependency_name}" unless dependency
-            unless Valpo::Services::Catalog.managed_type?(dependency.fetch("type"))
+            unless Valpo::Services::Definitions.managed_type?(dependency.fetch("type"))
               raise Valpo::ValidationError, "services.#{name} can only depend on managed services"
             end
           end

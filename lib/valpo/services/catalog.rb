@@ -6,20 +6,19 @@ require "securerandom"
 module Valpo
   module Services
     module Catalog
-      POSTGRES = {
-        versions: %w[16 17 18], default_version: "18", port: 5432, volume_path: "/var/lib/postgresql"
-      }.freeze
-      REDIS = {
-        versions: %w[7 8], default_version: "8", port: 6379, volume_path: "/data"
-      }.freeze
-      MANAGED_DEFINITIONS = {"postgres" => POSTGRES, "redis" => REDIS}.freeze
-      APP_KINDS = Valpo::Service::APP_KINDS
       SECRET_ENV_KEYS = %w[DATABASE_URL PGPASSWORD REDIS_URL REDIS_PASSWORD].freeze
 
       module_function
 
       def create_service(project_id:, name:, type:, version: nil, command: [], internal_port: nil, healthcheck_path: nil, build_target_id: nil)
         normalized_type = normalize_type(type)
+        validate_values!(
+          type: normalized_type,
+          version: version,
+          command: command,
+          internal_port: internal_port,
+          healthcheck_path: healthcheck_path
+        )
         normalized_command = normalize_command(command)
         Valpo::Database.connection.transaction do
           service = Valpo::Service.create(
@@ -139,7 +138,7 @@ module Valpo
       end
 
       def managed_type?(type)
-        MANAGED_DEFINITIONS.key?(type.to_s)
+        Definitions.managed_type?(type)
       end
 
       def normalize_command(command)
@@ -151,30 +150,34 @@ module Valpo
       end
 
       def app_type?(type)
-        APP_KINDS.include?(type.to_s)
+        Definitions.app_type?(type)
       end
 
       def normalize_type(type)
-        normalized = type.to_s.strip.downcase
-        raise Valpo::ValidationError, "type is required" if normalized.empty?
-        return normalized if app_type?(normalized) || managed_type?(normalized)
-
-        raise Valpo::ValidationError, "Unsupported service type: #{normalized}"
+        Definitions.normalize_type(type)
       end
 
       def normalize_version(type, version)
-        definition = definition_for(type)
-        normalized = blank_to_nil(version) || definition.fetch(:default_version)
-        return normalized if definition.fetch(:versions).include?(normalized)
-
-        raise Valpo::ValidationError, "Unsupported #{type} version: #{normalized}"
+        Definitions.normalize_version(type, version)
       end
 
       def definition_for(type)
-        MANAGED_DEFINITIONS.fetch(type.to_s) do
-          raise Valpo::ValidationError, "Unsupported managed service type: #{type}"
+        Definitions.definition_for(type)
+      end
+
+      def validate_values!(type:, version:, command:, internal_port:, healthcheck_path:)
+        if managed_type?(type)
+          raise Valpo::ValidationError, "command is not valid for #{type} services" unless command.nil? || command.empty?
+          raise Valpo::ValidationError, "port is not valid for #{type} services" unless internal_port.nil?
+          raise Valpo::ValidationError, "healthcheck_path is not valid for #{type} services" unless blank_to_nil(healthcheck_path).nil?
+        elsif version
+          raise Valpo::ValidationError, "version is only valid for postgres and redis services"
+        elsif type == "worker"
+          raise Valpo::ValidationError, "port is only valid for web services" unless internal_port.nil?
+          raise Valpo::ValidationError, "healthcheck_path is only valid for web services" unless blank_to_nil(healthcheck_path).nil?
         end
       end
+      private_class_method :validate_values!
 
       def image_for(type, version)
         "#{type}:#{version}-alpine"

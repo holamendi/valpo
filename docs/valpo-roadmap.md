@@ -61,13 +61,13 @@ Deliverables:
 Example target flow:
 
 ```bash
-valpo projects:create hello
-valpo services:create hello/web --type web --port 3000
-valpo deploy hello/web --image ghcr.io/example/hello:latest
-valpo domains:add hello/web hello.example.com
-valpo logs hello/web
-valpo releases hello/web
-valpo rollback hello/web
+valpo project create hello
+valpo service create hello/web --type web --port 3000
+valpo service deploy hello/web --image ghcr.io/example/hello:latest
+valpo domain add hello/web hello.example.com
+valpo service logs hello/web
+valpo release list hello/web
+valpo release rollback hello/web
 ```
 
 Exit criteria:
@@ -79,12 +79,12 @@ Exit criteria:
 
 ### Phase 1B: Single-Server Operability
 
-Status: complete. Project deletion cleanup, `jobs:wait`, wait-capable job commands, `system:repair` for Caddy regeneration plus active-container Docker reconciliation, reboot verification, private API defaults, token-gated non-local API binding, and repeatable VPS smoke testing are implemented.
+Status: complete. Project deletion cleanup, default synchronous CLI operations, advanced `job wait`, `system repair` for Caddy regeneration plus active-container Docker reconciliation, reboot verification, private API defaults, token-gated non-local API binding, and repeatable VPS smoke testing are implemented.
 
 Deliverables:
 
 - Delete project and clean up its active container, domains, releases, and generated routes.
-- Add `jobs:wait JOB_ID` and wait-capable deploy/domain commands with timeouts and useful exit codes.
+- Add `job wait JOB_ID` for troubleshooting and synchronous deploy/domain commands with timeouts and useful exit codes.
 - Verify active apps after host reboot.
 - Reconcile Valpo metadata with Docker and Caddy state on startup or through an explicit repair command.
 - Regenerate Caddy config from SQLite state and reload Caddy.

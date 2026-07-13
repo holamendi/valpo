@@ -75,6 +75,20 @@ class ValpoProjectManifestTest < Minitest::Test
     assert_match "source checkout", error.message
   end
 
+  def test_worker_rejects_web_only_options
+    error = assert_raises(Valpo::ValidationError) do
+      Valpo::Manifests::ProjectManifest.parse(<<~TOML)
+        schema = 1
+        [project]
+        name = "acme"
+        [services.jobs]
+        type = "worker"
+        port = 3000
+      TOML
+    end
+    assert_match "port", error.message
+  end
+
   private
 
   def full_manifest

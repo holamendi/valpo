@@ -9,10 +9,10 @@ The user should not need to know which Docker image, environment variables, volu
 The ideal interaction is:
 
 ```bash
-valpo services:create myapp/web --type web --port 3000
-valpo services:create myapp/database --type postgres --version 18 --wait
-valpo services:bind myapp/web myapp/database --wait
-valpo env myapp/web
+valpo service create myapp/web --type web --port 3000
+valpo service create myapp/database --type postgres --version 18
+valpo service bind myapp/web myapp/database
+valpo service env myapp/web
 ```
 
 Or in the dashboard:
@@ -191,20 +191,20 @@ The user should not need to manually create these values.
 
 Advanced users can still override or add environment variables manually. Generated values should be marked as managed so Valpo can update them when credentials rotate.
 
-Valpo stores generated service credentials in SQLite and redacts secret env values by default. Use `valpo env PROJECT/SERVICE --reveal` to inspect actual values on the host.
+Valpo stores generated service credentials in SQLite and redacts secret env values by default. Use `valpo service env PROJECT/SERVICE --reveal` to inspect actual values on the host.
 
 ## Phase 2B CLI Surface
 
 ```bash
-valpo services:create PROJECT/NAME --type postgres|redis [--version VERSION] [--wait]
-valpo services:list [PROJECT]
-valpo services:show SERVICE
-valpo services:logs SERVICE [--tail N]
-valpo services:restart SERVICE [--wait]
-valpo services:bind APP_SERVICE MANAGED_SERVICE [--wait]
-valpo services:unbind APP_SERVICE MANAGED_SERVICE [--wait]
-valpo services:delete SERVICE --force [--wait]
-valpo env APP_SERVICE [--reveal]
+valpo service create PROJECT/NAME --type postgres|redis [--version VERSION] [--no-wait]
+valpo service list [PROJECT]
+valpo service show SERVICE
+valpo service logs SERVICE [--tail N]
+valpo service restart SERVICE [--no-wait]
+valpo service bind APP_SERVICE MANAGED_SERVICE [--no-wait]
+valpo service unbind APP_SERVICE MANAGED_SERVICE [--no-wait]
+valpo service delete SERVICE --force [--no-wait]
+valpo service env APP_SERVICE [--reveal]
 ```
 
 Deleting a managed service removes its container, Docker volume, and explicit dependencies. Deleting a project is refused while any app or managed services remain.

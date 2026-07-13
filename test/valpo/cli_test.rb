@@ -1,95 +1,219 @@
 # frozen_string_literal: true
 
+require "json"
 require "open3"
 require "rbconfig"
+require "stringio"
 require "test_helper"
 
 class ValpoCLITest < Minitest::Test
-  def test_cli_exits_nonzero_and_loads_without_database
-    assert_equal true, Valpo::CLI.exit_on_failure?
-    stdout, stderr, status = Open3.capture3(RbConfig.ruby, "-Ilib", "-e", "require 'valpo'; Valpo::CLI; puts 'ok'")
-    assert status.success?, stderr
-    assert_equal "ok\n", stdout
+  def test_help_works_offline_at_every_level_and_hides_jobs_at_root
+    client = FakeAPIClient.new(Valpo::API::Client::Error.new("must not connect"))
+
+    [
+      [%w[--help], "project"],
+      [%w[help], "service"],
+      [%w[project --help], "create"],
+      [%w[help project], "logs"],
+      [%w[service create --help], "Postgres 16, 17, or 18"],
+      [%w[help service create], "Redis 7 or 8"]
+    ].each do |arguments, expected|
+      status, stdout, stderr = run_cli(client, arguments)
+      assert_equal 0, status
+      assert_includes stdout, expected
+      assert_empty stderr
+    end
+
+    _status, root_help, = run_cli(client, %w[--help])
+    refute_match(/^\s+job\s/, root_help)
+    assert_empty client.requests
   end
 
-  def test_project_service_reference_resolves_to_service_id
-    client = FakeAPIClient.new([
-      [{"id" => service_id, "name" => "web"}],
-      {"id" => service_id, "name" => "web"}
-    ])
-    run_cli(client, %w[services:show acme/web])
+  def test_unknown_command_and_invalid_option_exit_two_with_no_stdout
+    client = FakeAPIClient.new([])
+    status, stdout, stderr = run_cli(client, %w[servce list])
+    assert_equal 2, status
+    assert_empty stdout
+    assert_includes stderr, "Did you mean"
 
-    assert_equal "/projects/acme/services", client.requests.fetch(0).fetch(:path)
-    assert_equal "/services/#{service_id}", client.requests.fetch(1).fetch(:path)
+    status, stdout, stderr = run_cli(client, %w[service list --wat])
+    assert_equal 2, status
+    assert_empty stdout
+    assert_includes stderr, "called with arguments"
+    assert_includes stderr, "--help` for usage"
   end
 
-  def test_typed_service_id_skips_resolution
-    client = FakeAPIClient.new({"id" => service_id})
-    run_cli(client, ["services:show", service_id])
-    assert_equal ["/services/#{service_id}"], client.requests.map { |request| request.fetch(:path) }
+  def test_version_is_json_and_offline_even_with_invalid_api_url
+    status, stdout, stderr = run_cli(FakeAPIClient.new([]), %w[version --json --api-url not-a-url])
+    assert_equal 0, status
+    assert_equal({"version" => Valpo::VERSION}, JSON.parse(stdout))
+    assert_empty stderr
   end
 
-  def test_create_service_uses_project_collection
-    client = FakeAPIClient.new("service" => {"id" => service_id}, "job" => nil)
-    run_cli(client, %w[services:create acme/database --type postgres --version 17])
+  def test_create_service_documents_and_rejects_incompatible_options_locally
+    client = FakeAPIClient.new([])
+    status, _stdout, stderr = run_cli(client, %w[service create acme/database --type postgres --port 3000])
+    assert_equal 2, status
+    assert_includes stderr, "--port is not valid for postgres"
+
+    status, _stdout, stderr = run_cli(client, %w[service create acme/web --type web --version 18])
+    assert_equal 2, status
+    assert_includes stderr, "--version is not valid"
+    assert_empty client.requests
+  end
+
+  def test_create_service_uses_project_collection_and_no_wait_returns_queued_job
+    job = {"id" => job_id, "status" => "queued"}
+    client = FakeAPIClient.new("service" => {"id" => service_id}, "job" => job)
+    status, stdout, stderr = run_cli(client, %w[service create acme/database --type postgres --version 17 --no-wait --json])
+
+    assert_equal 0, status
+    assert_equal job_id, JSON.parse(stdout).fetch("job").fetch("id")
+    assert_empty stderr
     request = client.requests.first
     assert_equal :post, request.fetch(:method)
     assert_equal "/projects/acme/services", request.fetch(:path)
     assert_equal "database", request.fetch(:payload).fetch("name")
     assert_equal "17", request.fetch(:payload).fetch("version")
+    assert_equal 1, client.requests.length
   end
 
-  def test_bind_resolves_app_and_managed_service
+  def test_service_reference_uses_exact_lookup_and_is_cached
     database_id = "svc_01900000000070008000000000000001"
     client = FakeAPIClient.new([
-      [{"id" => service_id, "name" => "web"}, {"id" => database_id, "name" => "database"}],
-      [{"id" => service_id, "name" => "web"}, {"id" => database_id, "name" => "database"}],
-      {"id" => "job_01900000000070008000000000000000", "status" => "queued"}
+      {"id" => service_id, "name" => "web"},
+      {"id" => database_id, "name" => "database"},
+      {"id" => job_id, "status" => "queued"}
     ])
-    run_cli(client, %w[services:bind acme/web acme/database])
-    request = client.requests.last
-    assert_equal "/services/#{service_id}/dependencies", request.fetch(:path)
-    assert_equal database_id, request.fetch(:payload).fetch("dependency_service_id")
+    status, = run_cli(client, %w[service bind acme/web acme/database --no-wait --json])
+
+    assert_equal 0, status
+    assert_equal [
+      "/projects/acme/services/web",
+      "/projects/acme/services/database",
+      "/services/#{service_id}/dependencies"
+    ], client.requests.map { |request| request.fetch(:path) }
+
+    cache_client = FakeAPIClient.new("id" => service_id)
+    resolver = Valpo::CLI::ReferenceResolver.new(client: cache_client)
+    2.times { assert_equal service_id, resolver.service_id("acme/web") }
+    assert_equal 1, cache_client.requests.count { |request| request.fetch(:path) == "/projects/acme/services/web" }
   end
 
-  def test_projects_apply_sends_manifest_and_dry_run
-    path = File.join(VALPO_TEST_DIR, "valpo.toml")
-    File.write(path, "schema = 1\n[project]\nname = \"acme\"\n")
-    client = FakeAPIClient.new("actions" => [])
-    run_cli(client, ["projects:apply", path, "--dry-run"])
-    request = client.requests.first
-    assert_equal "/projects/apply", request.fetch(:path)
-    assert_equal true, request.fetch(:payload).fetch("dry_run")
-    assert_includes request.fetch(:payload).fetch("manifest"), "name = \"acme\""
+  def test_typed_service_id_skips_resolution
+    client = FakeAPIClient.new("id" => service_id, "reference" => "acme/web", "kind" => "web", "status" => "created", "app" => {}, "dependencies" => [])
+    status, = run_cli(client, ["service", "show", service_id, "--json"])
+    assert_equal 0, status
+    assert_equal ["/services/#{service_id}"], client.requests.map { |request| request.fetch(:path) }
   end
 
-  def test_wait_fails_when_job_fails
-    job_id = "job_01900000000070008000000000000000"
+  def test_operations_wait_by_default_stream_unseen_events_and_emit_one_json_document
+    queued = {"id" => job_id, "status" => "queued"}
+    event = {"id" => event_id, "stream" => "system", "message" => "Deploy started"}
+    finished_event = {"id" => "evt_01900000000070008000000000000001", "stream" => "stdout", "message" => "healthy"}
     client = FakeAPIClient.new([
-      {"id" => job_id, "status" => "queued"},
-      {"id" => job_id, "status" => "failed", "error" => "boom"}
+      {"id" => service_id},
+      queued,
+      [event],
+      queued,
+      [event, finished_event],
+      {"id" => job_id, "status" => "succeeded", "progress" => 100},
+      [event, finished_event]
     ])
-    cli = Valpo::CLI.new([], {}, {})
-    cli.instance_variable_set(:@api_client, client)
-    error = assert_raises(Thor::Error) { cli.send(:wait_for_job, job_id, timeout: 1, interval: 0.001) }
-    assert_match "boom", error.message
+    status, stdout, stderr = run_cli(client, %w[service deploy acme/web --image nginx:alpine --json])
+
+    assert_equal 0, status
+    assert_equal "succeeded", JSON.parse(stdout).fetch("status")
+    assert_equal 1, stderr.scan("Deploy started").length
+    assert_equal 1, stderr.scan("healthy").length
+    assert_equal 3, client.requests.count { |request| request.fetch(:path).end_with?("/events") }
+  end
+
+  def test_wait_timeout_exits_one
+    client = FakeAPIClient.new([
+      [],
+      {"id" => job_id, "status" => "running"}
+    ])
+    times = [0, 2]
+    status, stdout, stderr = run_cli(client, ["job", "wait", job_id, "--timeout", "1"], clock: -> { times.shift || 2 })
+
+    assert_equal 1, status
+    assert_empty stdout
+    assert_includes stderr, "Timed out"
+  end
+
+  def test_human_list_output_is_a_table
+    client = FakeAPIClient.new([[
+      {"name" => "acme", "service_count" => 2, "source_count" => 1, "updated_at" => "2026-07-13T12:00:00Z"}
+    ]])
+    status, stdout, stderr = run_cli(client, %w[project list])
+
+    assert_equal 0, status
+    assert_match(/^NAME\s+SERVICES\s+SOURCES\s+UPDATED/, stdout)
+    assert_includes stdout, "acme"
+    assert_empty stderr
+  end
+
+  def test_optional_project_filter_is_not_treated_as_an_extra_argument
+    client = FakeAPIClient.new([[]])
+    status, stdout, stderr = run_cli(client, %w[service list acme --json])
+
+    assert_equal 0, status
+    assert_equal [], JSON.parse(stdout)
+    assert_empty stderr
+    assert_equal({"project" => "acme"}, client.requests.first.fetch(:query))
+  end
+
+  def test_failed_job_and_api_failure_exit_one
+    client = FakeAPIClient.new([
+      [],
+      {"id" => job_id, "status" => "queued"},
+      [],
+      {"id" => job_id, "status" => "failed", "error" => "image pull failed"},
+      []
+    ])
+    status, stdout, stderr = run_cli(client, ["job", "wait", job_id, "--json"])
+    assert_equal 1, status
+    assert_empty stdout
+    assert_includes stderr, "image pull failed"
+
+    status, stdout, stderr = run_cli(FakeAPIClient.new(Valpo::API::Client::Error.new("connection refused")), %w[project list])
+    assert_equal 1, status
+    assert_empty stdout
+    assert_includes stderr, "connection refused"
   end
 
   def test_delete_requires_force_before_api_call
-    client = FakeAPIClient.new({"id" => "job"})
-    error = assert_raises SystemExit do
-      run_cli(client, %w[services:delete acme/web])
-    end
-    assert_equal 1, error.status
+    client = FakeAPIClient.new([])
+    status, stdout, stderr = run_cli(client, %w[service delete acme/web])
+    assert_equal 2, status
+    assert_empty stdout
+    assert_includes stderr, "--force is required"
     assert_empty client.requests
   end
 
-  def test_api_client_errors_become_thor_errors
-    client = FakeAPIClient.new(Valpo::API::Client::Error.new("connection refused"))
-    cli = Valpo::CLI.new
-    cli.instance_variable_set(:@api_client, client)
-    error = assert_raises(Thor::Error) { cli.send(:request, :get, "/projects") }
-    assert_equal "connection refused", error.message
+  def test_project_apply_sends_manifest_and_renders_dry_run
+    path = File.join(VALPO_TEST_DIR, "valpo.toml")
+    File.write(path, "schema = 1\n[project]\nname = \"acme\"\n")
+    client = FakeAPIClient.new("actions" => [])
+    status, stdout, stderr = run_cli(client, ["project", "apply", path, "--dry-run", "--json"])
+
+    assert_equal 0, status
+    assert_equal({"actions" => []}, JSON.parse(stdout))
+    assert_empty stderr
+    request = client.requests.first
+    assert_equal "/projects/apply", request.fetch(:path)
+    assert_equal true, request.fetch(:payload).fetch("dry_run")
+  end
+
+  def test_cli_module_loads_without_booting_database
+    stdout, stderr, status = Open3.capture3(
+      RbConfig.ruby, "-Ilib", "-e",
+      "require 'stringio'; require 'valpo'; puts Valpo::Services::Definitions::TYPES.keys.join(','); puts Valpo::CLI.call(['--help'], out: StringIO.new, err: StringIO.new)",
+      chdir: Valpo.root
+    )
+    assert status.success?, stderr
+    assert_equal "web,worker,postgres,redis\n0\n", stdout
   end
 
   private
@@ -98,8 +222,24 @@ class ValpoCLITest < Minitest::Test
     "svc_01900000000070008000000000000000"
   end
 
-  def run_cli(client, arguments)
-    Valpo::API::Client.stub(:new, client) { capture_io { Valpo::CLI.start(arguments) } }
+  def job_id
+    "job_01900000000070008000000000000000"
+  end
+
+  def event_id
+    "evt_01900000000070008000000000000000"
+  end
+
+  def run_cli(client, arguments, clock: -> { 0 })
+    stdout = StringIO.new
+    stderr = StringIO.new
+    factory = lambda do |api_url:, config:, json:, out:, err:|
+      presenter = Valpo::CLI::Presenter.new(out: out, err: err, json: json)
+      waiter = Valpo::CLI::JobWaiter.new(client: client, err: err, clock: clock, sleeper: ->(_duration) {})
+      Valpo::CLI::Context.new(client: client, presenter: presenter, waiter: waiter)
+    end
+    status = Valpo::CLI.call(arguments, out: stdout, err: stderr, context_factory: factory)
+    [status, stdout.string, stderr.string]
   end
 
   class FakeAPIClient
@@ -110,10 +250,11 @@ class ValpoCLITest < Minitest::Test
       @requests = []
     end
 
-    def request(method, path, payload = nil)
-      requests << {method: method, path: path, payload: payload}
+    def request(method, path, payload = nil, query: nil)
+      requests << {method: method, path: path, payload: payload, query: query}
       response = (@responses.length > 1) ? @responses.shift : @responses.first
       raise response if response.is_a?(StandardError)
+
       response
     end
   end

@@ -67,6 +67,9 @@ module Valpo
                 r.get { services_for_project(project).map { |service| Serializers.service(service) } }
                 r.post do
                   payload = parse_json_body
+                  validate_keys!(payload, %w[name type version command internal_port port healthcheck_path], "service")
+                  type = required_string(payload, "type")
+                  Valpo::Services::Definitions.validate_options!(type: type, options: payload)
                   service = nil
                   job = nil
                   Valpo::Database.connection.transaction do
@@ -76,7 +79,7 @@ module Valpo
                     service = Valpo::Services::Catalog.create_service(
                       project_id: project.id,
                       name: required_string(payload, "name"),
-                      type: required_string(payload, "type"),
+                      type: type,
                       version: payload["version"],
                       command: payload.fetch("command", []),
                       internal_port: optional_port(payload["internal_port"] || payload["port"]),
@@ -88,6 +91,16 @@ module Valpo
                   end
                   response.status = job ? 202 : 201
                   {service: Serializers.service(service.refresh), job: job && Serializers.job(job)}
+                end
+              end
+
+              r.on String do |service_reference|
+                r.get do
+                  service = Valpo::Service.where(project_id: project.id, id: service_reference).first ||
+                    Valpo::Service.where(project_id: project.id, name: service_reference).first
+                  next not_found("Service not found") unless service
+
+                  Serializers.service(service)
                 end
               end
             end
@@ -177,6 +190,8 @@ module Valpo
               r.post do
                 require_app!(service)
                 payload = parse_json_body
+                validate_keys!(payload, %w[image internal_port port healthcheck_path], "deployment")
+                Valpo::Services::Definitions.validate_options!(type: service.kind, options: payload)
                 port = optional_port(payload["internal_port"] || payload["port"])
                 response.status = 202
                 Serializers.job(jobs.enqueue_service_operation(

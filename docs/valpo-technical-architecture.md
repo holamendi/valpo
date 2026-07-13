@@ -45,7 +45,7 @@ filesystem       uploads, releases, backups, build cache, volume snapshots
 - SQLite for Valpo metadata.
 - Puma for serving the API.
 - A custom SQLite-backed job runner for v1.
-- Ruby CLI, likely using OptionParser or Thor.
+- Ruby CLI using explicitly registered `dry-cli` command objects.
 
 Avoid introducing Redis, Sidekiq, Postgres, or a message broker for Valpo's own internals until there is a concrete need.
 
@@ -80,10 +80,10 @@ A user should be able to create a database with friendly settings instead of man
 Example:
 
 ```bash
-valpo services:create myapp/web --type web --port 3000
-valpo services:create myapp/database --type postgres --version 18 --wait
-valpo services:bind myapp/web myapp/database --wait
-valpo env myapp/web
+valpo service create myapp/web --type web --port 3000
+valpo service create myapp/database --type postgres --version 18
+valpo service bind myapp/web myapp/database
+valpo service env myapp/web
 ```
 
 Valpo should provision the container, create credentials, create the volume, attach it to the right Docker network, generate connection configuration, inject the binding into the app, and include the service in backup/export/import workflows.

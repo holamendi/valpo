@@ -2,6 +2,7 @@ PATH
   remote: .
   specs:
     valpo (0.1.0)
+      dry-cli (>= 1.4, < 2)
       json (>= 2.7, < 3)
       puma (>= 6.5, < 8)
       rack (>= 3.1, < 4)
@@ -9,7 +10,6 @@ PATH
       roda (>= 3.80, < 4)
       sequel (>= 5.90, < 6)
       sqlite3 (>= 2.0, < 3)
-      thor (>= 1.3, < 2)
       toml-rb (>= 4.2, < 5)
       zeitwerk (>= 2.7, < 3)
 
@@ -19,6 +19,7 @@ GEM
     ast (2.4.3)
     bigdecimal (4.1.2)
     citrus (3.0.2)
+    dry-cli (1.4.1)
     json (2.20.0)
     language_server-protocol (3.17.0.6)
     lint_roller (1.1.0)
@@ -85,7 +86,6 @@ GEM
     standard-performance (1.9.0)
       lint_roller (~> 1.1)
       rubocop-performance (~> 1.26.0)
-    thor (1.5.0)
     toml-rb (4.2.0)
       citrus (~> 3.0, > 3.0)
       racc (~> 1.7)
@@ -117,6 +117,7 @@ CHECKSUMS
   ast (2.4.3) sha256=954615157c1d6a382bc27d690d973195e79db7f55e9765ac7c481c60bdb4d383
   bigdecimal (4.1.2) sha256=53d217666027eab4280346fba98e7d5b66baaae1b9c3c1c0ffe89d48188a3fbd
   citrus (3.0.2) sha256=4ec2412fc389ad186735f4baee1460f7900a8e130ffe3f216b30d4f9c684f650
+  dry-cli (1.4.1) sha256=b8015bb76c708aa8705a36faf694973e75eeeffca39b89c8e172dc6f66a7d874
   json (2.20.0) sha256=9362bc6e55a952b056abf9167cf053358181c904cb70cd6eee0808ea830fc32b
   language_server-protocol (3.17.0.6) sha256=5ef2c0c138f8267e1bc631d3328347d354f96724b0af22f2c79516120443b7f0
   lint_roller (1.1.0) sha256=2c0c845b632a7d172cb849cc90c1bce937a28c5c8ccccb50dfd46a485003cc87
@@ -152,7 +153,6 @@ CHECKSUMS
   standard (1.55.0) sha256=8a8f2c3e681a4db3aafde1b301561b0f3d7c5f06c160167cb744a4d7baf0426e
   standard-custom (1.0.2) sha256=424adc84179a074f1a2a309bb9cf7cd6bfdb2b6541f20c6bf9436c0ba22a652b
   standard-performance (1.9.0) sha256=49483d31be448292951d80e5e67cdcb576c2502103c7b40aec6f1b6e9c88e3f2
-  thor (1.5.0) sha256=e3a9e55fe857e44859ce104a84675ab6e8cd59c650a49106a05f55f136425e73
   toml-rb (4.2.0) sha256=10a48c91613e20cf63483a7a776767dfb3cd7d70e9327c0237443da601e13776
   unicode-display_width (3.2.0) sha256=0cdd96b5681a5949cdbc2c55e7b420facae74c4aaf9a9815eee1087cb1853c42
   unicode-emoji (4.2.0) sha256=519e69150f75652e40bf736106cfbc8f0f73aa3fb6a65afe62fefa7f80b0f80f

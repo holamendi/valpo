@@ -202,3 +202,22 @@ Implications:
 - Do not let extensions mutate Docker, Caddy, or SQLite state behind Valpo's model.
 - Do not build a plugin marketplace in v1.
 - Treat templates as declarative manifests, not arbitrary code.
+
+## ADR 013: Use A Resource-First CLI With Synchronous Defaults
+
+Decision:
+
+Use explicitly registered `dry-cli` command objects organized as `valpo RESOURCE ACTION`. Keep the server API asynchronous, but wait for operation jobs by default in the CLI.
+
+Rationale:
+
+Resource-first commands scale more consistently as projects gain multiple app and managed services. Synchronous defaults match interactive operator expectations, while `--no-wait` and advanced job commands preserve asynchronous and troubleshooting workflows.
+
+Implications:
+
+- Human-readable tables and detail views are the default.
+- `--json` emits one JSON document on stdout for automation.
+- Progress and job events go to stderr.
+- Usage failures exit `2`; operational failures exit `1`.
+- Background job commands remain available but are omitted from primary root help.
+- Service type definitions used by help and validation must not require database boot.

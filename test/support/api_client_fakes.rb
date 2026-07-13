@@ -5,7 +5,7 @@ module ValpoTestSupport
 
   class FakeHTTP
     attr_reader :last_request
-    attr_writer :use_ssl
+    attr_accessor :use_ssl, :open_timeout, :read_timeout
 
     def initialize(response: nil, error: nil)
       @response = response
