@@ -5,6 +5,7 @@ production:
   api_port: 7092
   # Required before binding api_host to a non-local address.
   # api_token: change-me
+  github_token_path: /var/lib/valpo/secrets/github-token
   caddy_config_path: /var/lib/valpo/caddy/valpo.caddy
   caddy_reload_config_path: /etc/caddy/Caddyfile
   docker_network: valpo

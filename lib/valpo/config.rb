@@ -18,6 +18,7 @@ module Valpo
       :api_host,
       :api_port,
       :api_token,
+      :github_token_path,
       :caddy_config_path,
       :caddy_reload_config_path,
       :docker_network,
@@ -38,6 +39,7 @@ module Valpo
         api_host: value(env_data, "api_host", ENV["VALPO_API_HOST"], "127.0.0.1"),
         api_port: Integer(value(env_data, "api_port", ENV["VALPO_API_PORT"], DEFAULT_API_PORT)),
         api_token: blank_to_nil(value(env_data, "api_token", ENV["VALPO_API_TOKEN"], nil)),
+        github_token_path: value(env_data, "github_token_path", nil, nil),
         caddy_config_path: value(env_data, "caddy_config_path", ENV["VALPO_CADDY_CONFIG_PATH"], default_caddy_config_path(env)),
         caddy_reload_config_path: value(env_data, "caddy_reload_config_path", ENV["VALPO_CADDY_RELOAD_CONFIG_PATH"], nil),
         docker_network: value(env_data, "docker_network", ENV["VALPO_DOCKER_NETWORK"], "valpo"),
@@ -67,13 +69,14 @@ module Valpo
     end
     private_class_method :blank_to_nil
 
-    def initialize(env:, root:, database_path:, api_host:, api_port:, caddy_config_path:, docker_network:, worker_poll_interval:, app_port_start:, app_port_end:, healthcheck_timeout:, deploy_drain_delay:, api_token: nil, caddy_reload_config_path: nil)
+    def initialize(env:, root:, database_path:, api_host:, api_port:, caddy_config_path:, docker_network:, worker_poll_interval:, app_port_start:, app_port_end:, healthcheck_timeout:, deploy_drain_delay:, api_token: nil, github_token_path: nil, caddy_reload_config_path: nil)
       @env = env
       @root = root
       @database_path = expand_path(database_path)
       @api_host = api_host
       @api_port = api_port
       @api_token = self.class.send(:blank_to_nil, api_token)
+      @github_token_path = github_token_path ? expand_path(github_token_path) : File.join(File.dirname(@database_path), "secrets", "github-token")
       @caddy_config_path = expand_path(caddy_config_path)
       @caddy_reload_config_path = caddy_reload_config_path ? expand_path(caddy_reload_config_path) : @caddy_config_path
       @docker_network = docker_network
@@ -82,6 +85,10 @@ module Valpo
       @app_port_end = app_port_end
       @healthcheck_timeout = healthcheck_timeout
       @deploy_drain_delay = deploy_drain_delay
+    end
+
+    def github_token
+      Valpo::Credentials::FileStore.new(github_token_path).read
     end
 
     private

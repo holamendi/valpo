@@ -28,6 +28,14 @@ module Valpo
         value
       end
 
+      def optional_string(payload, key)
+        value = payload[key]
+        return nil if value.nil?
+        raise Valpo::ValidationError, "#{key} must be a non-empty string" unless value.is_a?(String) && !value.strip.empty?
+
+        value
+      end
+
       def validate_keys!(payload, allowed, context)
         unknown = payload.keys - allowed
         return if unknown.empty?

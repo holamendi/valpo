@@ -52,6 +52,27 @@ class ValpoDeploymentsOrchestratorTest < Minitest::Test
     assert_equal %w[bundle exec sidekiq], docker.run_requests.first.fetch(:command_args)
   end
 
+  def test_built_image_deploy_skips_pull_and_records_git_metadata
+    app = create_app_service
+    docker = ValpoTestSupport::FakeDocker.new
+    release = run_job do |queue, job|
+      orchestrator(docker: docker).deploy_built_image(
+        service_id: app.id,
+        image: "valpo/hello/backend:abc123",
+        source_ref: "a" * 40,
+        build_target_id: nil,
+        internal_port: nil,
+        healthcheck_path: nil,
+        queue: queue,
+        job_id: job.id
+      )
+    end
+
+    assert_equal "git", release.source_type
+    assert_equal "a" * 40, release.source_ref
+    refute docker.executed?(:pull, "valpo/hello/backend:abc123")
+  end
+
   def test_failed_deploy_keeps_active_release
     app = create_app_service(status: "running")
     active = create_release(service: app, status: "active", container_name: "old", route_target: "127.0.0.1:20000")

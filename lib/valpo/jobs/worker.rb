@@ -36,6 +36,21 @@ module Valpo
       end
     end
 
+    class DeploySource
+      def initialize(orchestrator:)
+        @orchestrator = orchestrator
+      end
+
+      def call(job, queue:)
+        payload = job.payload
+        @orchestrator.deploy_source(
+          service_id: payload.fetch("service_id"), ref: payload["ref"],
+          internal_port: payload["internal_port"] && Integer(payload["internal_port"]),
+          healthcheck_path: payload["healthcheck_path"], queue: queue, job_id: job[:id]
+        )
+      end
+    end
+
     class AppOperation
       def initialize(orchestrator:, method:)
         @orchestrator = orchestrator
@@ -135,12 +150,22 @@ module Valpo
       end
 
       def self.default_handlers(config:)
-        deployment = Valpo::Deployments::Orchestrator.new(config: config)
-        managed = Valpo::Services::Orchestrator.new(config: config)
+        docker = Valpo::Docker::Client.new
+        deployment = Valpo::Deployments::Orchestrator.new(config: config, docker: docker)
+        managed = Valpo::Services::Orchestrator.new(config: config, docker: docker)
+        source_fetcher = Valpo::Sources::Fetcher.new(
+          adapters: {"github" => Valpo::Sources::GitHub.new(token: -> { config.github_token })}
+        )
+        builds = Valpo::Builds::Orchestrator.new(
+          docker: docker,
+          source_fetcher: source_fetcher,
+          deployment_orchestrator: deployment
+        )
         {
           "system_check" => SystemCheck.new,
           "repair_system" => RepairSystem.new(orchestrator: deployment),
           "deploy_registry_image" => DeployRegistryImage.new(orchestrator: deployment),
+          "deploy_source" => DeploySource.new(orchestrator: builds),
           "rollback_release" => AppOperation.new(orchestrator: deployment, method: :rollback_service),
           "apply_caddy_config" => ApplyCaddyConfig.new(orchestrator: deployment),
           "delete_project" => DeleteProject.new(orchestrator: deployment),

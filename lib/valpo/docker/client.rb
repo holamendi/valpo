@@ -17,6 +17,10 @@ module Valpo
         command("image", "inspect", image)
       end
 
+      def build_command(dockerfile:, tag:, context:)
+        command("build", "--file", dockerfile, "--tag", tag, context)
+      end
+
       def run_command(name:, image:, network:, labels: {}, env: {}, ports: {}, volumes: {}, detach: true, restart_policy: nil, command_args: [])
         args = ["run"]
         args << "--detach" if detach

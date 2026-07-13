@@ -132,6 +132,7 @@ ensure_user_and_dirs() {
   install -d -m 0755 "$CONFIG_DIR" /etc/caddy /etc/systemd/system /usr/local/bin
   install -d -o "$VALPO_USER" -g "$VALPO_GROUP" -m 0755 "$STATE_DIR" "${STATE_DIR}/caddy"
   install -d -o "$VALPO_USER" -g "$VALPO_GROUP" -m 0750 "${STATE_DIR}/bundle" "$LOG_DIR"
+  install -d -o "$VALPO_USER" -g "$VALPO_GROUP" -m 0700 "${STATE_DIR}/secrets"
 }
 
 run_as_valpo_shell() {
@@ -208,6 +209,7 @@ production:
   api_port: 7092
   # Required before binding api_host to a non-local address.
   # api_token: change-me
+  github_token_path: ${STATE_DIR}/secrets/github-token
   caddy_config_path: ${CADDY_GENERATED_PATH}
   caddy_reload_config_path: ${CADDY_RELOAD_CONFIG_PATH}
   docker_network: valpo

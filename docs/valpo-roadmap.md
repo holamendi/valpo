@@ -138,21 +138,22 @@ Exit criteria:
 - Services are private by default and do not expose public ports.
 - Services can be deleted with explicit confirmation, removing their containers and volumes before project cleanup.
 
-## Phase 3A: GitHub App And Dockerfile Deployments
+## Phase 3A: GitHub Integration And Dockerfile Deployments
 
 Goal: connect repositories and build/deploy on demand or webhook push.
 
-Deliverables:
+Bootstrap implemented:
 
-- GitHub repository connection.
+- CLI-managed, file-backed fine-grained PAT authentication for GitHub HTTPS fetches.
+- Manual deploy from the configured branch or an explicit branch, tag, or commit SHA.
+- Dockerfile build logs, commit-based image tags, and git-backed releases.
+- Failed fetches/builds leave an active release untouched.
+
+Remaining deliverables:
+
 - Per-server GitHub App manifest setup and installation selection.
-- Branch selection.
-- Manual deploy from branch or commit SHA.
 - Webhook endpoint.
-- Dockerfile build job.
-- Build logs.
-- Image tagging by project and commit.
-- Release created from built image digest.
+- Replacement of the temporary PAT provider with short-lived GitHub App installation credentials.
 
 Initial constraint:
 

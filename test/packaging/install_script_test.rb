@@ -78,4 +78,12 @@ class ValpoPackagingInstallScriptTest < Minitest::Test
       assert_includes service, "/var/lib/valpo/.local/bin/mise x ruby@4.0.5 -- bundle exec"
     end
   end
+
+  def test_installer_creates_private_github_credential_storage
+    script = File.read(INSTALL_SCRIPT)
+    config = File.read(EXAMPLE_CONFIG)
+
+    assert_includes script, 'install -d -o "$VALPO_USER" -g "$VALPO_GROUP" -m 0700 "${STATE_DIR}/secrets"'
+    assert_includes config, "github_token_path: /var/lib/valpo/secrets/github-token"
+  end
 end

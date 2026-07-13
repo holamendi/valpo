@@ -6,6 +6,7 @@ module Valpo
       extend Dry::CLI::Registry
 
       GROUPS = {
+        "auth" => "Manage source-provider authentication",
         "project" => "Manage projects",
         "service" => "Manage app and managed services",
         "domain" => "Manage web-service domains",
@@ -15,6 +16,9 @@ module Valpo
       }.freeze
 
       COMMANDS = [
+        ["auth login", Commands::Auth::Login, false],
+        ["auth status", Commands::Auth::Status, false],
+        ["auth logout", Commands::Auth::Logout, false],
         ["project list", Commands::Project::List, false],
         ["project create", Commands::Project::Create, false],
         ["project show", Commands::Project::Show, false],
@@ -45,6 +49,12 @@ module Valpo
         ["job events", Commands::Job::Events, true],
         ["version", Commands::Version, false]
       ].freeze
+
+      register "auth" do |prefix|
+        prefix.register "login", Commands::Auth::Login
+        prefix.register "status", Commands::Auth::Status
+        prefix.register "logout", Commands::Auth::Logout
+      end
 
       register "project" do |prefix|
         prefix.register "list", Commands::Project::List

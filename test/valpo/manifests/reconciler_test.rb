@@ -62,6 +62,20 @@ class ValpoManifestReconcilerTest < Minitest::Test
     assert_equal app.id, deployment.service_id
   end
 
+  def test_source_connection_resets_when_repository_or_ref_changes
+    reconciler = build_reconciler
+    manifest = parsed_manifest
+    apply(reconciler, manifest)
+    source = Valpo::Source.first
+    source.update(status: "connected")
+    changed = Marshal.load(Marshal.dump(manifest))
+    changed.fetch("sources").fetch("backend")["ref"] = "release"
+
+    apply(reconciler, changed)
+
+    assert_equal "unconnected", source.refresh.status
+  end
+
   private
 
   def parsed_manifest

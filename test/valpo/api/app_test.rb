@@ -153,6 +153,37 @@ class ValpoAPIAppTest < Minitest::Test
     assert_equal [], json.fetch("env")
   end
 
+  def test_source_deploy_uses_configured_build_target_and_accepts_ref_override
+    project = create_project
+    source = Valpo::Source.create(
+      project_id: project.id, name: "backend", provider: "github", repository: "acme/backend", ref: "main"
+    )
+    build_target = Valpo::BuildTarget.create(
+      project_id: project.id, source_id: source.id, name: "backend", dockerfile: "Dockerfile", context: "."
+    )
+    service = create_app_service(project: project)
+    Valpo::AppServiceConfig[service.id].update(build_target_id: build_target.id)
+
+    post_json "/services/#{service.id}/deployments", ref: "release"
+
+    assert_equal 202, last_response.status
+    assert_equal "deploy_source", json.fetch("type")
+    assert_equal "release", json.fetch("payload").fetch("ref")
+    refute json.fetch("payload").key?("token")
+  end
+
+  def test_source_deploy_requires_build_target_and_rejects_image_with_ref
+    service = create_app_service
+
+    post_json "/services/#{service.id}/deployments", {}
+    assert_equal 422, last_response.status
+    assert_match "build target", json.fetch("message")
+
+    post_json "/services/#{service.id}/deployments", image: "example/app:v1", ref: "main"
+    assert_equal 422, last_response.status
+    assert_match "cannot be used together", json.fetch("message")
+  end
+
   def test_dependency_endpoint_validates_same_project_at_runtime_and_unbinds
     project = create_project
     app_service = create_app_service(project: project)

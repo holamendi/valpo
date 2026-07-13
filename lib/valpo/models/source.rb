@@ -37,6 +37,9 @@ module Valpo
       errors.add(:name, "must use lowercase letters, numbers, and dashes") unless name&.match?(Valpo::Project::NAME_PATTERN)
       errors.add(:provider, "must be one of: #{PROVIDERS.join(", ")}") unless PROVIDERS.include?(provider)
       errors.add(:repository, "is required") if repository.nil? || repository.strip.empty?
+      if provider == "github" && !repository.to_s.match?(Valpo::Sources::GitHub::REPOSITORY_PATTERN)
+        errors.add(:repository, "must be a GitHub owner/repository name")
+      end
       errors.add(:ref, "is required") if ref.nil? || ref.strip.empty?
       errors.add(:status, "must be one of: #{STATUSES.join(", ")}") unless STATUSES.include?(status)
     end

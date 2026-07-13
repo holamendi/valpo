@@ -56,6 +56,24 @@ class ValpoJobsWorkerTest < Minitest::Test
     assert_equal "succeeded", queue.find(job.id).status
   end
 
+  def test_source_deploy_handler_dispatches_ref
+    service = create_app_service
+    queue = Valpo::Jobs::Queue.new
+    job = queue.enqueue_service_operation(
+      "deploy_source", service_id: service.id,
+      payload: {project_id: service.project_id, ref: "release"}
+    )
+    fake = FakeBuild.new
+    Valpo::Jobs::Worker.new(
+      queue: queue,
+      handlers: {"deploy_source" => Valpo::Jobs::DeploySource.new(orchestrator: fake)},
+      worker_id: "worker-1"
+    ).run(once: true)
+
+    assert_equal [service.id, "release"], fake.source
+    assert_equal "succeeded", queue.find(job.id).status
+  end
+
   def test_manifest_handler_passes_normalized_manifest
     queue = Valpo::Jobs::Queue.new
     manifest = {"project" => {"name" => "hello"}}
@@ -83,6 +101,14 @@ class ValpoJobsWorkerTest < Minitest::Test
 
     def bind_service(service_id:, dependency_service_id:, **)
       @ids = [service_id, dependency_service_id]
+    end
+  end
+
+  class FakeBuild
+    attr_reader :source
+
+    def deploy_source(service_id:, ref:, **)
+      @source = [service_id, ref]
     end
   end
 

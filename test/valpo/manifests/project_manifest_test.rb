@@ -75,6 +75,21 @@ class ValpoProjectManifestTest < Minitest::Test
     assert_match "source checkout", error.message
   end
 
+  def test_rejects_github_repository_urls
+    error = assert_raises Valpo::ValidationError do
+      Valpo::Manifests::ProjectManifest.parse(<<~TOML)
+        schema = 1
+        [project]
+        name = "acme"
+        [sources.backend]
+        provider = "github"
+        repository = "https://github.com/acme/backend"
+      TOML
+    end
+
+    assert_match "owner/repository", error.message
+  end
+
   def test_worker_rejects_web_only_options
     error = assert_raises(Valpo::ValidationError) do
       Valpo::Manifests::ProjectManifest.parse(<<~TOML)

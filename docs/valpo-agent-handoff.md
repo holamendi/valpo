@@ -188,6 +188,7 @@ Deployment request example:
 
 ```text
 deploy_registry_image
+deploy_source
 rollback_release
 apply_caddy_config
 stop_service
@@ -201,7 +202,7 @@ delete_service
 apply_project_manifest
 ```
 
-Later job types include `build_from_git`, `deploy_static_zip`, `rotate_service_credentials`, `backup_resource`, `restore_resource`, `export_project`, and `import_project`.
+Later job types include `deploy_static_zip`, `rotate_service_credentials`, `backup_resource`, `restore_resource`, `export_project`, and `import_project`.
 
 ## Deployment Implementation Notes
 
@@ -297,9 +298,12 @@ When starting implementation, read these documents first:
 5. `valpo-architecture-decisions.md`
 6. `valpo-roadmap.md`
 
-Phase 2B is now implemented:
+Phase 2B is implemented and the manual-deploy portion of Phase 3A is now available:
 
 - Private Postgres and Redis services exist.
 - Typed IDs, multi-service projects, explicit dependencies, lifecycle jobs, generated credentials, scoped env injection, TOML reconciliation, and reboot repair are in place.
+- `deploy_source` can fetch a configured GitHub ref with a CLI-managed PAT, build its Dockerfile, and deploy a release tied to the exact commit.
+- The PAT is a temporary file-backed credential provider behind `Valpo::Sources::Fetcher`; it is not part of source, build, release, API, job, or manifest data.
+- `valpo auth login github` shows a prefilled fine-grained-PAT link, validates the PAT through GitHub's authenticated-user API, and stores it only after validation. Repository permissions remain enforced by the deployment fetch.
 
-Next work is Phase 3A: expose only the narrow authenticated GitHub setup/callback/webhook surface, create a per-server GitHub App through the manifest flow, fetch private repositories, build Dockerfiles, and deploy the resulting digest without disturbing an active release on build failure.
+Next work is to replace the static PAT with short-lived GitHub App installation tokens, then expose only the narrow authenticated setup/callback/webhook surface. Keep the existing source fetch, Dockerfile build, and release flow; webhook deliveries should enqueue the same `deploy_source` operation instead of creating a second deployment path.

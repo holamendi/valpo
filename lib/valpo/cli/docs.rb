@@ -6,8 +6,7 @@ module Valpo
       PATH = File.join(Valpo.root, "docs", "valpo-cli.md")
       REQUIRED_OPTIONS = {
         "service create" => "--type TYPE",
-        "service delete" => "--force",
-        "service deploy" => "--image IMAGE"
+        "service delete" => "--force"
       }.freeze
 
       module_function
@@ -41,6 +40,39 @@ module Valpo
           #{service_type_table}
 
           `command` is valid for `web` and `worker`. `port` and `healthcheck-path` are valid only for `web`. `version` is valid only for `postgres` and `redis`. Incompatible options are rejected rather than ignored. Managed service images are selected by Valpo and cannot be overridden.
+
+          ## Deployments
+
+          Deploy an app service's configured GitHub source at its manifest ref, or override it with a branch, tag, or commit SHA:
+
+          ```bash
+          valpo service deploy acme/web
+          valpo service deploy acme/web --ref release
+          ```
+
+          Registry-image deployment remains available as an explicit alternative:
+
+          ```bash
+          valpo service deploy acme/web --image ghcr.io/acme/web:latest
+          ```
+
+          `--image` and `--ref` are mutually exclusive. Source builds run in the worker and stream Git fetch, Docker build, health-check, and release events through the normal job output.
+
+          Authenticate GitHub locally with a non-echoing prompt:
+
+          ```bash
+          valpo auth login github
+          valpo auth status github
+          valpo auth logout github
+          ```
+
+          Interactive login links to GitHub's prefilled fine-grained-token form with read-only Contents permission, then validates the PAT with GitHub before storing it. This proves the token is recognized and identifies its account; repository selection is still verified by the Git fetch during deployment.
+
+          `auth login` writes the configured private credential file directly after validation; it does not send the PAT to the Valpo API or put it in a job. For secret-manager automation, pipe one line with `--with-token`. There is intentionally no token-value option because command arguments can leak through shell history and process listings.
+
+          ```bash
+          op read op://vault/github-pat | valpo auth login github --with-token
+          ```
 
           ## Output
 

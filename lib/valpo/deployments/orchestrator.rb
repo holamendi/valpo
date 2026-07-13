@@ -20,43 +20,33 @@ module Valpo
       end
 
       def deploy_registry_image(service_id:, image:, internal_port:, healthcheck_path:, queue:, job_id:)
-        runtime = runtime_for(queue: queue, job_id: job_id)
-        service = find_app_service(service_id)
-        app_config = Valpo::AppServiceConfig[service.id]
-        port = internal_port || app_config&.internal_port
-        raise Valpo::ValidationError, "internal_port is required for web services" if service.web? && port.nil?
-
-        old_active = Valpo::Release.active_for_service(service.id)
-        release = nil
-        container_name = nil
-
-        service.update(status: "provisioning")
-        event(queue, job_id, "system", "Pulling #{image}")
-        runtime.pull_image(image)
-        digest = runtime.inspect_image_digest(image)
-        release = Valpo::Release.create(
-          service_id: service.id,
-          build_target_id: app_config&.build_target_id,
+        deploy_image(
+          service_id: service_id,
+          image: image,
           source_type: "registry",
           source_ref: image,
-          artifact_ref: digest || image,
-          image_digest: digest,
-          internal_port: port,
-          healthcheck_path: blank_to_nil(healthcheck_path) || app_config&.healthcheck_path
+          build_target_id: nil,
+          internal_port: internal_port,
+          healthcheck_path: healthcheck_path,
+          pull: true,
+          queue: queue,
+          job_id: job_id
         )
+      end
 
-        container_name = runtime.start_release_container(release)
-        wait_for_release(release, queue: queue, job_id: job_id)
-        apply_caddy_config(queue: queue, job_id: job_id, override_release: release)
-        release.activate!
-        service.update(status: "running")
-        retire_container(old_active, runtime)
-        release.refresh
-      rescue
-        release&.fail!
-        runtime&.cleanup_container(container_name)
-        service&.update(status: old_active ? "running" : "failed")
-        raise
+      def deploy_built_image(service_id:, image:, source_ref:, build_target_id:, internal_port:, healthcheck_path:, queue:, job_id:)
+        deploy_image(
+          service_id: service_id,
+          image: image,
+          source_type: "git",
+          source_ref: source_ref,
+          build_target_id: build_target_id,
+          internal_port: internal_port,
+          healthcheck_path: healthcheck_path,
+          pull: false,
+          queue: queue,
+          job_id: job_id
+        )
       end
 
       def rollback_service(service_id:, queue:, job_id:)
@@ -175,6 +165,50 @@ module Valpo
       private
 
       attr_reader :config, :docker, :caddy, :health_checker, :service_orchestrator, :sleeper
+
+      def deploy_image(service_id:, image:, source_type:, source_ref:, build_target_id:, internal_port:, healthcheck_path:, pull:, queue:, job_id:)
+        runtime = runtime_for(queue: queue, job_id: job_id)
+        service = find_app_service(service_id)
+        app_config = Valpo::AppServiceConfig[service.id]
+        port = internal_port || app_config&.internal_port
+        raise Valpo::ValidationError, "internal_port is required for web services" if service.web? && port.nil?
+
+        old_active = Valpo::Release.active_for_service(service.id)
+        release = nil
+        container_name = nil
+
+        service.update(status: "provisioning")
+        if pull
+          event(queue, job_id, "system", "Pulling #{image}")
+          runtime.pull_image(image)
+        else
+          event(queue, job_id, "system", "Deploying built image #{image}")
+        end
+        digest = runtime.inspect_image_digest(image)
+        release = Valpo::Release.create(
+          service_id: service.id,
+          build_target_id: build_target_id || app_config&.build_target_id,
+          source_type: source_type,
+          source_ref: source_ref,
+          artifact_ref: digest || image,
+          image_digest: digest,
+          internal_port: port,
+          healthcheck_path: blank_to_nil(healthcheck_path) || app_config&.healthcheck_path
+        )
+
+        container_name = runtime.start_release_container(release)
+        wait_for_release(release, queue: queue, job_id: job_id)
+        apply_caddy_config(queue: queue, job_id: job_id, override_release: release)
+        release.activate!
+        service.update(status: "running")
+        retire_container(old_active, runtime)
+        release.refresh
+      rescue
+        release&.fail!
+        runtime&.cleanup_container(container_name)
+        service&.update(status: old_active ? "running" : "failed")
+        raise
+      end
 
       def find_app_service(service_id)
         service = Valpo::Service[service_id]

@@ -65,16 +65,29 @@ module Valpo
             r.post do
               require_app!(service)
               payload = parse_json_body
-              validate_keys!(payload, %w[image internal_port port healthcheck_path], "deployment")
+              validate_keys!(payload, %w[image ref internal_port port healthcheck_path], "deployment")
               Valpo::Services::Definitions.validate_options!(type: service.kind, options: payload)
               port = optional_port(payload["internal_port"] || payload["port"])
+              image = optional_string(payload, "image")
+              ref = optional_string(payload, "ref")
+              raise Valpo::ValidationError, "image and ref cannot be used together" if image && ref
+              if image
+                job_type = "deploy_registry_image"
+                operation_payload = {image: image}
+              else
+                app_config = Valpo::AppServiceConfig[service.id]
+                raise Valpo::ValidationError, "Service has no configured build target" unless app_config&.build_target_id
+                job_type = "deploy_source"
+                operation_payload = {ref: ref}.compact
+              end
               response.status = 202
               Serializers.job(jobs.enqueue_service_operation(
-                "deploy_registry_image", service_id: service.id,
-                payload: {
-                  project_id: service.project_id, image: required_string(payload, "image"), internal_port: port,
+                job_type, service_id: service.id,
+                payload: operation_payload.merge(
+                  project_id: service.project_id,
+                  internal_port: port,
                   healthcheck_path: optional_healthcheck_path(payload["healthcheck_path"])
-                }
+                )
               ))
             end
           end

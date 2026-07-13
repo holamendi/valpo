@@ -134,6 +134,8 @@ module Valpo
             auto_deploy: config.fetch("auto_deploy")
           }
           if source
+            connection_changed = %i[provider repository ref].any? { |key| source[key] != attributes.fetch(key) }
+            attributes[:status] = "unconnected" if connection_changed
             source.update(attributes)
           else
             source = Valpo::Source.create(attributes.merge(project_id: project.id, name: name))

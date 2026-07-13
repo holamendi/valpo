@@ -58,9 +58,13 @@ module Valpo
           unless Valpo::Source::PROVIDERS.include?(provider)
             raise Valpo::ValidationError, "Unsupported source provider: #{provider}"
           end
+          repository = required_string(config, "repository")
+          if provider == "github" && !repository.match?(Valpo::Sources::GitHub::REPOSITORY_PATTERN)
+            raise Valpo::ValidationError, "sources.#{name}.repository must be a GitHub owner/repository name"
+          end
           [name, {
             "provider" => provider,
-            "repository" => required_string(config, "repository"),
+            "repository" => repository,
             "ref" => optional_string(config, "ref") || "main",
             "auto_deploy" => boolean(config, "auto_deploy", false)
           }]

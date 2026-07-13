@@ -8,6 +8,7 @@ class ValpoDockerClientTest < Minitest::Test
 
     assert_equal ["docker", "pull", "ghcr.io/example/app:latest"], client.pull_command("ghcr.io/example/app:latest")
     assert_equal ["docker", "image", "inspect", "ghcr.io/example/app:latest"], client.image_inspect_command("ghcr.io/example/app:latest")
+    assert_equal ["docker", "build", "--file", "/tmp/app/Dockerfile", "--tag", "valpo/acme/app:abc123", "/tmp/app"], client.build_command(dockerfile: "/tmp/app/Dockerfile", tag: "valpo/acme/app:abc123", context: "/tmp/app")
     assert_equal ["docker", "container", "inspect", "valpo-hello"], client.container_inspect_command("valpo-hello")
     assert_equal ["docker", "start", "valpo-hello"], client.start_command("valpo-hello")
     assert_equal ["docker", "update", "--restart", "unless-stopped", "valpo-hello"], client.update_restart_policy_command("valpo-hello", "unless-stopped")

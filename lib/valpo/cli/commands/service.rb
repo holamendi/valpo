@@ -79,18 +79,20 @@ module Valpo
         end
 
         class Deploy < BaseCommand
-          desc "Deploy a registry image to a web or worker service"
+          desc "Deploy a configured source or registry image"
           argument :service, required: true, desc: "PROJECT/NAME or service ID"
-          option :image, desc: "Container image and tag"
+          option :image, desc: "Registry image and tag instead of the configured source"
+          option :ref, desc: "Git branch, tag, or commit SHA (default: configured ref)"
           option :port, desc: "Web container port"
           option :healthcheck_path, desc: "Web health check path beginning with /"
           wait_options
 
-          def call(service:, wait:, timeout:, api_url:, image: nil, port: nil, healthcheck_path: nil, config: nil, json: false, args: nil, **)
+          def call(service:, wait:, timeout:, api_url:, image: nil, ref: nil, port: nil, healthcheck_path: nil, config: nil, json: false, args: nil, **)
             reject_extra_arguments!(args)
-            image = required_option!(image, "--image")
+            raise UsageError, "--image and --ref cannot be used together" if image && ref
             payload = {
               "image" => image,
+              "ref" => ref,
               "internal_port" => optional_positive_integer(port, "port"),
               "healthcheck_path" => healthcheck_path
             }.compact

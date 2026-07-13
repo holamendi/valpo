@@ -6,7 +6,7 @@ The current intent is to make one appropriately sized server feel like a tastefu
 
 ## Current Status
 
-Phase 2B is implemented. A Valpo project can contain multiple app and managed services, apply a strict `valpo.toml` manifest, deploy registry images, route web services through Caddy, and provision private Postgres and Redis dependencies. The installed CLI uses resource-first commands, synchronous operations by default, human-readable output, and explicit `--json` output for automation.
+Phase 2B is implemented and Phase 3A has started. A Valpo project can contain multiple app and managed services, apply a strict `valpo.toml` manifest, deploy registry images or PAT-authenticated GitHub Dockerfile builds, route web services through Caddy, and provision private Postgres and Redis dependencies. The installed CLI uses resource-first commands, synchronous operations by default, human-readable output, and explicit `--json` output for automation.
 
 This pre-release schema is a clean break from the earlier project-as-app model. Existing development installations must back up and reset their SQLite database before upgrading; Valpo detects the retired schema and refuses to discard it automatically.
 

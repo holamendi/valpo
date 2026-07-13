@@ -13,6 +13,7 @@ module Valpo
       ].freeze
       SERVICE_OPERATION_TYPES = %w[
         deploy_registry_image
+        deploy_source
         rollback_release
         apply_caddy_config
         provision_service
