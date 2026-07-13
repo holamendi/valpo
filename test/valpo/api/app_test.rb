@@ -26,6 +26,13 @@ class ValpoAPIAppTest < Minitest::Test
     end
   end
 
+  def test_system_repair_enqueues_job
+    post "/system/repair"
+
+    assert_equal 202, last_response.status
+    assert_equal "repair_system", json.fetch("type")
+  end
+
   def test_project_create_list_show_and_empty_delete
     post_json "/projects", name: "hello"
     assert_equal 201, last_response.status

@@ -21,7 +21,8 @@ module Valpo
       loader.collapse(File.join(__dir__, "valpo", "models"))
       loader.ignore(
         File.join(__dir__, "valpo", "version.rb"),
-        File.join(__dir__, "valpo", "errors.rb")
+        File.join(__dir__, "valpo", "errors.rb"),
+        File.join(__dir__, "valpo", "api", "routes")
       )
       loader.inflector.inflect("api" => "API", "cli" => "CLI")
       loader.setup
