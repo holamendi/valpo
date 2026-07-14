@@ -5,6 +5,7 @@ require "test_helper"
 
 class ValpoPackagingInstallScriptTest < Minitest::Test
   INSTALL_SCRIPT = File.expand_path("../../packaging/install.sh", __dir__)
+  SOURCE_SMOKE_SCRIPT = File.expand_path("../../packaging/vps-source-smoke-test.sh", __dir__)
   API_SERVICE = File.expand_path("../../packaging/systemd/valpo-api.service", __dir__)
   WORKER_SERVICE = File.expand_path("../../packaging/systemd/valpo-worker.service", __dir__)
   MIGRATE_SERVICE = File.expand_path("../../packaging/systemd/valpo-migrate.service", __dir__)
@@ -14,6 +15,22 @@ class ValpoPackagingInstallScriptTest < Minitest::Test
     stdout, stderr, status = Open3.capture3("bash", "-n", INSTALL_SCRIPT)
 
     assert status.success?, [stdout, stderr].join("\n")
+  end
+
+  def test_source_smoke_test_has_valid_bash_syntax
+    stdout, stderr, status = Open3.capture3("bash", "-n", SOURCE_SMOKE_SCRIPT)
+
+    assert status.success?, [stdout, stderr].join("\n")
+  end
+
+  def test_installer_and_services_keep_database_state_private
+    script = File.read(INSTALL_SCRIPT)
+
+    assert_includes script, "umask 077"
+    assert_includes script, 'chmod 0600 "${STATE_DIR}/valpo.db"'
+    [API_SERVICE, WORKER_SERVICE, MIGRATE_SERVICE].each do |path|
+      assert_includes File.read(path), "UMask=0077"
+    end
   end
 
   def test_installer_help_does_not_require_root
@@ -85,5 +102,15 @@ class ValpoPackagingInstallScriptTest < Minitest::Test
 
     assert_includes script, 'install -d -o "$VALPO_USER" -g "$VALPO_GROUP" -m 0700 "${STATE_DIR}/secrets"'
     assert_includes config, "github_token_path: /var/lib/valpo/secrets/github-token"
+  end
+
+  def test_source_smoke_test_preserves_the_github_credential
+    script = File.read(SOURCE_SMOKE_SCRIPT)
+
+    assert_includes script, "valpo auth status github --json"
+    assert_includes script, "sha256sum /var/lib/valpo/secrets/github-token"
+    refute_includes script, "auth logout"
+    refute_match(/rm\s+[^\n]*github-token/, script)
+    assert_includes script, "--source 'github:${repository}' --deploy"
   end
 end

@@ -9,10 +9,11 @@ module Valpo
     STATUSES = %w[unconnected connected failed].freeze
 
     many_to_one :project
+    many_to_one :owner_service, class: "Valpo::Service", key: :owner_service_id
     one_to_many :build_targets
 
     def before_validation
-      self.ref ||= "main"
+      self.ref ||= "HEAD"
       self.status ||= "unconnected"
       self.auto_deploy = false if auto_deploy.nil?
       super
@@ -34,6 +35,8 @@ module Valpo
     def validate
       super
       errors.add(:project_id, "is required") if project_id.nil? || project_id.to_s.empty?
+      owner = Valpo::Service[owner_service_id] if owner_service_id
+      errors.add(:owner_service_id, "must reference an app service in the same project") if owner && (!owner.app? || owner.project_id != project_id)
       errors.add(:name, "must use lowercase letters, numbers, and dashes") unless name&.match?(Valpo::Project::NAME_PATTERN)
       errors.add(:provider, "must be one of: #{PROVIDERS.join(", ")}") unless PROVIDERS.include?(provider)
       errors.add(:repository, "is required") if repository.nil? || repository.strip.empty?

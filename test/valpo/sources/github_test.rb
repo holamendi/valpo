@@ -56,17 +56,43 @@ class ValpoSourcesGitHubTest < Minitest::Test
     assert_equal %w[first-token second-token], fetches.map { |environment, _command| environment.fetch("VALPO_GIT_ASKPASS_TOKEN") }
   end
 
+  def test_reports_inaccessible_repositories_invalid_credentials_and_missing_refs
+    cases = {
+      "Repository not found" => nil,
+      "Authentication failed" => "invalid-secret",
+      "couldn't find remote ref missing" => "valid-looking-secret"
+    }
+
+    cases.each do |detail, token|
+      error = assert_raises Valpo::ValidationError do
+        Valpo::Sources::GitHub.new(token: token, runner: FakeRunner.new(fetch_error: detail)).checkout(
+          source: Source.new(repository: "acme/private", ref: "missing"),
+          destination: "/tmp/checkout"
+        )
+      end
+
+      assert_match "GitHub fetch failed", error.message
+      assert_match detail, error.message
+      refute_includes error.message, token if token
+    end
+  end
+
   class FakeRunner
     COMMIT = "a" * 40
 
     attr_reader :calls
 
-    def initialize
+    def initialize(fetch_error: nil)
       @calls = []
+      @fetch_error = fetch_error
     end
 
     def capture(environment, command)
       calls << [environment, command]
+      if @fetch_error && command.include?("fetch")
+        return {stdout: "", stderr: @fetch_error, status: 128, success: false}
+      end
+
       stdout = command.include?("rev-parse") ? "#{COMMIT}\n" : ""
       {stdout: stdout, stderr: "", status: 0, success: true}
     end

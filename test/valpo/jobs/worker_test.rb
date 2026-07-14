@@ -2,6 +2,8 @@
 
 require "test_helper"
 
+Valpo::Jobs::Worker.name
+
 class ValpoJobsWorkerTest < Minitest::Test
   include ValpoTestDatabase
 
@@ -48,7 +50,7 @@ class ValpoJobsWorkerTest < Minitest::Test
     fake = FakeManaged.new
     Valpo::Jobs::Worker.new(
       queue: queue,
-      handlers: {"bind_service" => Valpo::Jobs::BindService.new(orchestrator: fake, method: :bind_service)},
+      handlers: {"bind_service" => Valpo::Jobs::BindDependency.new(orchestrator: fake, method: :bind_service)},
       worker_id: "worker-1"
     ).run(once: true)
 
@@ -88,6 +90,99 @@ class ValpoJobsWorkerTest < Minitest::Test
     assert_equal "succeeded", queue.find(job.id).status
   end
 
+  def test_source_service_handler_validates_then_creates_owned_configuration
+    project = create_project
+    queue = Valpo::Jobs::Queue.new
+    job = queue.enqueue_project_operation(
+      "create_source_service",
+      project_id: project.id,
+      payload: source_service_payload
+    )
+    handler = Valpo::Jobs::CreateSource.new(
+      preflight: FakePreflight.new,
+      configurator: Valpo::Sources::ServiceConfigurator.new,
+      builds: FakeBuild.new
+    )
+    Valpo::Jobs::Worker.new(
+      queue: queue,
+      handlers: {"create_source_service" => handler},
+      worker_id: "worker-1"
+    ).run(once: true)
+
+    service = Valpo::Service.where(project_id: project.id, name: "web").first
+    assert_equal "succeeded", queue.find(job.id).status
+    assert service
+    assert_equal service.id, Valpo::Source.first.owner_service_id
+    assert_equal service.id, Valpo::BuildTarget.first.owner_service_id
+    assert_equal "connected", Valpo::Source.first.status
+  end
+
+  def test_source_service_validation_failure_creates_no_records
+    project = create_project
+    queue = Valpo::Jobs::Queue.new
+    job = queue.enqueue_project_operation(
+      "create_source_service",
+      project_id: project.id,
+      payload: source_service_payload
+    )
+    handler = Valpo::Jobs::CreateSource.new(
+      preflight: FakePreflight.new(error: Valpo::ValidationError.new("GitHub fetch failed")),
+      configurator: Valpo::Sources::ServiceConfigurator.new,
+      builds: FakeBuild.new
+    )
+    Valpo::Jobs::Worker.new(
+      queue: queue,
+      handlers: {"create_source_service" => handler},
+      worker_id: "worker-1"
+    ).run(once: true)
+
+    assert_equal "failed", queue.find(job.id).status
+    assert_equal 0, Valpo::Service.where(project_id: project.id).count
+    assert_equal 0, Valpo::Source.where(project_id: project.id).count
+    assert_equal 0, Valpo::BuildTarget.where(project_id: project.id).count
+  end
+
+  def test_source_service_build_failure_keeps_validated_configuration
+    project = create_project
+    queue = Valpo::Jobs::Queue.new
+    payload = source_service_payload.merge(deploy: true)
+    preflight = FakePreflight.new
+    builds = FakeBuild.new(error: Valpo::ValidationError.new("Docker build failed"))
+    job = queue.enqueue_project_operation(
+      "create_source_service",
+      project_id: project.id,
+      payload: payload
+    )
+    handler = Valpo::Jobs::CreateSource.new(
+      preflight: preflight,
+      configurator: Valpo::Sources::ServiceConfigurator.new,
+      builds: builds
+    )
+
+    Valpo::Jobs::Worker.new(
+      queue: queue,
+      handlers: {"create_source_service" => handler},
+      worker_id: "worker-1"
+    ).run(once: true)
+
+    service = Valpo::Service.where(project_id: project.id, name: "web").first
+    assert_equal "failed", queue.find(job.id).status
+    assert service
+    assert_equal service.id, Valpo::Source.first.owner_service_id
+    assert_equal service.id, Valpo::BuildTarget.first.owner_service_id
+    assert_equal 1, preflight.calls
+    assert_equal "a" * 40, builds.checkout.commit
+  end
+
+  def source_service_payload
+    {
+      service: {name: "web", type: "web", command: [], internal_port: nil, healthcheck_path: nil},
+      source: {provider: "github", repository: "acme/backend", ref: "HEAD"},
+      build: {dockerfile: "Dockerfile", context: "."},
+      deploy: false
+    }
+  end
+
   class FakeDeployment
     attr_reader :service_id
 
@@ -105,10 +200,43 @@ class ValpoJobsWorkerTest < Minitest::Test
   end
 
   class FakeBuild
-    attr_reader :source
+    attr_reader :checkout, :source
+
+    def initialize(error: nil)
+      @error = error
+    end
 
     def deploy_source(service_id:, ref:, **)
       @source = [service_id, ref]
+    end
+
+    def deploy_checkout(checkout:, **)
+      @checkout = checkout
+      raise @error if @error
+
+      true
+    end
+  end
+
+  class FakePreflight
+    attr_reader :calls
+
+    def initialize(error: nil)
+      @error = error
+      @calls = 0
+    end
+
+    def with_checkout(**)
+      @calls += 1
+      raise @error if @error
+
+      yield Valpo::Sources::Preflight::Result.new(
+        checkout: "/tmp/checkout",
+        dockerfile: "/tmp/checkout/Dockerfile",
+        context: "/tmp/checkout",
+        commit: "a" * 40,
+        ref: "HEAD"
+      )
     end
   end
 

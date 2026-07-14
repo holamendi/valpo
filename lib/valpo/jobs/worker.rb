@@ -51,6 +51,76 @@ module Valpo
       end
     end
 
+    class CreateSource
+      def initialize(preflight:, configurator:, builds:)
+        @preflight = preflight
+        @configurator = configurator
+        @builds = builds
+      end
+
+      def call(job, queue:)
+        payload = job.payload
+        project = Valpo::Project[payload.fetch("project_id")] || raise(Valpo::ValidationError, "Project not found")
+        source = payload.fetch("source")
+        build = payload.fetch("build")
+        service_attributes = payload.fetch("service")
+        queue.event(job.id, "system", "Validating #{source.fetch("repository")}@#{source.fetch("ref")}")
+
+        preflight.with_checkout(
+          provider: source.fetch("provider"),
+          repository: source.fetch("repository"),
+          ref: source.fetch("ref"),
+          dockerfile: build.fetch("dockerfile"),
+          context: build.fetch("context")
+        ) do |checkout|
+          service = configurator.create_service!(
+            project: project,
+            service_attributes: service_attributes,
+            source: source,
+            build: build
+          )
+          queue.event(job.id, "system", "Configured #{project.name}/#{service.name} at #{checkout.commit}")
+          next unless payload["deploy"]
+
+          builds.deploy_checkout(
+            service_id: service.id,
+            build_target: Valpo::AppServiceConfig[service.id].build_target,
+            checkout: checkout,
+            internal_port: nil,
+            healthcheck_path: nil,
+            queue: queue,
+            job_id: job.id
+          )
+        end
+      end
+
+      private
+
+      attr_reader :preflight, :configurator, :builds
+    end
+
+    class UpdateApp
+      def initialize(updater:)
+        @updater = updater
+      end
+
+      def call(job, queue:)
+        payload = job.payload
+        updater.update(
+          service_id: payload.fetch("service_id"),
+          configuration: payload["configuration"],
+          runtime_changes: payload.fetch("runtime", {}),
+          deploy: payload.fetch("deploy", false),
+          queue: queue,
+          job_id: job.id
+        )
+      end
+
+      private
+
+      attr_reader :updater
+    end
+
     class AppOperation
       def initialize(orchestrator:, method:)
         @orchestrator = orchestrator
@@ -82,7 +152,7 @@ module Valpo
       end
     end
 
-    class ProvisionService
+    class ProvisionManaged
       def initialize(orchestrator:)
         @orchestrator = orchestrator
       end
@@ -92,7 +162,7 @@ module Valpo
       end
     end
 
-    class BindService
+    class BindDependency
       def initialize(orchestrator:, method:)
         @orchestrator = orchestrator
         @method = method
@@ -156,22 +226,37 @@ module Valpo
         source_fetcher = Valpo::Sources::Fetcher.new(
           adapters: {"github" => Valpo::Sources::GitHub.new(token: -> { config.github_token })}
         )
+        preflight = Valpo::Sources::Preflight.new(fetcher: source_fetcher)
         builds = Valpo::Builds::Orchestrator.new(
           docker: docker,
           source_fetcher: source_fetcher,
-          deployment_orchestrator: deployment
+          deployment_orchestrator: deployment,
+          preflight: preflight
+        )
+        configurator = Valpo::Sources::ServiceConfigurator.new
+        updater = Valpo::Services::AppUpdater.new(
+          preflight: preflight,
+          configurator: configurator,
+          builds: builds,
+          deployment: deployment
         )
         {
           "system_check" => SystemCheck.new,
           "repair_system" => RepairSystem.new(orchestrator: deployment),
           "deploy_registry_image" => DeployRegistryImage.new(orchestrator: deployment),
           "deploy_source" => DeploySource.new(orchestrator: builds),
+          "create_source_service" => CreateSource.new(
+            preflight: preflight,
+            configurator: configurator,
+            builds: builds
+          ),
+          "update_app_service" => UpdateApp.new(updater: updater),
           "rollback_release" => AppOperation.new(orchestrator: deployment, method: :rollback_service),
           "apply_caddy_config" => ApplyCaddyConfig.new(orchestrator: deployment),
           "delete_project" => DeleteProject.new(orchestrator: deployment),
-          "provision_service" => ProvisionService.new(orchestrator: managed),
-          "bind_service" => BindService.new(orchestrator: managed, method: :bind_service),
-          "unbind_service" => BindService.new(orchestrator: managed, method: :unbind_service),
+          "provision_service" => ProvisionManaged.new(orchestrator: managed),
+          "bind_service" => BindDependency.new(orchestrator: managed, method: :bind_service),
+          "unbind_service" => BindDependency.new(orchestrator: managed, method: :unbind_service),
           "stop_service" => ServiceOperation.new(deployment_orchestrator: deployment, managed_orchestrator: managed, operation: :stop_service),
           "restart_service" => ServiceOperation.new(deployment_orchestrator: deployment, managed_orchestrator: managed, operation: :restart_service),
           "delete_service" => ServiceOperation.new(deployment_orchestrator: deployment, managed_orchestrator: managed, operation: :delete_service),

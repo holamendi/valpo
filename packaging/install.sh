@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 RUBY_VERSION="${VALPO_RUBY_VERSION:-4.0.5}"
 VALPO_USER="${VALPO_USER:-valpo}"
@@ -341,6 +342,8 @@ SCRIPT
 run_migrations() {
   log "Running database migrations"
   run_as_valpo_shell "cd '${PREFIX}' && VALPO_ENV=production VALPO_CONFIG='${CONFIG_PATH}' '${MISE_BIN}' x ruby@${RUBY_VERSION} -- bundle exec rake db:migrate"
+  chown "$VALPO_USER:$VALPO_GROUP" "${STATE_DIR}/valpo.db"
+  chmod 0600 "${STATE_DIR}/valpo.db"
 }
 
 systemd_available() {

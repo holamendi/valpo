@@ -19,6 +19,7 @@ valpo project logs PROJECT
 valpo service list [PROJECT]
 valpo service create PROJECT/NAME --type TYPE
 valpo service show SERVICE
+valpo service update SERVICE
 valpo service delete SERVICE --force
 valpo service deploy SERVICE
 valpo service logs SERVICE
@@ -58,9 +59,27 @@ valpo service create acme/web --type web --port 3000
 
 `command` is valid for `web` and `worker`. `port` and `healthcheck-path` are valid only for `web`. `version` is valid only for `postgres` and `redis`. Incompatible options are rejected rather than ignored. Managed service images are selected by Valpo and cannot be overridden.
 
+## Source-Backed Services
+
+A GitHub-backed app service can be created and deployed without `valpo.toml`:
+
+```bash
+valpo project create acme
+valpo service create acme/web   --type web   --source github:acme/backend   --deploy
+```
+
+`--ref` defaults to remote `HEAD`, `--dockerfile` defaults to `Dockerfile`, and `--context` defaults to `.`. The repository, ref, Dockerfile, and context are validated before any service configuration is created. Use `service update` to persist source, build, command, health-check, or port changes; `--deploy` validates, applies, and deploys the update as one operation.
+
+```bash
+valpo service update acme/web --ref release --deploy
+valpo service update acme/web --clear-command --clear-healthcheck --clear-port
+```
+
+An omitted web port is resolved after the image is available: explicit configuration wins, then a sole TCP `EXPOSE`, then port `3000` for a source image with no exposed port. Ambiguous images and registry images without exactly one exposed TCP port require `--port`.
+
 ## Deployments
 
-Deploy an app service's configured GitHub source at its manifest ref, or override it with a branch, tag, or commit SHA:
+Deploy an app service's configured GitHub source, or override it once with a branch, tag, or commit SHA:
 
 ```bash
 valpo service deploy acme/web

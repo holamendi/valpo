@@ -76,3 +76,11 @@ packaging/vps-smoke-test.sh root@162.55.43.108 apps.valpo.dev --reboot
 ```
 
 By default the smoke test copies the current checkout to `/tmp/valpo-src`, reinstalls with `--skip-deps`, deploys `nginx:alpine`, verifies HTTPS, releases, logs, optional reboot recovery, and then deletes the project. Use `--full-install` for a fresh Ubuntu host that still needs dependencies.
+
+Use the source smoke test on a host whose GitHub PAT is already configured:
+
+```bash
+packaging/vps-source-smoke-test.sh root@162.55.43.108 apps.valpo.dev
+```
+
+It installs the current checkout, creates a unique project without a manifest, and deploys `holamendi/smol-roda` while omitting ref, Dockerfile, context, and port. It verifies the resolved commit, port `3000`, injected `PORT`, HTTPS, and release metadata, then removes only the generated project/runtime resources. The script checks the GitHub credential file digest and `auth status github` before and after; it never logs out or deletes the stored PAT. Use `--repository OWNER/REPO` for another repository or `--skip-install` to test the already-installed version.

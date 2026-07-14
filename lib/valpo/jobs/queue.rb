@@ -10,6 +10,7 @@ module Valpo
       PROJECT_OPERATION_TYPES = %w[
         delete_project
         apply_project_manifest
+        create_source_service
       ].freeze
       SERVICE_OPERATION_TYPES = %w[
         deploy_registry_image
@@ -21,6 +22,7 @@ module Valpo
         unbind_service
         stop_service
         restart_service
+        update_app_service
         delete_service
       ].freeze
 

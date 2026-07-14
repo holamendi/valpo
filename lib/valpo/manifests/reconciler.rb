@@ -131,7 +131,7 @@ module Valpo
           source = Valpo::Source.where(project_id: project.id, name: name).first
           attributes = {
             provider: config.fetch("provider"), repository: config.fetch("repository"), ref: config.fetch("ref"),
-            auto_deploy: config.fetch("auto_deploy")
+            auto_deploy: config.fetch("auto_deploy"), owner_service_id: nil
           }
           if source
             connection_changed = %i[provider repository ref].any? { |key| source[key] != attributes.fetch(key) }
@@ -150,7 +150,7 @@ module Valpo
           build = Valpo::BuildTarget.where(project_id: project.id, name: name).first
           attributes = {
             source_id: sources.fetch(config.fetch("source")).id,
-            dockerfile: config.fetch("dockerfile"), context: config.fetch("context")
+            dockerfile: config.fetch("dockerfile"), context: config.fetch("context"), owner_service_id: nil
           }
           if build
             build.update(attributes)

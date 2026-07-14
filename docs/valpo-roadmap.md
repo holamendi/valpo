@@ -145,9 +145,13 @@ Goal: connect repositories and build/deploy on demand or webhook push.
 Bootstrap implemented:
 
 - CLI-managed, file-backed fine-grained PAT authentication for GitHub HTTPS fetches.
+- Manifest-free source service creation and source/build/runtime updates through the public CLI.
+- Mandatory repository/ref/path preflight with exact commit resolution before configuration changes.
+- Service-owned source/build definitions, with detachment from shared manifest definitions on CLI updates.
 - Manual deploy from the configured branch or an explicit branch, tag, or commit SHA.
 - Dockerfile build logs, commit-based image tags, and git-backed releases.
-- Failed fetches/builds leave an active release untouched.
+- Automatic web-port resolution from explicit configuration, image `EXPOSE`, or the source-build port-3000 fallback.
+- Failed fetches leave configuration untouched; failed builds and health checks record failed releases and leave an active release untouched.
 
 Remaining deliverables:
 

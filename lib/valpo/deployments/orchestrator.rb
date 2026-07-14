@@ -8,6 +8,7 @@ module Valpo
         docker: Valpo::Docker::Client.new,
         caddy: Valpo::Caddy::Client.new(config_path: config.caddy_config_path, reload_config_path: config.caddy_reload_config_path),
         health_checker: HealthChecker.new,
+        port_resolver: PortResolver.new,
         service_orchestrator: nil,
         sleeper: Kernel
       )
@@ -15,6 +16,7 @@ module Valpo
         @docker = docker
         @caddy = caddy
         @health_checker = health_checker
+        @port_resolver = port_resolver
         @service_orchestrator = service_orchestrator
         @sleeper = sleeper
       end
@@ -110,6 +112,32 @@ module Valpo
         raise
       end
 
+      def reconfigure_service(service_id:, queue:, job_id:)
+        runtime = runtime_for(queue: queue, job_id: job_id)
+        service = find_app_service(service_id)
+        active = Valpo::Release.active_for_service(service.id)
+        raise Valpo::ValidationError, "No active release is available to reconfigure" unless active
+
+        app_config = Valpo::AppServiceConfig[service.id]
+        previous = active.values.slice(:internal_port, :healthcheck_path)
+        image_metadata = if service.web? && app_config.internal_port.nil?
+          runtime.inspect_image_metadata(active.artifact_ref || active.source_ref)
+        else
+          Valpo::Deployments::ImageMetadata.new(digest: active.image_digest, exposed_tcp_ports: [])
+        end
+        port = port_resolver.resolve(
+          service: service,
+          explicit_port: app_config.internal_port,
+          source_type: active.source_type,
+          image_metadata: image_metadata
+        )
+        active.update(internal_port: port, healthcheck_path: app_config.healthcheck_path)
+        restart_service(service_id: service.id, queue: queue, job_id: job_id)
+      rescue
+        active&.update(previous) if active && previous
+        raise
+      end
+
       def delete_app_service(service_id:, force:, queue:, job_id:)
         raise Valpo::ValidationError, "force=true is required to delete a service" unless force
 
@@ -164,14 +192,13 @@ module Valpo
 
       private
 
-      attr_reader :config, :docker, :caddy, :health_checker, :service_orchestrator, :sleeper
+      attr_reader :config, :docker, :caddy, :health_checker, :port_resolver, :service_orchestrator, :sleeper
 
       def deploy_image(service_id:, image:, source_type:, source_ref:, build_target_id:, internal_port:, healthcheck_path:, pull:, queue:, job_id:)
         runtime = runtime_for(queue: queue, job_id: job_id)
         service = find_app_service(service_id)
         app_config = Valpo::AppServiceConfig[service.id]
-        port = internal_port || app_config&.internal_port
-        raise Valpo::ValidationError, "internal_port is required for web services" if service.web? && port.nil?
+        configured_port = internal_port || app_config&.internal_port
 
         old_active = Valpo::Release.active_for_service(service.id)
         release = nil
@@ -184,7 +211,14 @@ module Valpo
         else
           event(queue, job_id, "system", "Deploying built image #{image}")
         end
-        digest = runtime.inspect_image_digest(image)
+        image_metadata = runtime.inspect_image_metadata(image)
+        port = port_resolver.resolve(
+          service: service,
+          explicit_port: configured_port,
+          source_type: source_type,
+          image_metadata: image_metadata
+        )
+        digest = image_metadata.digest
         release = Valpo::Release.create(
           service_id: service.id,
           build_target_id: build_target_id || app_config&.build_target_id,

@@ -88,7 +88,29 @@ valpo service deploy acme/web
 valpo service deploy acme/web --ref feature/candidate
 ```
 
-Valpo fetches into a temporary checkout, builds the configured Dockerfile/context, tags the local image by project, build target, and commit, and records the exact commit on the release. The PAT is supplied to Git via an askpass environment and is never stored in the manifest, SQLite, API requests, job payloads, Git remotes, logs, or process arguments.
+A manifest is optional for a service owned by one CLI workflow. The equivalent manifest-free flow is:
+
+```bash
+valpo project create acme
+valpo service create acme/web \
+  --type web \
+  --source github:acme/backend \
+  --deploy
+```
+
+An omitted ref resolves remote `HEAD`; Dockerfile and context default to `Dockerfile` and `.`. Every source-backed create performs an authenticated shallow checkout, resolves an exact commit, and verifies that both build paths exist and stay inside the checkout before creating any records. `service update` performs the same preflight before source or build changes are committed:
+
+```bash
+valpo service update acme/web --ref release --deploy
+valpo service update acme/web --dockerfile ops/Dockerfile --context .
+valpo service update acme/web --clear-port
+```
+
+CLI-created source and build definitions are private to that service. Manifest definitions remain project-owned and shareable; updating a manifest-backed service through the CLI detaches the service into private definitions instead of mutating shared manifest records.
+
+For web services, an explicit configured or deployment port wins. Otherwise Valpo uses the image's sole TCP `EXPOSE` port. Source images with no exposed TCP port fall back to `3000`; ambiguous source images and registry images without exactly one exposed TCP port require `--port`. Every web container receives `PORT` with the resolved value, and the release stores that value. Worker services receive no platform port.
+
+Valpo fetches into a temporary checkout, builds the configured Dockerfile/context, tags the local image by project, build target, and commit, and records the exact commit on the release. A create-with-deploy reuses the validated checkout rather than fetching twice. The PAT is supplied to Git via an askpass environment and is never stored in the manifest, SQLite, API requests, job payloads, Git remotes, logs, or process arguments.
 
 This bootstrap has deliberate limits: one server-wide token, GitHub.com only, manual deploys only, and shallow single-ref checkouts without Git submodule or Git LFS setup. Fine-grained PATs are also tied to one resource owner, so this is suitable for an initial single-owner server but not the final multi-owner credential model. GitHub App installation tokens remain the Phase 3A destination.
 

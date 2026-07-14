@@ -66,6 +66,15 @@ module Valpo
         raise UsageError, "Service name must be PROJECT/NAME"
       end
 
+      def parse_source_spec(value)
+        provider, repository = value.to_s.split(":", 2)
+        if provider.to_s.empty? || repository.to_s.empty?
+          raise UsageError, "--source must use PROVIDER:OWNER/REPOSITORY"
+        end
+
+        {"provider" => provider.downcase, "repository" => repository}
+      end
+
       def segment(value)
         URI.encode_www_form_component(value.to_s)
       end

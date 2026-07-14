@@ -7,6 +7,7 @@ Wants=network-online.target
 Type=oneshot
 User=valpo
 Group=valpo
+UMask=0077
 WorkingDirectory=/opt/valpo
 Environment=VALPO_ENV=production
 Environment=VALPO_CONFIG=/etc/valpo/valpo.yml

@@ -7,6 +7,7 @@ module Valpo
   class BuildTarget < Sequel::Model(:build_targets)
     many_to_one :project
     many_to_one :source
+    many_to_one :owner_service, class: "Valpo::Service", key: :owner_service_id
 
     def before_validation
       self.dockerfile ||= "Dockerfile"
@@ -30,6 +31,8 @@ module Valpo
     def validate
       super
       errors.add(:project_id, "is required") if project_id.nil? || project_id.to_s.empty?
+      owner = Valpo::Service[owner_service_id] if owner_service_id
+      errors.add(:owner_service_id, "must reference an app service in the same project") if owner && (!owner.app? || owner.project_id != project_id)
       errors.add(:source_id, "is required") if source_id.nil? || source_id.to_s.empty?
       source = Valpo::Source[source_id] if source_id
       errors.add(:source_id, "must belong to the same project") if source && source.project_id != project_id

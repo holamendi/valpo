@@ -52,7 +52,16 @@ module Valpo
         }
         if value["app"]
           fields["command"] = Array(value.dig("app", "command")).join(" ")
+          source = value.dig("app", "source")
+          build = value.dig("app", "build")
+          fields["source"] = "#{source["provider"]}:#{source["repository"]}" if source
+          fields["ref"] = source["ref"] if source
+          fields["source status"] = source["status"] if source
+          fields["dockerfile"] = build["dockerfile"] if build
+          fields["context"] = build["context"] if build
+          fields["port policy"] = value.dig("app", "port_mode")
           fields["port"] = value.dig("app", "internal_port")
+          fields["active port"] = value.dig("app", "resolved_internal_port")
           fields["healthcheck"] = value.dig("app", "healthcheck_path")
         elsif value["managed"]
           fields["version"] = value.dig("managed", "version")

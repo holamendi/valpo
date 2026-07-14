@@ -28,7 +28,16 @@ module Valpo
         output[:reference] = "#{record.project.name}/#{record.name}"
         if record.app?
           config = Valpo::AppServiceConfig[record.id]
-          output[:app] = fields(config, :build_target_id, :internal_port, :healthcheck_path).merge(command: config.command)
+          build = config.build_target
+          source = build&.source
+          active_release = Valpo::Release.active_for_service(record.id)
+          output[:app] = fields(config, :build_target_id, :internal_port, :healthcheck_path).merge(
+            command: config.command,
+            port_mode: config.internal_port ? "explicit" : "automatic",
+            resolved_internal_port: active_release&.internal_port,
+            source: source && source(source),
+            build: build && build_target(build)
+          )
         else
           config = Valpo::ManagedServiceConfig[record.id]
           output[:managed] = fields(

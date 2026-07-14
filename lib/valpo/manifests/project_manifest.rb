@@ -65,7 +65,7 @@ module Valpo
           [name, {
             "provider" => provider,
             "repository" => repository,
-            "ref" => optional_string(config, "ref") || "main",
+            "ref" => optional_string(config, "ref") || "HEAD",
             "auto_deploy" => boolean(config, "auto_deploy", false)
           }]
         end

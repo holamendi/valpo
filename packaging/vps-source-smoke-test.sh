@@ -1,0 +1,231 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage: packaging/vps-source-smoke-test.sh USER@HOST DOMAIN_SUFFIX [options]
+
+Installs the current checkout and tests a manifest-free GitHub source deployment
+in a unique project. The test omits ref, Dockerfile, context, and port so it
+exercises remote HEAD and automatic source-build defaults.
+
+The existing GitHub PAT must already be configured. Its file digest and
+authentication status are checked before and after the test; the script never
+logs out of GitHub or removes the credential.
+
+Options:
+  --repository OWNER/REPO  Repository to deploy. Default: holamendi/smol-roda.
+  --source PATH            Source checkout to copy. Default: repository root.
+  --remote-source PATH     Remote source path. Default: /tmp/valpo-source-src.
+  --full-install           Install system dependencies as well as Valpo.
+  --skip-install           Test the already-installed Valpo version.
+  --project NAME           Test project. Default: valpo-source-<UTC timestamp>.
+  -h, --help               Show this help.
+USAGE
+}
+
+if [[ $# -eq 1 && ( "$1" == "-h" || "$1" == "--help" ) ]]; then
+  usage
+  exit 0
+fi
+
+if [[ $# -lt 2 ]]; then
+  usage >&2
+  exit 64
+fi
+
+ssh_target="$1"
+domain_suffix="$2"
+shift 2
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source_dir="$repo_root"
+remote_source="/tmp/valpo-source-src"
+repository="holamendi/smol-roda"
+install_mode="skip-deps"
+project="valpo-source-$(date -u +%Y%m%d%H%M%S)"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --repository)
+      repository="$2"
+      shift 2
+      ;;
+    --source)
+      source_dir="$2"
+      shift 2
+      ;;
+    --remote-source)
+      remote_source="$2"
+      shift 2
+      ;;
+    --full-install)
+      install_mode="full"
+      shift
+      ;;
+    --skip-install)
+      install_mode="none"
+      shift
+      ;;
+    --project)
+      project="$2"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 64
+      ;;
+  esac
+done
+
+if [[ ! "$repository" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+  echo "Repository must use OWNER/REPO syntax" >&2
+  exit 64
+fi
+if [[ ! "$project" =~ ^[a-z][a-z0-9-]*$ ]]; then
+  echo "Project must start with a lowercase letter and contain lowercase letters, digits, or hyphens" >&2
+  exit 64
+fi
+
+domain="${project}.${domain_suffix}"
+service="${project}/web"
+service_id=""
+project_id=""
+token_digest_before=""
+cleanup_started=0
+
+remote() {
+  ssh "$ssh_target" "$1"
+}
+
+wait_for_https() {
+  local url="$1"
+  local attempts="${2:-60}"
+
+  for _ in $(seq 1 "$attempts"); do
+    if curl -fsSL "$url" >/dev/null; then
+      return 0
+    fi
+    sleep 2
+  done
+
+  echo "Timed out waiting for ${url}" >&2
+  return 1
+}
+
+id_from_json() {
+  sed -n 's/.*"id": "\([^"]*\)".*/\1/p' | head -n 1
+}
+
+assert_github_auth() {
+  remote "valpo auth status github --json" | grep -q '"authenticated":true'
+}
+
+credential_digest() {
+  remote "test -f /var/lib/valpo/secrets/github-token && sha256sum /var/lib/valpo/secrets/github-token | cut -d ' ' -f 1"
+}
+
+cleanup() {
+  local exit_code=$?
+  local cleanup_failed=0
+  trap - EXIT
+
+  if [[ "$cleanup_started" -eq 1 ]]; then
+    exit "$exit_code"
+  fi
+  cleanup_started=1
+
+  echo "[source-smoke] cleaning up ${project}"
+  if remote "valpo service show '${service}' >/dev/null 2>&1"; then
+    remote "valpo service delete '${service}' --force --timeout 180" || cleanup_failed=1
+  fi
+  if remote "valpo project show '${project}' >/dev/null 2>&1"; then
+    remote "valpo project delete '${project}' --timeout 180" || cleanup_failed=1
+  fi
+  if [[ -n "$project_id" ]] && remote "docker ps -a --filter 'label=valpo.project_id=${project_id}' --format '{{.Names}}' | grep ."; then
+    echo "[source-smoke] containers remain for ${project_id}" >&2
+    cleanup_failed=1
+  fi
+  if remote "grep -F '${domain}' /var/lib/valpo/caddy/valpo.caddy"; then
+    echo "[source-smoke] route remains for ${domain}" >&2
+    cleanup_failed=1
+  fi
+  if ! assert_github_auth; then
+    echo "[source-smoke] GitHub authentication is no longer configured" >&2
+    cleanup_failed=1
+  elif [[ "$(credential_digest)" != "$token_digest_before" ]]; then
+    echo "[source-smoke] GitHub credential changed during the test" >&2
+    cleanup_failed=1
+  fi
+
+  if [[ "$cleanup_failed" -ne 0 ]]; then
+    exit 1
+  fi
+  exit "$exit_code"
+}
+trap cleanup EXIT
+
+echo "[source-smoke] target=${ssh_target}"
+echo "[source-smoke] project=${project}"
+echo "[source-smoke] repository=${repository}"
+echo "[source-smoke] domain=${domain}"
+
+assert_github_auth
+token_digest_before="$(credential_digest)"
+
+if [[ "$install_mode" != "none" ]]; then
+  echo "[source-smoke] copying and installing current checkout"
+  rsync -az --delete \
+    --exclude .git \
+    --exclude vendor/bundle \
+    --exclude tmp \
+    "${source_dir}/" "${ssh_target}:${remote_source}/"
+  install_args="--source '${remote_source}'"
+  if [[ "$install_mode" == "skip-deps" ]]; then
+    install_args="${install_args} --skip-deps"
+  fi
+  remote "'${remote_source}/packaging/install.sh' ${install_args}"
+fi
+
+remote "systemctl is-active docker caddy valpo-api valpo-worker"
+remote "curl -fsS http://127.0.0.1:7092/health"
+assert_github_auth
+
+echo "[source-smoke] creating manifest-free source service"
+remote "valpo project create '${project}'"
+project_json="$(remote "valpo project show '${project}' --json")"
+project_id="$(printf '%s\n' "$project_json" | id_from_json)"
+test -n "$project_id"
+
+remote "valpo service create '${service}' --type web --source 'github:${repository}' --deploy --timeout 600"
+service_json="$(remote "valpo service show '${service}' --json")"
+printf '%s\n' "$service_json"
+service_id="$(printf '%s\n' "$service_json" | id_from_json)"
+test -n "$service_id"
+printf '%s\n' "$service_json" | grep -q '"repository": "'"$repository"'"'
+printf '%s\n' "$service_json" | grep -q '"ref": "HEAD"'
+printf '%s\n' "$service_json" | grep -q '"dockerfile": "Dockerfile"'
+printf '%s\n' "$service_json" | grep -q '"context": "."'
+printf '%s\n' "$service_json" | grep -q '"port_mode": "automatic"'
+printf '%s\n' "$service_json" | grep -q '"resolved_internal_port": 3000'
+
+release_json="$(remote "valpo release list '${service}' --json")"
+printf '%s\n' "$release_json"
+printf '%s\n' "$release_json" | grep -q '"status": "active"'
+printf '%s\n' "$release_json" | grep -Eq '"source_ref": "[0-9a-f]{40}"'
+printf '%s\n' "$release_json" | grep -q '"internal_port": 3000'
+
+echo "[source-smoke] adding and verifying HTTPS domain"
+remote "valpo domain add '${service}' '${domain}' --timeout 180"
+wait_for_https "https://${domain}/"
+
+echo "[source-smoke] verifying runtime metadata"
+remote "container=\$(docker ps --filter 'label=valpo.service_id=${service_id}' --format '{{.Names}}' | head -n 1); test -n \"\$container\"; docker inspect \"\$container\" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -q '^PORT=3000$'"
+assert_github_auth
+
+echo "[source-smoke] ok"

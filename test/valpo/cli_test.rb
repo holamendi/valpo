@@ -78,6 +78,73 @@ class ValpoCLITest < Minitest::Test
     assert_equal 1, client.requests.length
   end
 
+  def test_create_source_service_sends_defaults_and_deploy_flag
+    queued = {"id" => job_id, "status" => "queued"}
+    client = FakeAPIClient.new(queued)
+    status, stdout, stderr = run_cli(
+      client,
+      %w[service create acme/web --type web --source github:holamendi/smol-roda --deploy --no-wait --json]
+    )
+
+    assert_equal 0, status
+    assert_equal job_id, JSON.parse(stdout).fetch("id")
+    assert_empty stderr
+    payload = client.requests.first.fetch(:payload)
+    assert_equal({"provider" => "github", "repository" => "holamendi/smol-roda", "ref" => "HEAD"}, payload.fetch("source"))
+    assert_equal({"dockerfile" => "Dockerfile", "context" => "."}, payload.fetch("build"))
+    assert_equal true, payload.fetch("deploy")
+    refute payload.key?("internal_port")
+  end
+
+  def test_create_source_service_waits_and_emits_service_and_job_as_one_document
+    queued = {"id" => job_id, "status" => "queued"}
+    succeeded = {"id" => job_id, "status" => "succeeded", "progress" => 100}
+    service = {"id" => service_id, "reference" => "acme/web", "kind" => "web", "status" => "created", "app" => {}, "dependencies" => []}
+    client = FakeAPIClient.new([queued, [], queued, [], succeeded, [], service])
+
+    status, stdout, stderr = run_cli(
+      client,
+      %w[service create acme/web --type web --source github:acme/web --json]
+    )
+
+    assert_equal 0, status
+    output = JSON.parse(stdout)
+    assert_equal service_id, output.dig("service", "id")
+    assert_equal "succeeded", output.dig("job", "status")
+    assert_includes client.requests.map { |request| request.fetch(:path) }, "/projects/acme/services/web"
+    assert_empty stderr
+  end
+
+  def test_update_service_sends_partial_source_and_clear_options
+    queued = {"id" => job_id, "status" => "queued"}
+    client = FakeAPIClient.new([{"id" => service_id}, queued])
+    status, stdout, = run_cli(
+      client,
+      %w[service update acme/web --ref release --clear-port --clear-healthcheck --deploy --no-wait --json]
+    )
+
+    assert_equal 0, status
+    assert_equal job_id, JSON.parse(stdout).fetch("id")
+    request = client.requests.last
+    assert_equal :patch, request.fetch(:method)
+    assert_equal({"ref" => "release"}, request.dig(:payload, "source"))
+    assert_nil request.dig(:payload, "internal_port")
+    assert_nil request.dig(:payload, "healthcheck_path")
+    assert_equal true, request.dig(:payload, "deploy")
+  end
+
+  def test_source_options_require_a_valid_source_spec
+    client = FakeAPIClient.new([])
+    status, _stdout, stderr = run_cli(client, %w[service create acme/web --type web --source wat])
+    assert_equal 2, status
+    assert_includes stderr, "PROVIDER:OWNER/REPOSITORY"
+
+    status, _stdout, stderr = run_cli(client, %w[service create acme/web --type web --ref main])
+    assert_equal 2, status
+    assert_includes stderr, "require --source"
+    assert_empty client.requests
+  end
+
   def test_service_reference_uses_exact_lookup_and_is_cached
     database_id = "svc_01900000000070008000000000000001"
     client = FakeAPIClient.new([
@@ -258,6 +325,36 @@ class ValpoCLITest < Minitest::Test
     assert_equal 0, status
     assert_match(/^NAME\s+SERVICES\s+SOURCES\s+UPDATED/, stdout)
     assert_includes stdout, "acme"
+    assert_empty stderr
+  end
+
+  def test_human_service_show_includes_source_build_and_resolved_port
+    service = {
+      "id" => service_id,
+      "reference" => "acme/web",
+      "kind" => "web",
+      "status" => "running",
+      "app" => {
+        "command" => [],
+        "internal_port" => nil,
+        "healthcheck_path" => nil,
+        "port_mode" => "automatic",
+        "resolved_internal_port" => 3000,
+        "source" => {"provider" => "github", "repository" => "acme/backend", "ref" => "HEAD", "status" => "connected"},
+        "build" => {"dockerfile" => "Dockerfile", "context" => "."}
+      },
+      "dependencies" => [],
+      "created_at" => "2026-07-14T00:00:00Z"
+    }
+
+    status, stdout, stderr = run_cli(FakeAPIClient.new([{"id" => service_id}, service]), %w[service show acme/web])
+
+    assert_equal 0, status
+    assert_includes stdout, "github:acme/backend"
+    assert_includes stdout, "HEAD"
+    assert_includes stdout, "Dockerfile"
+    assert_match(/port policy\s+automatic/, stdout)
+    assert_match(/active port\s+3000/, stdout)
     assert_empty stderr
   end
 

@@ -6,6 +6,7 @@ class ValpoProjectManifestTest < Minitest::Test
   def test_normalizes_sources_builds_services_and_dependencies
     manifest = Valpo::Manifests::ProjectManifest.parse(full_manifest)
     assert_equal "acme/backend", manifest.dig("sources", "backend", "repository")
+    assert_equal "HEAD", manifest.dig("sources", "backend", "ref")
     assert_equal "Dockerfile", manifest.dig("builds", "backend", "dockerfile")
     assert_equal %w[cache database], manifest.dig("services", "web", "depends_on")
     assert_equal "18", manifest.dig("services", "database", "version")

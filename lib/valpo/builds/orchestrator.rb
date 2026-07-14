@@ -1,16 +1,12 @@
 # frozen_string_literal: true
 
-require "tmpdir"
-
 module Valpo
   module Builds
     class Orchestrator
-      COMMIT_PATTERN = /\A[0-9a-f]{40,64}\z/i
-
-      def initialize(docker:, source_fetcher:, deployment_orchestrator:)
+      def initialize(docker:, source_fetcher:, deployment_orchestrator:, preflight: nil)
         @docker = docker
-        @source_fetcher = source_fetcher
         @deployment_orchestrator = deployment_orchestrator
+        @preflight = preflight || Valpo::Sources::Preflight.new(fetcher: source_fetcher)
       end
 
       def deploy_source(service_id:, ref:, internal_port:, healthcheck_path:, queue:, job_id:)
@@ -21,31 +17,72 @@ module Valpo
 
         source = build_target.source
         selected_ref = blank_to_nil(ref) || source.ref
-        Dir.mktmpdir("valpo-build-") do |checkout|
-          event(queue, job_id, "system", "Fetching #{source.repository}@#{selected_ref}")
-          commit = fetch(source, checkout, selected_ref)
-          dockerfile = checked_path(checkout, build_target.dockerfile, type: :file)
-          context = checked_path(checkout, build_target.context, type: :directory)
-          image = image_tag(service.project, build_target, commit)
-
-          event(queue, job_id, "system", "Building #{image}")
-          execute_build(dockerfile: dockerfile, context: context, image: image, queue: queue, job_id: job_id)
-          deployment_orchestrator.deploy_built_image(
+        preflight_succeeded = false
+        event(queue, job_id, "system", "Fetching #{source.repository}@#{selected_ref}")
+        preflight.with_checkout(
+          provider: source.provider,
+          repository: source.repository,
+          ref: selected_ref,
+          dockerfile: build_target.dockerfile,
+          context: build_target.context
+        ) do |checkout|
+          preflight_succeeded = true
+          source.update(status: "connected") unless source.status == "connected"
+          deploy_checkout(
             service_id: service.id,
-            image: image,
-            source_ref: commit,
-            build_target_id: build_target.id,
+            build_target: build_target,
+            checkout: checkout,
             internal_port: internal_port,
             healthcheck_path: healthcheck_path,
             queue: queue,
             job_id: job_id
           )
         end
+      rescue
+        source&.update(status: "failed") if !preflight_succeeded && source&.status != "failed"
+        raise
+      end
+
+      def deploy_checkout(service_id:, build_target:, checkout:, internal_port:, healthcheck_path:, queue:, job_id:)
+        service = find_app_service(service_id)
+        image = image_tag(service.project, build_target, checkout.commit)
+        event(queue, job_id, "system", "Building #{image}")
+        build_succeeded = false
+        execute_build(
+          dockerfile: checkout.dockerfile,
+          context: checkout.context,
+          image: image,
+          queue: queue,
+          job_id: job_id
+        )
+        build_succeeded = true
+        deployment_orchestrator.deploy_built_image(
+          service_id: service.id,
+          image: image,
+          source_ref: checkout.commit,
+          build_target_id: build_target.id,
+          internal_port: internal_port,
+          healthcheck_path: healthcheck_path,
+          queue: queue,
+          job_id: job_id
+        )
+      rescue
+        unless build_succeeded
+          record_failed_build(
+            service: service,
+            build_target: build_target,
+            checkout: checkout,
+            image: image,
+            internal_port: internal_port,
+            healthcheck_path: healthcheck_path
+          )
+        end
+        raise
       end
 
       private
 
-      attr_reader :docker, :source_fetcher, :deployment_orchestrator
+      attr_reader :docker, :deployment_orchestrator, :preflight
 
       def find_app_service(service_id)
         service = Valpo::Service[service_id]
@@ -53,32 +90,6 @@ module Valpo
         raise Valpo::ValidationError, "Operation requires an app service" unless service.app?
 
         service
-      end
-
-      def fetch(source, checkout, ref)
-        commit = source_fetcher.checkout(source: source, destination: checkout, ref: ref).to_s
-        unless commit.match?(COMMIT_PATTERN)
-          raise Valpo::ValidationError, "Git revision lookup returned an invalid commit SHA"
-        end
-        source.update(status: "connected") unless source.status == "connected"
-        commit.downcase
-      rescue
-        source.update(status: "failed") unless source.status == "failed"
-        raise
-      end
-
-      def checked_path(checkout, relative_path, type:)
-        root = File.realpath(checkout)
-        path = File.realpath(File.join(root, relative_path))
-        unless path == root || path.start_with?("#{root}#{File::SEPARATOR}")
-          raise Valpo::ValidationError, "Build path must stay within the source checkout: #{relative_path}"
-        end
-        valid_type = (type == :file) ? File.file?(path) : File.directory?(path)
-        raise Valpo::ValidationError, "Build #{type} does not exist: #{relative_path}" unless valid_type
-
-        path
-      rescue Errno::ENOENT, Errno::EACCES
-        raise Valpo::ValidationError, "Build #{type} does not exist: #{relative_path}"
       end
 
       def image_tag(project, build_target, commit)
@@ -94,6 +105,22 @@ module Valpo
         detail = result.fetch(:stdout).to_s.strip if detail.empty?
         detail = "exit #{result.fetch(:status)}" if detail.empty?
         raise Valpo::ValidationError, "Docker build failed: #{detail}"
+      end
+
+      def record_failed_build(service:, build_target:, checkout:, image:, internal_port:, healthcheck_path:)
+        app_config = Valpo::AppServiceConfig[service.id]
+        old_active = Valpo::Release.active_for_service(service.id)
+        Valpo::Release.create(
+          service_id: service.id,
+          build_target_id: build_target.id,
+          source_type: "git",
+          source_ref: checkout.commit,
+          artifact_ref: image,
+          status: "failed",
+          internal_port: internal_port || app_config&.internal_port,
+          healthcheck_path: blank_to_nil(healthcheck_path) || app_config&.healthcheck_path
+        )
+        service.update(status: old_active ? "running" : "failed")
       end
 
       def emit_result(result, queue:, job_id:)

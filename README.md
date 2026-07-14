@@ -6,7 +6,7 @@ The current intent is to make one appropriately sized server feel like a tastefu
 
 ## Current Status
 
-Phase 2B is implemented and Phase 3A has started. A Valpo project can contain multiple app and managed services, apply a strict `valpo.toml` manifest, deploy registry images or PAT-authenticated GitHub Dockerfile builds, route web services through Caddy, and provision private Postgres and Redis dependencies. The installed CLI uses resource-first commands, synchronous operations by default, human-readable output, and explicit `--json` output for automation.
+Phase 2B is implemented and the PAT-based bootstrap of Phase 3A is available. A Valpo project can contain multiple app and managed services, apply a strict `valpo.toml` manifest, or create a PAT-authenticated GitHub Dockerfile service entirely through the CLI. Source creation and updates validate the repository, ref, Dockerfile, and context before changing configuration. Web ports can be explicit or resolved from image metadata, with a port-3000 fallback for source images that declare none. Valpo routes web services through Caddy and provisions private Postgres and Redis dependencies.
 
 This pre-release schema is a clean break from the earlier project-as-app model. Existing development installations must back up and reset their SQLite database before upgrading; Valpo detects the retired schema and refuses to discard it automatically.
 
@@ -68,6 +68,18 @@ mise exec -- bundle exec exe/valpo service create hello/web --type web --port 30
 mise exec -- bundle exec exe/valpo service deploy hello/web --image nginx:alpine
 mise exec -- bundle exec exe/valpo service list hello
 mise exec -- bundle exec exe/valpo system status
+```
+
+After configuring GitHub authentication, a source-backed service needs no manifest and usually needs no build or port flags:
+
+```bash
+mise exec -- bundle exec exe/valpo auth login github
+mise exec -- bundle exec exe/valpo project create smol-roda
+mise exec -- bundle exec exe/valpo service create smol-roda/web \
+  --type web \
+  --source github:holamendi/smol-roda \
+  --deploy
+mise exec -- bundle exec exe/valpo domain add smol-roda/web smol-roda.apps.example.com
 ```
 
 ## Documents

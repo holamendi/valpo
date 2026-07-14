@@ -18,6 +18,8 @@ module Valpo
     one_to_many :dependents, class: "Valpo::ServiceDependency", key: :dependency_service_id
     one_to_many :releases
     one_to_many :domains
+    one_to_one :owned_source, class: "Valpo::Source", key: :owner_service_id
+    one_to_one :owned_build_target, class: "Valpo::BuildTarget", key: :owner_service_id
 
     def self.find_by_id(id)
       where(id: id).first

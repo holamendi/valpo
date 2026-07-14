@@ -52,7 +52,32 @@ class ValpoBuildsOrchestratorTest < Minitest::Test
     assert_equal "connected", source.refresh.status
     assert_equal "running", service.refresh.status
     assert_equal "active", active.refresh.status
+    failed = Valpo::Release.where(service_id: service.id, status: "failed").first
+    assert failed
+    assert_equal COMMIT, failed.source_ref
     assert_nil deployment.arguments
+  end
+
+  def test_failed_initial_build_records_a_failed_release_without_activating_it
+    service, = configured_service
+
+    assert_raises Valpo::ValidationError do
+      orchestrator(fetcher: FakeFetcher.new, docker: FakeDocker.new(success: false), deployment: FakeDeployment.new).deploy_source(
+        service_id: service.id,
+        ref: nil,
+        internal_port: nil,
+        healthcheck_path: nil,
+        queue: FakeQueue.new,
+        job_id: "job_test"
+      )
+    end
+
+    assert_equal "failed", service.refresh.status
+    assert_nil Valpo::Release.active_for_service(service.id)
+    assert_equal 1, Valpo::Release.where(service_id: service.id).count
+    failed = Valpo::Release.where(service_id: service.id).first
+    assert_equal "failed", failed.status
+    assert_equal COMMIT, failed.source_ref
   end
 
   private

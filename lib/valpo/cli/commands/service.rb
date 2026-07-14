@@ -23,19 +23,32 @@ module Valpo
           option :command, type: :array, desc: "Web/worker command as comma-separated arguments"
           option :port, desc: "Web container port"
           option :healthcheck_path, desc: "Web health check path beginning with /"
+          option :source, desc: "Source as PROVIDER:OWNER/REPOSITORY"
+          option :ref, desc: "Configured branch, tag, commit, or remote HEAD"
+          option :dockerfile, desc: "Dockerfile path within the repository"
+          option :context, desc: "Docker build context within the repository"
+          option :deploy, type: :boolean, default: false, desc: "Deploy after validating and creating the service"
           wait_options
           example [
             "acme/web --type web --port 3000",
+            "acme/web --type web --source github:acme/backend --deploy",
             "acme/worker --type worker --command bundle,exec,sidekiq",
             "acme/database --type postgres --version 18",
             "acme/cache --type redis --version 8"
           ]
 
-          def call(reference:, wait:, timeout:, api_url:, type: nil, version: nil, command: nil, port: nil, healthcheck_path: nil, config: nil, json: false, args: nil, **)
+          def call(reference:, wait:, timeout:, api_url:, type: nil, version: nil, command: nil, port: nil, healthcheck_path: nil, source: nil, ref: nil, dockerfile: nil, context: nil, deploy: false, config: nil, json: false, args: nil, **)
             reject_extra_arguments!(args)
             type = required_option!(type, "--type")
             supplied = {version: version, command: command, port: port, healthcheck_path: healthcheck_path}.compact
             validate_service_options!(type: type, options: supplied)
+            source_options = {ref: ref, dockerfile: dockerfile, context: context}.compact
+            if source.nil? && (!source_options.empty? || deploy)
+              raise UsageError, "--ref, --dockerfile, --context, and --deploy require --source"
+            end
+            if source && !Valpo::Services::Definitions.app_type?(type)
+              raise UsageError, "--source is only valid for web and worker services"
+            end
             project, name = split_service_reference(reference)
             payload = {
               "name" => name,
@@ -45,9 +58,23 @@ module Valpo
               "internal_port" => optional_positive_integer(port, "port"),
               "healthcheck_path" => healthcheck_path
             }.compact
+            if source
+              payload["source"] = parse_source_spec(source).merge("ref" => ref || "HEAD")
+              payload["build"] = {
+                "dockerfile" => dockerfile || "Dockerfile",
+                "context" => context || "."
+              }
+              payload["deploy"] = deploy
+            end
             current = context(api_url: api_url, config: config, json: json)
             response = current.request(:post, "/projects/#{segment(project)}/services", payload)
-            current.presenter.operation(current.finish_operation(response, wait: wait, timeout: timeout))
+            operation = current.finish_operation(response, wait: wait, timeout: timeout)
+            if source && wait
+              service = current.request(:get, "/projects/#{segment(project)}/services/#{segment(name)}")
+              current.presenter.operation({"service" => service, "job" => operation})
+            else
+              current.presenter.operation(operation)
+            end
           end
         end
 
@@ -59,6 +86,57 @@ module Valpo
             reject_extra_arguments!(args)
             current = context(api_url: api_url, config: config, json: json)
             current.presenter.service(current.request(:get, current.service_path(service)))
+          end
+        end
+
+        class Update < BaseCommand
+          desc "Update an app service's source, build, or runtime configuration"
+          argument :service, required: true, desc: "PROJECT/NAME or service ID"
+          option :source, desc: "Source as PROVIDER:OWNER/REPOSITORY"
+          option :ref, desc: "Configured branch, tag, commit, or remote HEAD"
+          option :dockerfile, desc: "Dockerfile path within the repository"
+          option :context, desc: "Docker build context within the repository"
+          option :command, type: :array, desc: "Web/worker command as comma-separated arguments"
+          option :port, desc: "Web container port"
+          option :healthcheck_path, desc: "Web health check path beginning with /"
+          option :clear_command, type: :boolean, default: false, desc: "Use the image's default command"
+          option :clear_healthcheck, type: :boolean, default: false, desc: "Use a TCP readiness check"
+          option :clear_port, type: :boolean, default: false, desc: "Resolve the web port automatically"
+          option :deploy, type: :boolean, default: false, desc: "Deploy after applying the update"
+          wait_options
+          example [
+            "acme/web --ref release --deploy",
+            "acme/web --clear-port"
+          ]
+
+          def call(service:, wait:, timeout:, api_url:, source: nil, ref: nil, dockerfile: nil, context: nil, command: nil, port: nil, healthcheck_path: nil, clear_command: false, clear_healthcheck: false, clear_port: false, deploy: false, config: nil, json: false, args: nil, **)
+            reject_extra_arguments!(args)
+            raise UsageError, "--command and --clear-command cannot be used together" if command && clear_command
+            raise UsageError, "--healthcheck-path and --clear-healthcheck cannot be used together" if healthcheck_path && clear_healthcheck
+            raise UsageError, "--port and --clear-port cannot be used together" if port && clear_port
+
+            payload = {}
+            source_changes = source ? parse_source_spec(source) : {}
+            source_changes["ref"] = ref if ref
+            payload["source"] = source_changes unless source_changes.empty?
+            build_changes = {"dockerfile" => dockerfile, "context" => context}.compact
+            payload["build"] = build_changes unless build_changes.empty?
+            payload["command"] = clear_command ? [] : command if command || clear_command
+            payload["internal_port"] = clear_port ? nil : optional_positive_integer(port, "--port") if port || clear_port
+            payload["healthcheck_path"] = clear_healthcheck ? nil : healthcheck_path if healthcheck_path || clear_healthcheck
+            payload["deploy"] = true if deploy
+            raise UsageError, "At least one service update option is required" if payload.empty?
+
+            current = context(api_url: api_url, config: config, json: json)
+            path = current.service_path(service)
+            response = current.request(:patch, path, payload)
+            operation = current.finish_operation(response, wait: wait, timeout: timeout)
+            if wait
+              updated = current.request(:get, path)
+              current.presenter.operation({"service" => updated, "job" => operation})
+            else
+              current.presenter.operation(operation)
+            end
           end
         end
 

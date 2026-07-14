@@ -25,14 +25,25 @@ module Valpo
         execute_docker(docker.pull_command(image), failure_message: "Docker command failed")
       end
 
-      def inspect_image_digest(image)
+      def inspect_image_metadata(image)
         result = execute_docker(docker.image_inspect_command(image), failure_message: "Docker command failed")
         parsed = JSON.parse(result.fetch(:stdout))
         first = parsed.first || {}
         repo_digest = Array(first["RepoDigests"]).first
-        repo_digest || first["Id"]
-      rescue JSON::ParserError
-        nil
+        exposed_ports = first.dig("Config", "ExposedPorts").to_h.keys.filter_map do |entry|
+          port, protocol = entry.to_s.split("/", 2)
+          Integer(port, exception: false) if protocol == "tcp"
+        end.uniq.sort
+        Valpo::Deployments::ImageMetadata.new(
+          digest: repo_digest || first["Id"],
+          exposed_tcp_ports: exposed_ports
+        )
+      rescue JSON::ParserError => e
+        raise Valpo::ValidationError, "Docker image inspect returned invalid JSON: #{e.message}"
+      end
+
+      def inspect_image_digest(image)
+        inspect_image_metadata(image).digest
       end
 
       def start_release_container(release)
@@ -45,6 +56,8 @@ module Valpo
         app_config = Valpo::AppServiceConfig[release.service_id]
 
         event("system", ["Starting #{container_name}", ("on #{route_target}" if route_target)].compact.join(" "))
+        environment = Valpo::Services::Environment.raw_for_service(service.id)
+        environment = environment.merge("PORT" => release.internal_port.to_s) if service.web?
         result = docker.execute(docker.run_command(
           name: container_name,
           image: image,
@@ -55,7 +68,7 @@ module Valpo
             RELEASE_LABEL => release.id,
             SERVICE_LABEL => service.id
           },
-          env: Valpo::Services::Environment.raw_for_service(service.id),
+          env: environment,
           ports: host_port ? {"127.0.0.1:#{host_port}" => release.internal_port} : {},
           restart_policy: "unless-stopped",
           command_args: app_config&.command || []

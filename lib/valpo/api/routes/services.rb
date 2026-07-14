@@ -142,7 +142,59 @@ module Valpo
 
           r.is do
             r.get { Serializers.service(service) }
-            if r.delete?
+            if r.patch?
+              require_app!(service)
+              payload = parse_json_body
+              validate_keys!(
+                payload,
+                %w[source build command internal_port port healthcheck_path deploy],
+                "service update"
+              )
+              if payload.key?("deploy") && ![true, false].include?(payload["deploy"])
+                raise Valpo::ValidationError, "deploy must be a boolean"
+              end
+
+              runtime = {}
+              if payload.key?("command")
+                command = payload["command"] || []
+                runtime["command"] = Valpo::Services::Catalog.normalize_command(command)
+              end
+              if payload.key?("internal_port") || payload.key?("port")
+                runtime["internal_port"] = optional_port(payload["internal_port"] || payload["port"])
+              end
+              if payload.key?("healthcheck_path")
+                runtime["healthcheck_path"] = optional_healthcheck_path(payload["healthcheck_path"])
+              end
+              Valpo::Services::Definitions.validate_options!(type: service.kind, options: runtime)
+
+              configuration = if payload.key?("source") || payload.key?("build")
+                desired = Valpo::Sources::ServiceConfigurator.new.desired_for(
+                  service: service,
+                  source_changes: payload["source"],
+                  build_changes: payload["build"]
+                )
+                {"source" => desired.fetch(:source), "build" => desired.fetch(:build)}
+              end
+              deploy = payload.fetch("deploy", false)
+              if deploy && !configuration && Valpo::AppServiceConfig[service.id]&.build_target_id.nil?
+                raise Valpo::ValidationError, "Service has no configured build target"
+              end
+              if runtime.empty? && configuration.nil? && !deploy
+                raise Valpo::ValidationError, "At least one service update option is required"
+              end
+
+              response.status = 202
+              Serializers.job(jobs.enqueue_service_operation(
+                "update_app_service",
+                service_id: service.id,
+                payload: {
+                  project_id: service.project_id,
+                  configuration: configuration,
+                  runtime: runtime,
+                  deploy: deploy
+                }
+              ))
+            elsif r.delete?
               raise Valpo::ValidationError, "force=true is required to delete a service" unless truthy_param?(request.params["force"])
               response.status = 202
               Serializers.job(jobs.enqueue_service_operation(

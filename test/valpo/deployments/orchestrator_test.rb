@@ -34,7 +34,44 @@ class ValpoDeploymentsOrchestratorTest < Minitest::Test
     assert_equal "running", app.refresh.status
     assert_equal "127.0.0.1:20000", domain.refresh.route_target
     assert_equal "postgres://example", docker.run_requests.first.fetch(:env).fetch("DATABASE_URL")
+    assert_equal "3000", docker.run_requests.first.fetch(:env).fetch("PORT")
     assert_equal app.id, docker.run_requests.first.fetch(:labels).fetch("valpo.service_id")
+  end
+
+  def test_registry_deploy_infers_one_exposed_port
+    app = create_app_service(port: nil)
+    docker = ValpoTestSupport::FakeDocker.new(exposed_ports: [8080])
+    release = run_job do |queue, job|
+      orchestrator(docker: docker).deploy_registry_image(
+        service_id: app.id,
+        image: "example/app:v1",
+        internal_port: nil,
+        healthcheck_path: nil,
+        queue: queue,
+        job_id: job.id
+      )
+    end
+
+    assert_equal 8080, release.internal_port
+    assert_equal "8080", docker.run_requests.first.fetch(:env).fetch("PORT")
+  end
+
+  def test_built_image_without_exposed_port_uses_3000
+    app = create_app_service(port: nil)
+    release = run_job do |queue, job|
+      orchestrator(docker: ValpoTestSupport::FakeDocker.new).deploy_built_image(
+        service_id: app.id,
+        image: "valpo/hello/web:abc",
+        source_ref: "a" * 40,
+        build_target_id: nil,
+        internal_port: nil,
+        healthcheck_path: nil,
+        queue: queue,
+        job_id: job.id
+      )
+    end
+
+    assert_equal 3000, release.internal_port
   end
 
   def test_worker_deploy_has_no_public_port_or_route

@@ -80,6 +80,36 @@ class ValpoAPIAppTest < Minitest::Test
     assert_equal web.fetch("id"), json.fetch("id")
   end
 
+  def test_source_backed_service_creation_enqueues_validation_without_creating_records
+    project = create_project
+    post_json "/projects/#{project.id}/services",
+      name: "web",
+      type: "web",
+      source: {provider: "github", repository: "acme/backend"},
+      build: {},
+      deploy: true
+
+    assert_equal 202, last_response.status
+    assert_equal "create_source_service", json.fetch("type")
+    assert_equal "HEAD", json.dig("payload", "source", "ref")
+    assert_equal "Dockerfile", json.dig("payload", "build", "dockerfile")
+    assert_equal true, json.dig("payload", "deploy")
+    assert_equal 0, Valpo::Service.where(project_id: project.id).count
+    assert_equal 0, Valpo::Source.where(project_id: project.id).count
+  end
+
+  def test_source_backed_service_creation_rejects_invalid_configuration_before_enqueue
+    project = create_project
+    post_json "/projects/#{project.id}/services",
+      name: "web",
+      type: "web",
+      source: {provider: "github", repository: "https://github.com/acme/backend"}
+
+    assert_equal 422, last_response.status
+    assert_match "owner/repository", json.fetch("message")
+    assert_equal 0, Valpo::Job.count
+  end
+
   def test_service_options_are_type_specific
     project = create_project
 
@@ -184,6 +214,56 @@ class ValpoAPIAppTest < Minitest::Test
     assert_match "cannot be used together", json.fetch("message")
   end
 
+  def test_app_service_update_enqueues_normalized_source_and_runtime_changes
+    project = create_project
+    source = Valpo::Source.create(
+      project_id: project.id,
+      name: "backend",
+      provider: "github",
+      repository: "acme/backend",
+      ref: "main"
+    )
+    build = Valpo::BuildTarget.create(
+      project_id: project.id,
+      source_id: source.id,
+      name: "backend",
+      dockerfile: "Dockerfile",
+      context: "."
+    )
+    service = create_app_service(project: project)
+    Valpo::AppServiceConfig[service.id].update(build_target_id: build.id)
+
+    patch_json "/services/#{service.id}", source: {ref: "release"}, port: nil, deploy: true
+
+    assert_equal 202, last_response.status
+    assert_equal "update_app_service", json.fetch("type")
+    assert_equal "release", json.dig("payload", "configuration", "source", "ref")
+    assert_nil json.dig("payload", "runtime", "internal_port")
+    assert_equal true, json.dig("payload", "deploy")
+    assert_equal "main", source.refresh.ref
+  end
+
+  def test_service_show_includes_source_build_and_automatic_resolved_port
+    project = create_project
+    service = Valpo::Sources::ServiceConfigurator.new.create_service!(
+      project: project,
+      service_attributes: {"name" => "web", "type" => "web"},
+      source: {"provider" => "github", "repository" => "acme/backend", "ref" => "HEAD"},
+      build: {"dockerfile" => "Dockerfile", "context" => "."}
+    )
+    create_release(service: service, status: "active", internal_port: 3000)
+
+    get "/services/#{service.id}"
+
+    assert_equal 200, last_response.status
+    assert_equal "acme/backend", json.dig("app", "source", "repository")
+    assert_equal "HEAD", json.dig("app", "source", "ref")
+    assert_equal "connected", json.dig("app", "source", "status")
+    assert_equal "Dockerfile", json.dig("app", "build", "dockerfile")
+    assert_equal "automatic", json.dig("app", "port_mode")
+    assert_equal 3000, json.dig("app", "resolved_internal_port")
+  end
+
   def test_dependency_endpoint_validates_same_project_at_runtime_and_unbinds
     project = create_project
     app_service = create_app_service(project: project)
@@ -252,6 +332,10 @@ class ValpoAPIAppTest < Minitest::Test
 
   def post_json(path, payload)
     post path, JSON.generate(payload), "CONTENT_TYPE" => "application/json"
+  end
+
+  def patch_json(path, payload)
+    patch path, JSON.generate(payload), "CONTENT_TYPE" => "application/json"
   end
 
   def with_api_token(token)

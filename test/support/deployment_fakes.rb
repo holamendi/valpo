@@ -6,9 +6,10 @@ module ValpoTestSupport
   class FakeDocker
     attr_reader :commands, :run_requests
 
-    def initialize(fail_on: nil, container_states: {})
+    def initialize(fail_on: nil, container_states: {}, exposed_ports: [])
       @fail_on = fail_on
       @container_states = container_states
+      @exposed_ports = exposed_ports
       @commands = []
       @run_requests = []
     end
@@ -86,7 +87,11 @@ module ValpoTestSupport
 
       case command.first
       when :inspect
-        success(JSON.generate([{"RepoDigests" => ["#{command.fetch(1)}@sha256:abc"]}]))
+        exposed = @exposed_ports.to_h { |port| ["#{port}/tcp", {}] }
+        success(JSON.generate([{
+          "RepoDigests" => ["#{command.fetch(1)}@sha256:abc"],
+          "Config" => {"ExposedPorts" => exposed}
+        }]))
       when :container_inspect
         container_state = @container_states.fetch(command.fetch(1), true)
         return failure("No such object: #{command.fetch(1)}") if container_state == :missing

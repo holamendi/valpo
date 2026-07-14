@@ -298,11 +298,13 @@ When starting implementation, read these documents first:
 5. `valpo-architecture-decisions.md`
 6. `valpo-roadmap.md`
 
-Phase 2B is implemented and the manual-deploy portion of Phase 3A is now available:
+Phase 2B is implemented and the PAT bootstrap portion of Phase 3A is now available:
 
 - Private Postgres and Redis services exist.
 - Typed IDs, multi-service projects, explicit dependencies, lifecycle jobs, generated credentials, scoped env injection, TOML reconciliation, and reboot repair are in place.
-- `deploy_source` can fetch a configured GitHub ref with a CLI-managed PAT, build its Dockerfile, and deploy a release tied to the exact commit.
+- `service create --source ... --deploy` and `service update` support manifest-free, service-owned GitHub configuration with mandatory repository/ref/path preflight and exact commit resolution.
+- `deploy_source` can fetch a configured GitHub ref with a CLI-managed PAT, build its Dockerfile, and deploy a release tied to the exact commit. Create-with-deploy reuses its validated checkout.
+- Web ports resolve from explicit configuration, a sole TCP `EXPOSE`, or the source-build port-3000 fallback; releases record the resolved port and web containers receive `PORT`.
 - The PAT is a temporary file-backed credential provider behind `Valpo::Sources::Fetcher`; it is not part of source, build, release, API, job, or manifest data.
 - `valpo auth login github` shows a prefilled fine-grained-PAT link, validates the PAT through GitHub's authenticated-user API, and stores it only after validation. Repository permissions remain enforced by the deployment fetch.
 

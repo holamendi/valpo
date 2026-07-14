@@ -37,9 +37,49 @@ module Valpo
               r.get { services_for_project(project).map { |service| Serializers.service(service) } }
               r.post do
                 payload = parse_json_body
-                validate_keys!(payload, %w[name type version command internal_port port healthcheck_path], "service")
+                validate_keys!(
+                  payload,
+                  %w[name type version command internal_port port healthcheck_path source build deploy],
+                  "service"
+                )
                 type = required_string(payload, "type")
                 Valpo::Services::Definitions.validate_options!(type: type, options: payload)
+                command = payload.fetch("command", [])
+                Valpo::Services::Catalog.normalize_command(command)
+                port = optional_port(payload["internal_port"] || payload["port"])
+                healthcheck_path = optional_healthcheck_path(payload["healthcheck_path"])
+
+                if payload.key?("deploy") && ![true, false].include?(payload["deploy"])
+                  raise Valpo::ValidationError, "deploy must be a boolean"
+                end
+                if payload["source"]
+                  raise Valpo::ValidationError, "source is only valid for web and worker services" unless Valpo::Services::Definitions.app_type?(type)
+
+                  configuration = Valpo::Sources::ServiceConfigurator.new.normalize_create(
+                    source: payload.fetch("source"),
+                    build: payload["build"]
+                  )
+                  response.status = 202
+                  next Serializers.job(jobs.enqueue_project_operation(
+                    "create_source_service",
+                    project_id: project.id,
+                    payload: {
+                      service: {
+                        name: required_string(payload, "name"),
+                        type: type,
+                        command: command,
+                        internal_port: port,
+                        healthcheck_path: healthcheck_path
+                      },
+                      source: configuration.fetch(:source),
+                      build: configuration.fetch(:build),
+                      deploy: payload.fetch("deploy", false)
+                    }
+                  ))
+                end
+                raise Valpo::ValidationError, "build requires source" if payload["build"]
+                raise Valpo::ValidationError, "deploy requires source" if payload["deploy"]
+
                 service = nil
                 job = nil
                 Valpo::Database.connection.transaction do
@@ -51,9 +91,9 @@ module Valpo
                     name: required_string(payload, "name"),
                     type: type,
                     version: payload["version"],
-                    command: payload.fetch("command", []),
-                    internal_port: optional_port(payload["internal_port"] || payload["port"]),
-                    healthcheck_path: optional_healthcheck_path(payload["healthcheck_path"])
+                    command: command,
+                    internal_port: port,
+                    healthcheck_path: healthcheck_path
                   )
                   if service.managed?
                     job = jobs.enqueue_service_operation("provision_service", service_id: service.id, payload: {project_id: project.id})

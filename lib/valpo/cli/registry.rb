@@ -28,6 +28,7 @@ module Valpo
         ["service list", Commands::Service::List, false],
         ["service create", Commands::Service::Create, false],
         ["service show", Commands::Service::Show, false],
+        ["service update", Commands::Service::Update, false],
         ["service delete", Commands::Service::Delete, false],
         ["service deploy", Commands::Service::Deploy, false],
         ["service logs", Commands::Service::Logs, false],
@@ -69,6 +70,7 @@ module Valpo
         prefix.register "list", Commands::Service::List
         prefix.register "create", Commands::Service::Create
         prefix.register "show", Commands::Service::Show
+        prefix.register "update", Commands::Service::Update
         prefix.register "delete", Commands::Service::Delete
         prefix.register "deploy", Commands::Service::Deploy
         prefix.register "logs", Commands::Service::Logs
