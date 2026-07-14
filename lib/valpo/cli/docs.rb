@@ -19,6 +19,8 @@ module Valpo
 
           The Valpo CLI uses resource-first commands: choose a resource, then an action. Run `valpo --help`, `valpo RESOURCE --help`, or `valpo RESOURCE ACTION --help` for contextual help. The equivalent `valpo help RESOURCE ACTION` form is also supported.
 
+          On a host installed by `packaging/install.sh`, invoke the wrapper as `sudo valpo`; it drops privileges to the dedicated Valpo user. The examples below omit `sudo` so the command syntax is clear and can also be used from a development checkout.
+
           ## Command Hierarchy
 
           ```text
@@ -47,9 +49,9 @@ module Valpo
 
           ```bash
           valpo project create acme
-          valpo service create acme/web \
-            --type web \
-            --source github:acme/backend \
+          valpo service create acme/web \\
+            --type web \\
+            --source github:acme/backend \\
             --deploy
           ```
 

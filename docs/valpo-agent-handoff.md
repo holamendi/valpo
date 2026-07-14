@@ -140,31 +140,31 @@ GET    /health
 
 GET    /projects
 POST   /projects
+POST   /projects/apply
 GET    /projects/:id
 DELETE /projects/:id
-GET    /projects/:id/env
-
-POST   /projects/:id/deployments
-GET    /projects/:id/releases
-POST   /projects/:id/rollback
-POST   /projects/:id/stop
-POST   /projects/:id/restart
-
-GET    /projects/:id/domains
-POST   /projects/:id/domains
-DELETE /projects/:id/domains/:domain_id
-
 GET    /projects/:id/logs
-
-GET    /services
+GET    /projects/:id/sources
 GET    /projects/:id/services
 POST   /projects/:id/services
-POST   /projects/apply
+GET    /projects/:id/services/:service
+
+GET    /services
 GET    /services/:id
+PATCH  /services/:id
+DELETE /services/:id?force=true
 GET    /services/:id/logs
 POST   /services/:id/restart
+POST   /services/:id/stop
 POST   /services/:id/dependencies
-DELETE /services/:id
+DELETE /services/:id/dependencies/:dependency_id
+POST   /services/:id/deployments
+GET    /services/:id/releases
+POST   /services/:id/rollback
+GET    /services/:id/env
+GET    /services/:id/domains
+POST   /services/:id/domains
+DELETE /services/:id/domains/:domain
 
 POST   /system/repair
 
@@ -177,7 +177,6 @@ Deployment request example:
 
 ```json
 {
-  "source_type": "registry",
   "image": "ghcr.io/example/hello:latest",
   "internal_port": 3000,
   "healthcheck_path": "/health"
@@ -189,6 +188,8 @@ Deployment request example:
 ```text
 deploy_registry_image
 deploy_source
+create_source_service
+update_app_service
 rollback_release
 apply_caddy_config
 stop_service

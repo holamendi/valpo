@@ -19,6 +19,27 @@ class ValpoMigratorTest < Minitest::Test
     assert_includes db.tables, :job_events
   end
 
+  def test_pre_release_schema_is_entirely_in_the_first_migration
+    migrations = Dir[File.join(Valpo::Migrator::MIGRATIONS_PATH, "*.rb")].map { |path| File.basename(path) }
+
+    assert_equal ["001_create_phase0_tables.rb"], migrations
+    assert_includes db.schema(:sources).to_h, :owner_service_id
+    assert_includes db.schema(:build_targets).to_h, :owner_service_id
+
+    project = create_project
+    db[:sources].insert(
+      id: Valpo::Identifier.generate(:source),
+      project_id: project.id,
+      name: "backend",
+      provider: "github",
+      repository: "acme/backend",
+      created_at: Time.now.utc,
+      updated_at: Time.now.utc
+    )
+
+    assert_equal "HEAD", db[:sources].where(project_id: project.id, name: "backend").get(:ref)
+  end
+
   def test_legacy_project_as_app_schema_is_rejected_without_data_loss
     legacy = Sequel.sqlite
     legacy.create_table(:projects) do

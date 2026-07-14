@@ -4,6 +4,8 @@ This guide is generated from database-free CLI metadata. Run `rake cli:docs` aft
 
 The Valpo CLI uses resource-first commands: choose a resource, then an action. Run `valpo --help`, `valpo RESOURCE --help`, or `valpo RESOURCE ACTION --help` for contextual help. The equivalent `valpo help RESOURCE ACTION` form is also supported.
 
+On a host installed by `packaging/install.sh`, invoke the wrapper as `sudo valpo`; it drops privileges to the dedicated Valpo user. The examples below omit `sudo` so the command syntax is clear and can also be used from a development checkout.
+
 ## Command Hierarchy
 
 ```text
@@ -65,7 +67,10 @@ A GitHub-backed app service can be created and deployed without `valpo.toml`:
 
 ```bash
 valpo project create acme
-valpo service create acme/web   --type web   --source github:acme/backend   --deploy
+valpo service create acme/web \
+  --type web \
+  --source github:acme/backend \
+  --deploy
 ```
 
 `--ref` defaults to remote `HEAD`, `--dockerfile` defaults to `Dockerfile`, and `--context` defaults to `.`. The repository, ref, Dockerfile, and context are validated before any service configuration is created. Use `service update` to persist source, build, command, health-check, or port changes; `--deploy` validates, applies, and deploys the update as one operation.

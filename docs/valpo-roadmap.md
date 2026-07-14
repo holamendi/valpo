@@ -259,8 +259,6 @@ Potential deliverables:
 
 - Buildpacks.
 - Scheduled jobs.
-- Worker process types.
-- Multiple services per project.
 - Preview deployments.
 - Object storage backup target.
 - Direct migration transfer mode.

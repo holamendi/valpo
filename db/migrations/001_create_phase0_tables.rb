@@ -13,34 +13,6 @@ Sequel.migration do
       index :name, unique: true
     end
 
-    create_table(:sources) do
-      String :id, size: 40, primary_key: true
-      foreign_key :project_id, :projects, type: String, size: 40, null: false, on_delete: :cascade
-      String :name, null: false
-      String :provider, null: false
-      String :repository, null: false
-      String :ref, null: false, default: "main"
-      TrueClass :auto_deploy, null: false, default: false
-      String :status, null: false, default: "unconnected"
-      DateTime :created_at, null: false
-      DateTime :updated_at, null: false
-
-      index [:project_id, :name], unique: true
-    end
-
-    create_table(:build_targets) do
-      String :id, size: 40, primary_key: true
-      foreign_key :project_id, :projects, type: String, size: 40, null: false, on_delete: :cascade
-      foreign_key :source_id, :sources, type: String, size: 40, null: false, on_delete: :cascade
-      String :name, null: false
-      String :dockerfile, null: false, default: "Dockerfile"
-      String :context, null: false, default: "."
-      DateTime :created_at, null: false
-      DateTime :updated_at, null: false
-
-      index [:project_id, :name], unique: true
-    end
-
     create_table(:services) do
       String :id, size: 40, primary_key: true
       foreign_key :project_id, :projects, type: String, size: 40, null: false, on_delete: :restrict
@@ -53,6 +25,38 @@ Sequel.migration do
       index [:project_id, :name], unique: true
       index [:project_id, :kind]
       index [:kind, :status]
+    end
+
+    create_table(:sources) do
+      String :id, size: 40, primary_key: true
+      foreign_key :project_id, :projects, type: String, size: 40, null: false, on_delete: :cascade
+      foreign_key :owner_service_id, :services, type: String, size: 40, on_delete: :cascade
+      String :name, null: false
+      String :provider, null: false
+      String :repository, null: false
+      String :ref, null: false, default: "HEAD"
+      TrueClass :auto_deploy, null: false, default: false
+      String :status, null: false, default: "unconnected"
+      DateTime :created_at, null: false
+      DateTime :updated_at, null: false
+
+      index [:project_id, :name], unique: true
+      index :owner_service_id, unique: true
+    end
+
+    create_table(:build_targets) do
+      String :id, size: 40, primary_key: true
+      foreign_key :project_id, :projects, type: String, size: 40, null: false, on_delete: :cascade
+      foreign_key :source_id, :sources, type: String, size: 40, null: false, on_delete: :cascade
+      foreign_key :owner_service_id, :services, type: String, size: 40, on_delete: :cascade
+      String :name, null: false
+      String :dockerfile, null: false, default: "Dockerfile"
+      String :context, null: false, default: "."
+      DateTime :created_at, null: false
+      DateTime :updated_at, null: false
+
+      index [:project_id, :name], unique: true
+      index :owner_service_id, unique: true
     end
 
     create_table(:app_service_configs) do

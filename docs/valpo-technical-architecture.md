@@ -116,16 +116,14 @@ Every deployment path should normalize into the same lifecycle:
 source -> build or fetch -> release artifact -> deploy -> route traffic -> monitor
 ```
 
-Supported source adapters:
+Current deployment inputs:
 
 ```text
-Valpo::Sources::Registry
-Valpo::Sources::GitHub
-Valpo::Sources::GitLab
-Valpo::Sources::StaticUpload
+registry image
+GitHub Dockerfile build
 ```
 
-All adapters should produce a release. This keeps deploy logic consistent across registry images, Git repositories, and uploaded static zips.
+GitLab repositories and static uploads are planned inputs, not implemented adapters. All deployment inputs should produce a release so deploy logic remains consistent as those paths are added.
 
 ## Project Model
 
@@ -143,6 +141,7 @@ Project
 Source
   id
   project_id
+  owner_service_id (optional; set for CLI-owned configuration)
   name
   provider
   repository
@@ -154,6 +153,7 @@ BuildTarget
   id
   project_id
   source_id
+  owner_service_id (optional; set for CLI-owned configuration)
   name
   dockerfile
   context
@@ -193,6 +193,10 @@ Release
   artifact_ref
   image_digest
   status
+  internal_port
+  healthcheck_path
+  container_name
+  route_target
   activated_at
   created_at
 
