@@ -104,7 +104,13 @@ Run the repeatable VPS smoke test from a local checkout:
 packaging/vps-smoke-test.sh root@162.55.43.108 apps.valpo.dev --reboot
 ```
 
-By default the smoke test copies the current checkout to `/tmp/valpo-src`, reuses the host's installed dependencies, deploys `nginx:alpine`, verifies HTTPS, releases, logs, optional reboot recovery, and then deletes the project. Use `--full-install` for a fresh Ubuntu host that still needs dependencies.
+By default the smoke test copies the current checkout to `/tmp/valpo-src`, runs the full installer, deploys `nginx:alpine`, verifies HTTPS, releases, logs, optional reboot recovery, and then deletes the project. Use `--skip-deps` only when intentionally testing an update on a host whose dependencies are already installed.
+
+To prove installation from a clean Valpo state, use the guarded destructive wrapper. It removes all Valpo-owned services, runtime resources, state, files, and the dedicated account; verifies their absence; then runs the full smoke test from the local checkout. Docker, Caddy, and other shared host packages remain installed.
+
+```bash
+packaging/vps-clean-install-smoke-test.sh root@162.55.43.108 apps.valpo.dev --confirm-destroy-valpo
+```
 
 Use the source smoke test on a host whose GitHub PAT is already configured:
 

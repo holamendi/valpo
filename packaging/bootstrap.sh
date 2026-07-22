@@ -8,7 +8,7 @@ WORK_DIR=""
 
 usage() {
   cat <<USAGE
-Usage: curl -fsSL https://raw.githubusercontent.com/${REPOSITORY}/main/packaging/bootstrap.sh | sudo bash
+Usage: curl -fsSL https://raw.githubusercontent.com/${REPOSITORY}/main/packaging/bootstrap.sh | bash
 
 Options:
   -h, --help  Show this help
@@ -40,7 +40,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ "${EUID}" -eq 0 ]] || fail "This installer must run as root. Pipe it to sudo bash."
+[[ "${EUID}" -eq 0 ]] || fail "This installer must run as root."
 command -v curl >/dev/null 2>&1 || fail "curl is required"
 command -v tar >/dev/null 2>&1 || fail "tar is required"
 command -v mktemp >/dev/null 2>&1 || fail "mktemp is required"

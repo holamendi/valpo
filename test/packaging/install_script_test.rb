@@ -6,6 +6,8 @@ require "test_helper"
 class ValpoPackagingInstallScriptTest < Minitest::Test
   BOOTSTRAP_SCRIPT = File.expand_path("../../packaging/bootstrap.sh", __dir__)
   INSTALL_SCRIPT = File.expand_path("../../packaging/install.sh", __dir__)
+  UNINSTALL_SCRIPT = File.expand_path("../../packaging/uninstall.sh", __dir__)
+  CLEAN_INSTALL_SMOKE_SCRIPT = File.expand_path("../../packaging/vps-clean-install-smoke-test.sh", __dir__)
   SOURCE_SMOKE_SCRIPT = File.expand_path("../../packaging/vps-source-smoke-test.sh", __dir__)
   API_SERVICE = File.expand_path("../../packaging/systemd/valpo-api.service", __dir__)
   WORKER_SERVICE = File.expand_path("../../packaging/systemd/valpo-worker.service", __dir__)
@@ -64,9 +66,27 @@ class ValpoPackagingInstallScriptTest < Minitest::Test
     stdout, stderr, status = Open3.capture3("bash", INSTALL_SCRIPT, "--help")
 
     assert status.success?, stderr
-    assert_includes stdout, "Usage: sudo packaging/install.sh"
+    assert_includes stdout, "Usage: packaging/install.sh"
     refute_includes stdout, "--state-dir"
     refute_includes stdout, "--app-domain"
+  end
+
+  def test_uninstaller_and_clean_install_smoke_test_have_valid_bash_syntax
+    [UNINSTALL_SCRIPT, CLEAN_INSTALL_SMOKE_SCRIPT].each do |script|
+      stdout, stderr, status = Open3.capture3("bash", "-n", script)
+
+      assert status.success?, [stdout, stderr].join("\n")
+    end
+  end
+
+  def test_clean_install_smoke_test_requires_destructive_confirmation
+    script = File.read(CLEAN_INSTALL_SMOKE_SCRIPT)
+    stdout, stderr, status = Open3.capture3("bash", CLEAN_INSTALL_SMOKE_SCRIPT, "--help")
+
+    assert status.success?, stderr
+    assert_includes stdout, "--confirm-destroy-valpo"
+    assert_includes script, "bash '$remote_uninstaller'"
+    assert_includes script, "smoke_options+=(--full-install)"
   end
 
   def test_installer_has_no_public_layout_or_lifecycle_flags

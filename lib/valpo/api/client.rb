@@ -75,6 +75,8 @@ module Valpo
         {
           get: Net::HTTP::Get,
           post: Net::HTTP::Post,
+          put: Net::HTTP::Put,
+          patch: Net::HTTP::Patch,
           delete: Net::HTTP::Delete
         }.fetch(method.to_sym)
       rescue KeyError

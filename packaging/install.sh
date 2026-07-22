@@ -17,7 +17,7 @@ NO_START="${VALPO_INSTALL_NO_START:-0}"
 
 usage() {
   cat <<USAGE
-Usage: sudo packaging/install.sh
+Usage: packaging/install.sh
 
 Options:
   -h, --help  Show this help
@@ -52,7 +52,7 @@ CADDY_RELOAD_CONFIG_PATH="/etc/caddy/Caddyfile"
 MISE_BIN="${STATE_DIR}/.local/bin/mise"
 
 require_root() {
-  [[ "${EUID}" -eq 0 ]] || fail "This installer must run as root. Try: sudo packaging/install.sh"
+  [[ "${EUID}" -eq 0 ]] || fail "This installer must run as root"
 }
 
 require_ubuntu() {
@@ -287,7 +287,7 @@ MISE_BIN="${MISE_BIN}"
 
 if [[ "\$(id -un)" != "\${VALPO_USER}" ]]; then
   if [[ "\${EUID}" -ne 0 ]]; then
-    printf 'valpo must run as %s. Try: sudo valpo %s\n' "\${VALPO_USER}" "\$*" >&2
+    printf 'valpo must run as %s or root\n' "\${VALPO_USER}" >&2
     exit 1
   fi
   exec runuser -u "\${VALPO_USER}" -- "\$0" "\$@"

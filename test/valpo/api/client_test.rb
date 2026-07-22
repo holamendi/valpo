@@ -35,6 +35,19 @@ class ValpoAPIClientTest < Minitest::Test
     assert_equal "/services?project=hello+world", http.last_request.path
   end
 
+  def test_put_and_patch_are_supported
+    {
+      put: Net::HTTP::Put,
+      patch: Net::HTTP::Patch
+    }.each do |method, request_class|
+      http = fake_http("200", JSON.generate({}))
+
+      client(http).request(method, "/resource", {"name" => "example"})
+
+      assert_instance_of request_class, http.last_request
+    end
+  end
+
   def test_invalid_base_urls_are_rejected
     ["", "valpo.test", "ftp://valpo.test", "http://user:secret@valpo.test", "http://valpo.test?x=1"].each do |url|
       assert_raises(Valpo::API::Client::Error) { Valpo::API::Client.new(base_url: url) }
