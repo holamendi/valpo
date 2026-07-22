@@ -25,7 +25,7 @@ module Valpo
 
       def service(record)
         output = fields(record, :id, :project_id, :name, :kind, :status, :created_at, :updated_at)
-        output[:reference] = "#{record.project.name}/#{record.name}"
+        output[:project] = record.project.name
         if record.app?
           config = Valpo::AppServiceConfig[record.id]
           build = config.build_target
@@ -61,7 +61,16 @@ module Valpo
       end
 
       def domain(record)
-        fields(record, :id, :service_id, :hostname, :route_target, :tls_status, :created_at, :updated_at)
+        fields(
+          record, :id, :service_id, :platform_domain_id, :hostname, :kind, :status,
+          :verification_error, :verified_at, :route_target, :created_at, :updated_at
+        )
+      end
+
+      def platform_domain(record)
+        return nil unless record
+
+        fields(record, :id, :hostname, :status, :active, :verification_error, :verified_at, :created_at, :updated_at)
       end
 
       def job(record)

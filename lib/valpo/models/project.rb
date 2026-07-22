@@ -5,7 +5,7 @@ require "time"
 
 module Valpo
   class Project < Sequel::Model(:projects)
-    NAME_PATTERN = /\A[a-z0-9][a-z0-9-]*\z/
+    NAME_PATTERN = Valpo::Hostname::LABEL_PATTERN
 
     one_to_many :services
     one_to_many :sources
@@ -31,7 +31,7 @@ module Valpo
     def validate
       super
       errors.add(:name, "is required") if name.nil? || name.strip.empty?
-      errors.add(:name, "must use lowercase letters, numbers, and dashes") if name && !name.match?(NAME_PATTERN)
+      errors.add(:name, "must be a DNS-safe label of up to 63 lowercase letters, numbers, and dashes") if name && !name.match?(NAME_PATTERN)
     end
   end
 end

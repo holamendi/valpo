@@ -37,7 +37,7 @@ end
 module ValpoTestDatabase
   TABLE_DELETE_ORDER = %i[
     job_events jobs service_dependencies domains releases app_service_configs managed_service_configs
-    services build_targets sources projects
+    services build_targets sources projects platform_domains
   ].freeze
 
   def setup
@@ -51,6 +51,25 @@ module ValpoTestDatabase
 
   def create_project(name: "hello")
     Valpo::Project.create(name: name)
+  end
+
+  def create_platform_domain(hostname: "apps.example.com", status: "verified", active: true)
+    Valpo::PlatformDomain.create(
+      hostname: hostname,
+      status: status,
+      active: active,
+      verified_at: (Time.now.utc if status == "verified")
+    )
+  end
+
+  def create_domain(service:, hostname: "hello.example.com", status: "verified", kind: "custom", **attributes)
+    Valpo::Domain.create({
+      service_id: service.id,
+      hostname: hostname,
+      status: status,
+      kind: kind,
+      verified_at: (Time.now.utc if status == "verified")
+    }.merge(attributes))
   end
 
   def create_app_service(project: nil, name: "web", kind: "web", status: "created", port: 3000, command: [])

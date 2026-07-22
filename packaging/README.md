@@ -1,20 +1,27 @@
 # Valpo Packaging
 
-Valpo currently ships a source installer and Ubuntu 26.04 LTS packaging templates.
+Valpo currently ships a bootstrap installer, a source installer, and Ubuntu 26.04 LTS packaging templates.
+
+Run installation and installed `valpo` commands as root. The examples below assume a root shell.
+
+## Bootstrap Installer
+
+Install the current development version on a fresh host:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/holamendi/valpo/main/packaging/bootstrap.sh | bash
+```
+
+The bootstrap downloads a GitHub source archive into a private temporary directory, extracts it, invokes `packaging/install.sh`, and removes the temporary files. It requires root because the source installer installs system packages and writes system configuration.
+
+The bootstrap intentionally has no installation options. Valpo owns its host layout, and domain configuration happens after installation. For an inspect-first installation, download `bootstrap.sh`, review it, then run it with `bash bootstrap.sh`.
 
 ## Source Installer
 
 Run from a Valpo source checkout:
 
 ```bash
-sudo packaging/install.sh
-```
-
-Useful options:
-
-```bash
-sudo packaging/install.sh --source /path/to/valpo --no-start
-sudo packaging/install.sh --skip-deps
+packaging/install.sh
 ```
 
 The installer:
@@ -26,7 +33,7 @@ The installer:
 - creates the private credential directory at `/var/lib/valpo/secrets`
 - writes Valpo-generated Caddy routes to `/var/lib/valpo/caddy/valpo.caddy`
 - ensures `/etc/caddy/Caddyfile` imports the generated Valpo Caddy file
-- installs systemd units and starts `valpo-api` and `valpo-worker` unless `--no-start` is passed
+- installs systemd units and starts `valpo-api` and `valpo-worker`
 
 Ruby is installed through mise with precompiled binaries enabled:
 
@@ -36,6 +43,28 @@ mise settings set ruby.compile false
 ```
 
 If mise falls back to compiling Ruby from source, the installer fails.
+
+## App Domain
+
+The recommended setup dedicates a base hostname such as `apps.example.com` to Valpo:
+
+1. Create a wildcard `A` record for `*.apps.example.com` pointing to the server's public IPv4 address. Add `AAAA` only when the server has working public IPv6.
+2. Allow inbound TCP traffic on ports `80` and `443`.
+3. Configure the base hostname after installation, omitting the `*.` prefix.
+
+```bash
+valpo domain set-default apps.example.com
+```
+
+Valpo first verifies a unique HTTPS challenge below the base hostname. It then creates and verifies generated hostnames for existing web services. A service named `web` in project `hello` receives `web.hello.apps.example.com`. Avoid creating intermediate DNS records such as `hello.apps.example.com`, because a more specific DNS node can prevent the parent wildcard from answering below it.
+
+Custom domains can be attached alongside the generated default after their DNS points to the server:
+
+```bash
+valpo domain add web hello.example.com --project hello
+```
+
+`domain add` verifies the exact hostname automatically. A web deployment without a verified domain can build, start, and pass its health check, but it remains private with release and service status `ready`. Verifying either a generated or custom domain activates the latest ready release. Workers, Postgres, and Redis do not participate in domain verification.
 
 ## API Binding And Auth
 
@@ -48,7 +77,7 @@ CLI calls use `VALPO_API_TOKEN` first, then the `api_token` in the loaded config
 Manual private-repository builds use a fine-grained PAT as the temporary Phase 3A credential provider. Store a repository-scoped token with read-only Contents access through the local CLI:
 
 ```bash
-sudo valpo auth login github
+valpo auth login github
 ```
 
 The command shows a prefilled GitHub token-creation link with read-only Contents permission, prompts without echo, validates the PAT with GitHub, and atomically writes `/var/lib/valpo/secrets/github-token` with mode `0600`. The worker resolves the file when each source deployment starts, so no restart is needed. Do not put this token in `valpo.yml` or `valpo.toml`.
@@ -75,7 +104,7 @@ Run the repeatable VPS smoke test from a local checkout:
 packaging/vps-smoke-test.sh root@162.55.43.108 apps.valpo.dev --reboot
 ```
 
-By default the smoke test copies the current checkout to `/tmp/valpo-src`, reinstalls with `--skip-deps`, deploys `nginx:alpine`, verifies HTTPS, releases, logs, optional reboot recovery, and then deletes the project. Use `--full-install` for a fresh Ubuntu host that still needs dependencies.
+By default the smoke test copies the current checkout to `/tmp/valpo-src`, reuses the host's installed dependencies, deploys `nginx:alpine`, verifies HTTPS, releases, logs, optional reboot recovery, and then deletes the project. Use `--full-install` for a fresh Ubuntu host that still needs dependencies.
 
 Use the source smoke test on a host whose GitHub PAT is already configured:
 

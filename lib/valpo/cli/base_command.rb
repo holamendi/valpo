@@ -10,6 +10,10 @@ module Valpo
       option :json, type: :boolean, default: false, desc: "Emit one JSON document"
 
       class << self
+        def project_option
+          option :project, aliases: ["-p"], desc: "Project name or ID (required with a service name)"
+        end
+
         def wait_options
           option :wait, type: :boolean, default: true, desc: "Wait for the operation to finish"
           option :timeout, default: DEFAULT_TIMEOUT, desc: "Maximum wait in seconds"
@@ -59,11 +63,12 @@ module Valpo
         raise OperationalError, "Cannot read #{path}: #{e.message}"
       end
 
-      def split_service_reference(reference)
-        parts = reference.to_s.split("/", -1)
-        return parts if parts.length == 2 && parts.none?(&:empty?)
+      def service_name(value)
+        name = value.to_s
+        raise UsageError, "Service names must not contain /; pass the project with --project" if name.include?("/")
+        raise UsageError, "Service name is required" if name.empty?
 
-        raise UsageError, "Service name must be PROJECT/NAME"
+        name
       end
 
       def parse_source_spec(value)

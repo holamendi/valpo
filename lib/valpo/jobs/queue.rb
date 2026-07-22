@@ -16,6 +16,7 @@ module Valpo
         deploy_registry_image
         deploy_source
         rollback_release
+        verify_domain
         apply_caddy_config
         provision_service
         bind_service

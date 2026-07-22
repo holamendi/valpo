@@ -4,6 +4,7 @@ require "open3"
 require "test_helper"
 
 class ValpoPackagingInstallScriptTest < Minitest::Test
+  BOOTSTRAP_SCRIPT = File.expand_path("../../packaging/bootstrap.sh", __dir__)
   INSTALL_SCRIPT = File.expand_path("../../packaging/install.sh", __dir__)
   SOURCE_SMOKE_SCRIPT = File.expand_path("../../packaging/vps-source-smoke-test.sh", __dir__)
   API_SERVICE = File.expand_path("../../packaging/systemd/valpo-api.service", __dir__)
@@ -15,6 +16,32 @@ class ValpoPackagingInstallScriptTest < Minitest::Test
     stdout, stderr, status = Open3.capture3("bash", "-n", INSTALL_SCRIPT)
 
     assert status.success?, [stdout, stderr].join("\n")
+  end
+
+  def test_bootstrap_has_valid_bash_syntax
+    stdout, stderr, status = Open3.capture3("bash", "-n", BOOTSTRAP_SCRIPT)
+
+    assert status.success?, [stdout, stderr].join("\n")
+  end
+
+  def test_bootstrap_help_does_not_require_root
+    stdout, stderr, status = Open3.capture3("bash", BOOTSTRAP_SCRIPT, "--help")
+
+    assert status.success?, stderr
+    assert_includes stdout, "curl -fsSL"
+    refute_includes stdout, "--ref"
+    refute_includes stdout, "--sha256"
+  end
+
+  def test_bootstrap_downloads_a_private_archive_and_runs_the_source_installer
+    script = File.read(BOOTSTRAP_SCRIPT)
+
+    assert_includes script, "umask 077"
+    assert_includes script, "https://github.com/${REPOSITORY}/archive/${REF}.tar.gz"
+    assert_includes script, "--proto '=https' --proto-redir '=https' --tlsv1.2"
+    assert_includes script, "--strip-components=1"
+    assert_includes script, "trap cleanup EXIT"
+    assert_includes script, 'bash "${SOURCE_DIR}/packaging/install.sh"'
   end
 
   def test_source_smoke_test_has_valid_bash_syntax
@@ -38,7 +65,18 @@ class ValpoPackagingInstallScriptTest < Minitest::Test
 
     assert status.success?, stderr
     assert_includes stdout, "Usage: sudo packaging/install.sh"
-    assert_includes stdout, "--state-dir PATH"
+    refute_includes stdout, "--state-dir"
+    refute_includes stdout, "--app-domain"
+  end
+
+  def test_installer_has_no_public_layout_or_lifecycle_flags
+    script = File.read(INSTALL_SCRIPT)
+
+    %w[--source --prefix --config --state-dir --app-domain --skip-deps --no-start].each do |flag|
+      refute_includes script, flag
+    end
+    assert_includes script, "VALPO_INSTALL_SKIP_DEPS"
+    assert_includes script, "VALPO_INSTALL_NO_START"
   end
 
   def test_installer_enforces_precompiled_mise_ruby

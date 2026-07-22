@@ -1,23 +1,32 @@
 # frozen_string_literal: true
 
 require "sequel/model"
+require "securerandom"
 require "time"
 
 module Valpo
   class Domain < Sequel::Model(:domains)
-    HOSTNAME_PATTERN = /\A(?=.{1,253}\z)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\z/
+    KINDS = %w[generated custom].freeze
+    STATUSES = %w[pending verified failed].freeze
 
     many_to_one :service
+    many_to_one :platform_domain
+
+    def self.default_hostname(project_name:, service_name:, app_domain:)
+      "#{service_name}.#{project_name}.#{app_domain}"
+    end
 
     def before_validation
       self.hostname = hostname.downcase if hostname
+      self.kind ||= "custom"
+      self.status ||= "pending"
+      self.verification_token ||= SecureRandom.hex(24)
       super
     end
 
     def before_create
       timestamp = Time.now.utc
       self.id ||= Valpo::Identifier.generate(:domain)
-      self.tls_status ||= "unknown"
       self.created_at ||= timestamp
       self.updated_at ||= timestamp
       super
@@ -34,7 +43,14 @@ module Valpo
       service = Valpo::Service[service_id] if service_id
       errors.add(:service_id, "must reference a web service") if service && !service.web?
       errors.add(:hostname, "is required") if hostname.nil? || hostname.strip.empty?
-      errors.add(:hostname, "must be a valid lowercase hostname") if hostname && !hostname.match?(HOSTNAME_PATTERN)
+      errors.add(:hostname, "must be a valid lowercase hostname") if hostname && !Valpo::Hostname.valid?(hostname)
+      errors.add(:kind, "must be one of: #{KINDS.join(", ")}") unless KINDS.include?(kind)
+      errors.add(:status, "must be one of: #{STATUSES.join(", ")}") unless STATUSES.include?(status)
+      errors.add(:platform_domain_id, "is required for generated domains") if kind == "generated" && platform_domain_id.nil?
+    end
+
+    def verified?
+      status == "verified"
     end
   end
 end

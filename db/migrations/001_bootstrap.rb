@@ -116,17 +116,38 @@ Sequel.migration do
       index :container_name
     end
 
+    create_table(:platform_domains) do
+      String :id, size: 40, primary_key: true
+      String :hostname, null: false
+      String :status, null: false, default: "pending"
+      TrueClass :active, null: false, default: false
+      String :verification_token, null: false
+      String :verification_error, text: true
+      DateTime :verified_at
+      DateTime :created_at, null: false
+      DateTime :updated_at, null: false
+
+      index :hostname, unique: true
+      index [:active, :status]
+    end
+
     create_table(:domains) do
       String :id, size: 40, primary_key: true
       foreign_key :service_id, :services, type: String, size: 40, null: false, on_delete: :cascade
+      foreign_key :platform_domain_id, :platform_domains, type: String, size: 40, on_delete: :cascade
       String :hostname, null: false
+      String :kind, null: false, default: "custom"
+      String :status, null: false, default: "pending"
+      String :verification_token, null: false
+      String :verification_error, text: true
+      DateTime :verified_at
       String :route_target
-      String :tls_status, null: false, default: "unknown"
       DateTime :created_at, null: false
       DateTime :updated_at, null: false
 
       index :hostname, unique: true
       index :service_id
+      index :platform_domain_id
     end
 
     create_table(:jobs) do

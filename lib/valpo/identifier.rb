@@ -12,6 +12,7 @@ module Valpo
       dependency: "dep",
       release: "rel",
       domain: "dom",
+      platform_domain: "pdm",
       job: "job",
       job_event: "evt"
     }.freeze

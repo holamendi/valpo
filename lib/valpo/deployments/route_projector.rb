@@ -11,8 +11,9 @@ module Valpo
         @job_id = job_id
       end
 
-      def apply(override_release: nil, exclude_service_id: nil)
+      def apply(override_release: nil, exclude_service_id: nil, extra_routes: [])
         routes, targets = routes_and_targets(override_release: override_release, exclude_service_id: exclude_service_id)
+        routes.concat(extra_routes)
         event("system", "Applying Caddy config")
         caddy.write_config(routes)
         execute_command(caddy, caddy.reload_command, failure_message: "Caddy reload failed")
@@ -34,7 +35,7 @@ module Valpo
             Valpo::Release.active_for_service(domain.service_id)
           end
 
-          if exclude_service_id.to_s == domain.service_id.to_s || !service&.web? || service.status == "stopped" || release&.route_target.nil?
+          if !domain.verified? || exclude_service_id.to_s == domain.service_id.to_s || !service&.web? || service.status == "stopped" || release&.route_target.nil?
             targets[domain.id] = nil
             next
           end

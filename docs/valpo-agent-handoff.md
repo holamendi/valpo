@@ -117,6 +117,7 @@ app_service_configs
 managed_service_configs
 service_dependencies
 releases
+platform_domains
 domains
 jobs
 job_events
@@ -164,8 +165,11 @@ POST   /services/:id/rollback
 GET    /services/:id/env
 GET    /services/:id/domains
 POST   /services/:id/domains
+POST   /services/:id/domains/:domain/verify
 DELETE /services/:id/domains/:domain
 
+GET    /system/app-domain
+PUT    /system/app-domain
 POST   /system/repair
 
 GET    /jobs
@@ -192,6 +196,8 @@ create_source_service
 update_app_service
 rollback_release
 apply_caddy_config
+verify_domain
+verify_platform_domain
 stop_service
 restart_service
 delete_project
@@ -214,12 +220,15 @@ For registry deploy:
 3. Create a pending release.
 4. Start a new container with deterministic labels.
 5. Wait for health check.
-6. Apply Caddy route to the new container.
-7. Mark release active.
-8. Stop old container after a drain period.
-9. Mark job succeeded.
+6. If the service is a worker, mark the release active.
+7. If the service is a web app with a verified domain, apply its Caddy route and mark the release active.
+8. Otherwise, keep the healthy web release private in the `ready` state.
+9. Stop the old container after a drain period when activation succeeds.
+10. Mark the job succeeded.
 
 If a new deploy fails, leave the current active release untouched.
+
+The platform app domain is optional runtime configuration. Setting it verifies a wildcard challenge, creates `SERVICE.PROJECT.BASE` generated domains, and verifies each exact hostname. Verifying a generated or custom domain activates the latest ready web release. Worker and managed-service lifecycles do not depend on domains.
 
 Suggested Docker labels:
 
@@ -306,6 +315,7 @@ Phase 2B is implemented and the PAT bootstrap portion of Phase 3A is now availab
 - `service create --source ... --deploy` and `service update` support manifest-free, service-owned GitHub configuration with mandatory repository/ref/path preflight and exact commit resolution.
 - `deploy_source` can fetch a configured GitHub ref with a CLI-managed PAT, build its Dockerfile, and deploy a release tied to the exact commit. Create-with-deploy reuses its validated checkout.
 - Web ports resolve from explicit configuration, a sole TCP `EXPOSE`, or the source-build port-3000 fallback; releases record the resolved port and web containers receive `PORT`.
+- Web releases remain private and `ready` until a generated or custom hostname is verified. `domain set-default` configures the optional wildcard base after installation and backfills generated hostnames for existing web services.
 - The PAT is a temporary file-backed credential provider behind `Valpo::Sources::Fetcher`; it is not part of source, build, release, API, job, or manifest data.
 - `valpo auth login github` shows a prefilled fine-grained-PAT link, validates the PAT through GitHub's authenticated-user API, and stores it only after validation. Repository permissions remain enforced by the deployment fetch.
 

@@ -62,12 +62,12 @@ Example target flow:
 
 ```bash
 valpo project create hello
-valpo service create hello/web --type web --port 3000
-valpo service deploy hello/web --image ghcr.io/example/hello:latest
-valpo domain add hello/web hello.example.com
-valpo service logs hello/web
-valpo release list hello/web
-valpo release rollback hello/web
+valpo service create web --project hello --type web --port 3000
+valpo service deploy web --project hello --image ghcr.io/example/hello:latest
+valpo domain add web hello.example.com --project hello
+valpo service logs web --project hello
+valpo release list web --project hello
+valpo release rollback web --project hello
 ```
 
 Exit criteria:
@@ -120,7 +120,7 @@ Deliverables:
 - Generate service credentials and connection URLs.
 - Shared service identity with typed UUIDv7 IDs.
 - App-service kinds `web` and `worker`, plus managed `postgres` and `redis` kinds.
-- Project-scoped service names addressed as `PROJECT/SERVICE` by the CLI.
+- Project-scoped service names addressed with `SERVICE --project PROJECT` by the CLI.
 - Explicit app-to-managed-service dependencies.
 - Inject managed environment values only into dependent app services.
 - Restart or redeploy affected apps after binding.

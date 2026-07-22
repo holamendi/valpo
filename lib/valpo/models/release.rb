@@ -5,7 +5,7 @@ require "time"
 
 module Valpo
   class Release < Sequel::Model(:releases)
-    STATUSES = %w[pending active inactive failed].freeze
+    STATUSES = %w[pending ready active inactive failed].freeze
     SOURCE_TYPES = %w[registry git].freeze
 
     many_to_one :service
@@ -17,6 +17,10 @@ module Valpo
 
     def self.active_for_service(service_id)
       where(service_id: service_id, status: "active").order(Sequel.desc(:version)).first
+    end
+
+    def self.ready_for_service(service_id)
+      where(service_id: service_id, status: "ready").order(Sequel.desc(:version)).first
     end
 
     def self.previous_deployable_for_service(service_id, excluding_release_id: nil)
@@ -51,6 +55,13 @@ module Valpo
       db.transaction do
         self.class.where(service_id: service_id, status: "active").exclude(id: id).update(status: "inactive")
         update(status: "active", activated_at: activated_at)
+      end
+    end
+
+    def ready!
+      db.transaction do
+        self.class.where(service_id: service_id, status: "ready").exclude(id: id).update(status: "inactive")
+        update(status: "ready", activated_at: nil)
       end
     end
 

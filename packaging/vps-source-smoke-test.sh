@@ -93,7 +93,7 @@ if [[ ! "$project" =~ ^[a-z][a-z0-9-]*$ ]]; then
 fi
 
 domain="${project}.${domain_suffix}"
-service="${project}/web"
+service="web"
 service_id=""
 project_id=""
 token_digest_before=""
@@ -141,8 +141,8 @@ cleanup() {
   cleanup_started=1
 
   echo "[source-smoke] cleaning up ${project}"
-  if remote "valpo service show '${service}' >/dev/null 2>&1"; then
-    remote "valpo service delete '${service}' --force --timeout 180" || cleanup_failed=1
+  if remote "valpo service show '${service}' --project '${project}' >/dev/null 2>&1"; then
+    remote "valpo service delete '${service}' --project '${project}' --force --timeout 180" || cleanup_failed=1
   fi
   if remote "valpo project show '${project}' >/dev/null 2>&1"; then
     remote "valpo project delete '${project}' --timeout 180" || cleanup_failed=1
@@ -185,16 +185,18 @@ if [[ "$install_mode" != "none" ]]; then
     --exclude vendor/bundle \
     --exclude tmp \
     "${source_dir}/" "${ssh_target}:${remote_source}/"
-  install_args="--source '${remote_source}'"
   if [[ "$install_mode" == "skip-deps" ]]; then
-    install_args="${install_args} --skip-deps"
+    remote "VALPO_INSTALL_SKIP_DEPS=1 '${remote_source}/packaging/install.sh'"
+  else
+    remote "'${remote_source}/packaging/install.sh'"
   fi
-  remote "'${remote_source}/packaging/install.sh' ${install_args}"
 fi
 
 remote "systemctl is-active docker caddy valpo-api valpo-worker"
 remote "curl -fsS http://127.0.0.1:7092/health"
 assert_github_auth
+
+remote "valpo domain set-default '${domain_suffix}' --timeout 180"
 
 echo "[source-smoke] creating manifest-free source service"
 remote "valpo project create '${project}'"
@@ -202,8 +204,8 @@ project_json="$(remote "valpo project show '${project}' --json")"
 project_id="$(printf '%s\n' "$project_json" | id_from_json)"
 test -n "$project_id"
 
-remote "valpo service create '${service}' --type web --source 'github:${repository}' --deploy --timeout 600"
-service_json="$(remote "valpo service show '${service}' --json")"
+remote "valpo service create '${service}' --project '${project}' --type web --source 'github:${repository}' --deploy --timeout 600"
+service_json="$(remote "valpo service show '${service}' --project '${project}' --json")"
 printf '%s\n' "$service_json"
 service_id="$(printf '%s\n' "$service_json" | id_from_json)"
 test -n "$service_id"
@@ -214,14 +216,14 @@ printf '%s\n' "$service_json" | grep -q '"context": "."'
 printf '%s\n' "$service_json" | grep -q '"port_mode": "automatic"'
 printf '%s\n' "$service_json" | grep -q '"resolved_internal_port": 3000'
 
-release_json="$(remote "valpo release list '${service}' --json")"
+release_json="$(remote "valpo release list '${service}' --project '${project}' --json")"
 printf '%s\n' "$release_json"
 printf '%s\n' "$release_json" | grep -q '"status": "active"'
 printf '%s\n' "$release_json" | grep -Eq '"source_ref": "[0-9a-f]{40}"'
 printf '%s\n' "$release_json" | grep -q '"internal_port": 3000'
 
 echo "[source-smoke] adding and verifying HTTPS domain"
-remote "valpo domain add '${service}' '${domain}' --timeout 180"
+remote "valpo domain add '${service}' '${domain}' --project '${project}' --timeout 180"
 wait_for_https "https://${domain}/"
 
 echo "[source-smoke] verifying runtime metadata"

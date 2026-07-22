@@ -37,6 +37,7 @@ module Valpo
               internal_port: internal_port,
               healthcheck_path: blank_to_nil(healthcheck_path)
             )
+            Valpo::Domains::Configuration.reconcile_service(service) if normalized_type == "web"
           end
           service.refresh
         end

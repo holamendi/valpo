@@ -141,4 +141,21 @@ module ValpoTestSupport
       true
     end
   end
+
+  class FakeDomainVerifier
+    attr_reader :requests
+
+    def initialize(error: nil, fail_for: nil)
+      @error = error
+      @fail_for = fail_for
+      @requests = []
+    end
+
+    def verify!(hostname:, token:)
+      requests << {hostname: hostname, token: token}
+      raise @error if @error && (!@fail_for || @fail_for.call(hostname))
+
+      true
+    end
+  end
 end

@@ -9,10 +9,10 @@ The user should not need to know which Docker image, environment variables, volu
 The ideal interaction is:
 
 ```bash
-valpo service create myapp/web --type web --port 3000
-valpo service create myapp/database --type postgres --version 18
-valpo service bind myapp/web myapp/database
-valpo service env myapp/web
+valpo service create web --project myapp --type web --port 3000
+valpo service create database --project myapp --type postgres --version 18
+valpo service bind web database --project myapp
+valpo service env web --project myapp
 ```
 
 Or in the dashboard:
@@ -191,13 +191,13 @@ The user should not need to manually create these values.
 
 Advanced users can still override or add environment variables manually. Generated values should be marked as managed so Valpo can update them when credentials rotate.
 
-Valpo stores generated service credentials in SQLite and redacts secret env values by default. Use `valpo service env PROJECT/SERVICE --reveal` to inspect actual values on the host.
+Valpo stores generated service credentials in SQLite and redacts secret env values by default. Use `valpo service env SERVICE --project PROJECT --reveal` to inspect actual values on the host.
 
 ## Phase 2B CLI Surface
 
 ```bash
-valpo service create PROJECT/NAME --type postgres|redis [--version VERSION] [--no-wait]
-valpo service list [PROJECT]
+valpo service create NAME --project PROJECT --type postgres|redis [--version VERSION] [--no-wait]
+valpo service list [--project PROJECT]
 valpo service show SERVICE
 valpo service logs SERVICE [--tail N]
 valpo service restart SERVICE [--no-wait]

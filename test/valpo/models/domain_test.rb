@@ -9,7 +9,8 @@ class ValpoDomainTest < Minitest::Test
     service = create_app_service
     domain = Valpo::Domain.create(service_id: service.id, hostname: "Hello.Example.COM")
     assert_equal "hello.example.com", domain.hostname
-    assert_equal "unknown", domain.tls_status
+    assert_equal "custom", domain.kind
+    assert_equal "pending", domain.status
     assert_match(/\Adom_[0-9a-f]{32}\z/, domain.id)
   end
 

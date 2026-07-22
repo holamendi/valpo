@@ -12,21 +12,15 @@ CONFIG_PATH="/etc/valpo/valpo.yml"
 STATE_DIR="/var/lib/valpo"
 LOG_DIR="/var/log/valpo"
 CLI_PATH="/usr/local/bin/valpo"
-SKIP_DEPS=0
-NO_START=0
+SKIP_DEPS="${VALPO_INSTALL_SKIP_DEPS:-0}"
+NO_START="${VALPO_INSTALL_NO_START:-0}"
 
 usage() {
   cat <<USAGE
-Usage: sudo packaging/install.sh [options]
+Usage: sudo packaging/install.sh
 
 Options:
-  --source PATH      Source checkout to install from (default: repo root)
-  --prefix PATH      Install source into PATH (default: /opt/valpo)
-  --config PATH      Write Valpo config to PATH (default: /etc/valpo/valpo.yml)
-  --state-dir PATH   Store Valpo state under PATH (default: /var/lib/valpo)
-  --skip-deps        Do not install apt packages, mise, Ruby, or gems
-  --no-start         Do not enable or start systemd services
-  -h, --help         Show this help
+  -h, --help  Show this help
 USAGE
 }
 
@@ -41,30 +35,6 @@ fail() {
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --source)
-      SOURCE_DIR="$2"
-      shift 2
-      ;;
-    --prefix)
-      PREFIX="$2"
-      shift 2
-      ;;
-    --config)
-      CONFIG_PATH="$2"
-      shift 2
-      ;;
-    --state-dir)
-      STATE_DIR="$2"
-      shift 2
-      ;;
-    --skip-deps)
-      SKIP_DEPS=1
-      shift
-      ;;
-    --no-start)
-      NO_START=1
-      shift
-      ;;
     -h|--help)
       usage
       exit 0
@@ -352,7 +322,7 @@ systemd_available() {
 
 start_services() {
   [[ "$NO_START" -eq 0 ]] || return 0
-  systemd_available || fail "systemd is not running; rerun with --no-start in container/test environments"
+  systemd_available || fail "systemd is not running"
 
   log "Enabling and starting services"
   systemctl daemon-reload

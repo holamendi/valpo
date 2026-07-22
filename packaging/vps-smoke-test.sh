@@ -10,7 +10,7 @@ Runs a repeatable Valpo VPS smoke test over SSH:
   apply a unique multi-service valpo.toml project
   deploy nginx:alpine to its web service
   provision and bind Postgres and Redis dependencies
-  add an HTTPS domain under DOMAIN_SUFFIX
+  verify the automatically assigned HTTPS domain under DOMAIN_SUFFIX
   verify releases and logs
   optionally reboot and verify recovery
   delete every service
@@ -86,10 +86,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-domain="${project}.${domain_suffix}"
-web_service="${project}/web"
-postgres_service="${project}/database"
-redis_service="${project}/cache"
+domain="web.${project}.${domain_suffix}"
+web_service="web"
+postgres_service="database"
+redis_service="cache"
 project_id=""
 postgres_service_id=""
 redis_service_id=""
@@ -176,14 +176,14 @@ cleanup() {
   echo "[smoke] cleaning up ${project}"
   wait_for_services || true
 
-  if remote "valpo service show '${postgres_service}' >/dev/null 2>&1"; then
-    remote "valpo service delete '${postgres_service}' --force --timeout 180" || true
+  if remote "valpo service show '${postgres_service}' --project '${project}' >/dev/null 2>&1"; then
+    remote "valpo service delete '${postgres_service}' --project '${project}' --force --timeout 180" || true
   fi
-  if remote "valpo service show '${redis_service}' >/dev/null 2>&1"; then
-    remote "valpo service delete '${redis_service}' --force --timeout 180" || true
+  if remote "valpo service show '${redis_service}' --project '${project}' >/dev/null 2>&1"; then
+    remote "valpo service delete '${redis_service}' --project '${project}' --force --timeout 180" || true
   fi
-  if remote "valpo service show '${web_service}' >/dev/null 2>&1"; then
-    remote "valpo service delete '${web_service}' --force --timeout 180" || true
+  if remote "valpo service show '${web_service}' --project '${project}' >/dev/null 2>&1"; then
+    remote "valpo service delete '${web_service}' --project '${project}' --force --timeout 180" || true
   fi
 
   if remote "valpo project show '${project}' >/dev/null 2>&1"; then
@@ -235,17 +235,19 @@ rsync -az --delete \
   --exclude tmp \
   "${source_dir}/" "${ssh_target}:${remote_source}/"
 
-install_args="--source '${remote_source}'"
-if [[ "$install_mode" == "skip-deps" ]]; then
-  install_args="${install_args} --skip-deps"
-fi
-
 echo "[smoke] installing Valpo"
-remote "'${remote_source}/packaging/install.sh' ${install_args}"
+if [[ "$install_mode" == "skip-deps" ]]; then
+  remote "VALPO_INSTALL_SKIP_DEPS=1 '${remote_source}/packaging/install.sh'"
+else
+  remote "'${remote_source}/packaging/install.sh'"
+fi
 
 echo "[smoke] verifying services"
 remote "systemctl is-active docker caddy valpo-api valpo-worker"
 remote "curl -fsS http://127.0.0.1:7092/health"
+
+echo "[smoke] configuring app domain"
+remote "valpo domain set-default '${domain_suffix}' --timeout 180"
 
 echo "[smoke] applying project manifest"
 remote "rm -f /tmp/valpo-smoke.toml; umask 077; printf '%s\n' \
@@ -274,11 +276,11 @@ if [[ -z "$project_id" ]]; then
 fi
 
 echo "[smoke] deploying nginx"
-remote "valpo service deploy '${web_service}' --image nginx:alpine --timeout 300"
+remote "valpo service deploy '${web_service}' --project '${project}' --image nginx:alpine --timeout 300"
 
-web_json="$(remote "valpo service show '${web_service}' --json")"
-postgres_json="$(remote "valpo service show '${postgres_service}' --json")"
-redis_json="$(remote "valpo service show '${redis_service}' --json")"
+web_json="$(remote "valpo service show '${web_service}' --project '${project}' --json")"
+postgres_json="$(remote "valpo service show '${postgres_service}' --project '${project}' --json")"
+redis_json="$(remote "valpo service show '${redis_service}' --project '${project}' --json")"
 web_service_id="$(printf '%s\n' "$web_json" | id_from_json)"
 postgres_service_id="$(printf '%s\n' "$postgres_json" | id_from_json)"
 redis_service_id="$(printf '%s\n' "$redis_json" | id_from_json)"
@@ -288,24 +290,24 @@ if [[ -z "$web_service_id" || -z "$postgres_service_id" || -z "$redis_service_id
 fi
 
 echo "[smoke] verifying managed services"
-remote "valpo service list '${project}'"
-remote "valpo service show '${postgres_service}'"
-remote "valpo service show '${redis_service}'"
-remote "valpo service logs '${postgres_service}' --tail 50"
-remote "valpo service logs '${redis_service}' --tail 50"
-remote "valpo service env '${web_service}'"
-remote "valpo service env '${web_service}' --reveal | grep -E 'DATABASE_URL|REDIS_URL'"
+remote "valpo service list --project '${project}'"
+remote "valpo service show '${postgres_service}' --project '${project}'"
+remote "valpo service show '${redis_service}' --project '${project}'"
+remote "valpo service logs '${postgres_service}' --project '${project}' --tail 50"
+remote "valpo service logs '${redis_service}' --project '${project}' --tail 50"
+remote "valpo service env '${web_service}' --project '${project}'"
+remote "valpo service env '${web_service}' --project '${project}' --reveal | grep -E 'DATABASE_URL|REDIS_URL'"
 remote "container=\$(docker ps --filter 'label=valpo.service_id=${web_service_id}' --format '{{.Names}}' | head -n 1); test -n \"\$container\"; docker inspect \"\$container\" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E 'DATABASE_URL=|REDIS_URL=' >/dev/null"
 
-echo "[smoke] adding domain"
-remote "valpo domain add '${web_service}' '${domain}' --timeout 180"
+echo "[smoke] verifying automatic domain"
+remote "valpo domain list '${web_service}' --project '${project}' | grep -F '${domain}'"
 
 echo "[smoke] verifying HTTPS"
 wait_for_https "https://${domain}/"
 
 echo "[smoke] checking releases and logs"
-remote "valpo release list '${web_service}'"
-remote "valpo service logs '${web_service}' --tail 50"
+remote "valpo release list '${web_service}' --project '${project}'"
+remote "valpo service logs '${web_service}' --project '${project}' --tail 50"
 remote "valpo project logs '${project}' --tail 50"
 
 if [[ "$reboot" -eq 1 ]]; then
@@ -320,7 +322,7 @@ if [[ "$reboot" -eq 1 ]]; then
   remote "curl -fsS http://127.0.0.1:7092/health"
   wait_for_https "https://${domain}/"
   remote "valpo system repair --timeout 180"
-  remote "valpo service list '${project}'"
+  remote "valpo service list --project '${project}'"
   wait_for_https "https://${domain}/"
 fi
 
@@ -331,9 +333,9 @@ if remote "valpo project delete '${project}' --timeout 180 >/tmp/valpo-bound-del
 fi
 
 echo "[smoke] deleting services"
-remote "valpo service delete '${postgres_service}' --force --timeout 180"
-remote "valpo service delete '${redis_service}' --force --timeout 180"
-remote "valpo service delete '${web_service}' --force --timeout 180"
+remote "valpo service delete '${postgres_service}' --project '${project}' --force --timeout 180"
+remote "valpo service delete '${redis_service}' --project '${project}' --force --timeout 180"
+remote "valpo service delete '${web_service}' --project '${project}' --force --timeout 180"
 
 echo "[smoke] deleting project"
 remote "valpo project delete '${project}' --timeout 180"

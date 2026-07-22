@@ -84,15 +84,15 @@ On a packaged host, the command atomically writes `/var/lib/valpo/secrets/github
 Then deploy the configured ref, or override it for one deployment:
 
 ```bash
-valpo service deploy acme/web
-valpo service deploy acme/web --ref feature/candidate
+valpo service deploy web --project acme
+valpo service deploy web --project acme --ref feature/candidate
 ```
 
 A manifest is optional for a service owned by one CLI workflow. The equivalent manifest-free flow is:
 
 ```bash
 valpo project create acme
-valpo service create acme/web \
+valpo service create web --project acme \
   --type web \
   --source github:acme/backend \
   --deploy
@@ -101,9 +101,9 @@ valpo service create acme/web \
 An omitted ref resolves remote `HEAD`; Dockerfile and context default to `Dockerfile` and `.`. Every source-backed create performs an authenticated shallow checkout, resolves an exact commit, and verifies that both build paths exist and stay inside the checkout before creating any records. `service update` performs the same preflight before source or build changes are committed:
 
 ```bash
-valpo service update acme/web --ref release --deploy
-valpo service update acme/web --dockerfile ops/Dockerfile --context .
-valpo service update acme/web --clear-port
+valpo service update web --project acme --ref release --deploy
+valpo service update web --project acme --dockerfile ops/Dockerfile --context .
+valpo service update web --project acme --clear-port
 ```
 
 CLI-created source and build definitions are private to that service. Manifest definitions remain project-owned and shareable; updating a manifest-backed service through the CLI detaches the service into private definitions instead of mutating shared manifest records.

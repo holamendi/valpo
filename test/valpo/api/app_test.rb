@@ -142,7 +142,8 @@ class ValpoAPIAppTest < Minitest::Test
     assert_match "app service", json.fetch("message")
 
     get "/services/#{database.id}"
-    assert_equal "hello/database", json.fetch("reference")
+    assert_equal "hello", json.fetch("project")
+    assert_equal "database", json.fetch("name")
   end
 
   def test_service_creation_rejects_malformed_commands_and_fractional_ports
@@ -176,8 +177,9 @@ class ValpoAPIAppTest < Minitest::Test
     Valpo::Jobs::Queue.new.succeed(deploy_job, worker_id: "test-worker")
 
     post_json "/services/#{app_service.id}/domains", hostname: "hello.example.com"
-    assert_equal 201, last_response.status
+    assert_equal 202, last_response.status
     assert_equal app_service.id, json.fetch("domain").fetch("service_id")
+    assert_equal "verify_domain", json.fetch("job").fetch("type")
 
     get "/services/#{app_service.id}/env"
     assert_equal [], json.fetch("env")
@@ -322,6 +324,35 @@ class ValpoAPIAppTest < Minitest::Test
     assert_equal({"source" => "test"}, json.fetch("payload"))
     get "/jobs/#{job.id}/events"
     assert_equal "Job queued", json.first.fetch("message")
+  end
+
+  def test_platform_app_domain_is_configured_after_install
+    put "/system/app-domain", JSON.generate(hostname: "apps.example.com"), "CONTENT_TYPE" => "application/json"
+
+    assert_equal 202, last_response.status, last_response.body
+    assert_equal "apps.example.com", json.dig("app_domain", "hostname")
+    assert_equal "pending", json.dig("app_domain", "status")
+    assert_equal "verify_platform_domain", json.dig("job", "type")
+
+    get "/system/app-domain"
+    assert_nil json["active"]
+    assert_equal "apps.example.com", json.dig("candidate", "hostname")
+  end
+
+  def test_running_web_service_keeps_its_last_verified_domain
+    service = create_app_service(status: "running")
+    release = create_release(service: service, status: "active", route_target: "127.0.0.1:20000")
+    domain = create_domain(service: service)
+
+    delete "/services/#{service.id}/domains/#{domain.id}"
+    assert_equal 409, last_response.status
+    assert_match "Stop the web service", json.fetch("message")
+
+    service.update(status: "stopped")
+    delete "/services/#{service.id}/domains/#{domain.id}"
+    assert_equal 200, last_response.status
+    assert_equal true, json.fetch("deleted")
+    assert_equal "ready", release.refresh.status
   end
 
   private

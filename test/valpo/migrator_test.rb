@@ -15,6 +15,7 @@ class ValpoMigratorTest < Minitest::Test
     assert_includes db.tables, :service_dependencies
     assert_includes db.tables, :releases
     assert_includes db.tables, :domains
+    assert_includes db.tables, :platform_domains
     assert_includes db.tables, :jobs
     assert_includes db.tables, :job_events
   end
@@ -22,9 +23,11 @@ class ValpoMigratorTest < Minitest::Test
   def test_pre_release_schema_is_entirely_in_the_first_migration
     migrations = Dir[File.join(Valpo::Migrator::MIGRATIONS_PATH, "*.rb")].map { |path| File.basename(path) }
 
-    assert_equal ["001_create_phase0_tables.rb"], migrations
+    assert_equal ["001_bootstrap.rb"], migrations
     assert_includes db.schema(:sources).to_h, :owner_service_id
     assert_includes db.schema(:build_targets).to_h, :owner_service_id
+    assert_includes db.schema(:domains).to_h, :kind
+    assert_includes db.schema(:domains).to_h, :status
 
     project = create_project
     db[:sources].insert(

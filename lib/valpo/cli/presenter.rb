@@ -34,7 +34,8 @@ module Valpo
         return emit_json(value) if json?
 
         table(value, [
-          ["SERVICE", ->(row) { row["reference"] }],
+          ["PROJECT", ->(row) { row["project"] }],
+          ["SERVICE", ->(row) { row["name"] }],
           ["TYPE", ->(row) { row["kind"] }],
           ["STATUS", ->(row) { row["status"] }],
           ["VERSION/PORT", method(:service_version_or_port)]
@@ -46,7 +47,8 @@ module Valpo
 
         fields = {
           "id" => value["id"],
-          "reference" => value["reference"],
+          "project" => value["project"],
+          "name" => value["name"],
           "type" => value["kind"],
           "status" => value["status"]
         }
@@ -79,10 +81,24 @@ module Valpo
 
         table(value, [
           ["HOSTNAME", ->(row) { row["hostname"] }],
-          ["TLS", ->(row) { row["tls_status"] }],
+          ["TYPE", ->(row) { row["kind"] }],
+          ["STATUS", ->(row) { row["status"] }],
           ["TARGET", ->(row) { row["route_target"] }],
           ["ID", ->(row) { row["id"] }]
         ], empty: "No domains found.")
+      end
+
+      def app_domain(value)
+        return emit_json(value) if json?
+
+        rows = [value["active"], value["candidate"]].compact
+        table(rows, [
+          ["HOSTNAME", ->(row) { row["hostname"] }],
+          ["STATUS", ->(row) { row["status"] }],
+          ["ACTIVE", ->(row) { row["active"] }],
+          ["VERIFIED", ->(row) { row["verified_at"] }],
+          ["ERROR", ->(row) { row["verification_error"] }]
+        ], empty: "No platform app domain configured.")
       end
 
       def releases(value)
@@ -144,8 +160,8 @@ module Valpo
         if value.is_a?(Hash) && value["service"] && !value["job"]
           service(value.fetch("service"))
         elsif value.is_a?(Hash) && value["job"]
-          resource = value["service"] || value["domain"]
-          details({"resource" => resource && (resource["reference"] || resource["hostname"] || resource["id"]), "job" => value.dig("job", "id"), "status" => value.dig("job", "status")}, %w[resource job status])
+          resource = value["service"] || value["domain"] || value["app_domain"]
+          details({"resource" => resource && (resource["name"] || resource["hostname"] || resource["id"]), "job" => value.dig("job", "id"), "status" => value.dig("job", "status")}, %w[resource job status])
         elsif value.is_a?(Hash) && value["id"].to_s.start_with?("job_")
           details(value, %w[id type status progress error])
         elsif value.is_a?(Hash)
@@ -162,7 +178,7 @@ module Valpo
         table(actions, [
           ["OPERATION", ->(row) { row["operation"] }],
           ["RESOURCE", ->(row) { row["resource"] || row["type"] }],
-          ["NAME", ->(row) { row["name"] || row["reference"] }]
+          ["NAME", ->(row) { row["name"] }]
         ], empty: "No changes.")
       end
 

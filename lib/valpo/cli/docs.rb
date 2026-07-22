@@ -5,7 +5,7 @@ module Valpo
     module Docs
       PATH = File.join(Valpo.root, "docs", "valpo-cli.md")
       REQUIRED_OPTIONS = {
-        "service create" => "--type TYPE",
+        "service create" => "--project PROJECT --type TYPE",
         "service delete" => "--force"
       }.freeze
 
@@ -29,12 +29,12 @@ module Valpo
 
           ## References
 
-          Projects accept a name such as `acme` or a typed ID beginning with `prj_`. Services accept `PROJECT/NAME`, such as `acme/web`, or a typed ID beginning with `svc_`. The CLI resolves named service references through an exact project/service lookup and caches each result for the current invocation.
+          Projects accept a name such as `acme` or a typed ID beginning with `prj_`. Services accept a name such as `web` together with `--project acme`, or a typed ID beginning with `svc_`. Service IDs are globally unambiguous and do not require `--project`. The CLI resolves scoped names through an exact project/service lookup and caches each result for the current invocation.
 
-          New services must be named as `PROJECT/NAME`:
+          New services require an explicit project:
 
           ```bash
-          valpo service create acme/web --type web --port 3000
+          valpo service create web --project acme --type web --port 3000
           ```
 
           ## Service Types
@@ -43,13 +43,33 @@ module Valpo
 
           `command` is valid for `web` and `worker`. `port` and `healthcheck-path` are valid only for `web`. `version` is valid only for `postgres` and `redis`. Incompatible options are rejected rather than ignored. Managed service images are selected by Valpo and cannot be overridden.
 
+          ## Domains And Web Activation
+
+          Domain configuration happens after Valpo is installed. To use generated app hostnames, point a wildcard such as `*.apps.example.com` at the host, then set and verify its base name:
+
+          ```bash
+          valpo domain set-default apps.example.com
+          valpo domain show-default
+          ```
+
+          A web service named `web` in project `acme` receives `web.acme.apps.example.com`. Setting or changing the default reconciles existing web services but never removes custom domains.
+
+          A custom domain can be used instead:
+
+          ```bash
+          valpo domain add web hello.example.com --project acme
+          valpo domain verify web hello.example.com --project acme
+          ```
+
+          `domain set-default` and `domain add` verify a unique HTTPS challenge through Caddy. A web release without a verified domain remains private in the `ready` state; successful verification activates the latest ready release. Workers and managed services do not require domains.
+
           ## Source-Backed Services
 
           A GitHub-backed app service can be created and deployed without `valpo.toml`:
 
           ```bash
           valpo project create acme
-          valpo service create acme/web \\
+          valpo service create web --project acme \\
             --type web \\
             --source github:acme/backend \\
             --deploy
@@ -58,8 +78,8 @@ module Valpo
           `--ref` defaults to remote `HEAD`, `--dockerfile` defaults to `Dockerfile`, and `--context` defaults to `.`. The repository, ref, Dockerfile, and context are validated before any service configuration is created. Use `service update` to persist source, build, command, health-check, or port changes; `--deploy` validates, applies, and deploys the update as one operation.
 
           ```bash
-          valpo service update acme/web --ref release --deploy
-          valpo service update acme/web --clear-command --clear-healthcheck --clear-port
+          valpo service update web --project acme --ref release --deploy
+          valpo service update web --project acme --clear-command --clear-healthcheck --clear-port
           ```
 
           An omitted web port is resolved after the image is available: explicit configuration wins, then a sole TCP `EXPOSE`, then port `3000` for a source image with no exposed port. Ambiguous images and registry images without exactly one exposed TCP port require `--port`.
@@ -69,14 +89,14 @@ module Valpo
           Deploy an app service's configured GitHub source, or override it once with a branch, tag, or commit SHA:
 
           ```bash
-          valpo service deploy acme/web
-          valpo service deploy acme/web --ref release
+          valpo service deploy web --project acme
+          valpo service deploy web --project acme --ref release
           ```
 
           Registry-image deployment remains available as an explicit alternative:
 
           ```bash
-          valpo service deploy acme/web --image ghcr.io/acme/web:latest
+          valpo service deploy web --project acme --image ghcr.io/acme/web:latest
           ```
 
           `--image` and `--ref` are mutually exclusive. Source builds run in the worker and stream Git fetch, Docker build, health-check, and release events through the normal job output.
@@ -102,8 +122,8 @@ module Valpo
           Commands print concise tables or detail views by default. Add `--json` for scripting; stdout then contains exactly one JSON document. Progress, warnings, streamed job events, and errors are written to stderr, so redirecting stdout remains safe.
 
           ```bash
-          valpo service list acme --json
-          valpo service show acme/web --json
+          valpo service list --project acme --json
+          valpo service show web --project acme --json
           ```
 
           ## Waiting

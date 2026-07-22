@@ -142,6 +142,34 @@ module Valpo
       end
     end
 
+    class VerifyDomain
+      def initialize(orchestrator:)
+        @orchestrator = orchestrator
+      end
+
+      def call(job, queue:)
+        @orchestrator.verify_domain(
+          domain_id: job.payload.fetch("domain_id"),
+          queue: queue,
+          job_id: job[:id]
+        )
+      end
+    end
+
+    class VerifyPlatformDomain
+      def initialize(orchestrator:)
+        @orchestrator = orchestrator
+      end
+
+      def call(job, queue:)
+        @orchestrator.configure_platform_domain(
+          platform_domain_id: job.payload.fetch("platform_domain_id"),
+          queue: queue,
+          job_id: job[:id]
+        )
+      end
+    end
+
     class DeleteProject
       def initialize(orchestrator:)
         @orchestrator = orchestrator
@@ -252,6 +280,8 @@ module Valpo
           ),
           "update_app_service" => UpdateApp.new(updater: updater),
           "rollback_release" => AppOperation.new(orchestrator: deployment, method: :rollback_service),
+          "verify_domain" => VerifyDomain.new(orchestrator: deployment),
+          "verify_platform_domain" => VerifyPlatformDomain.new(orchestrator: deployment),
           "apply_caddy_config" => ApplyCaddyConfig.new(orchestrator: deployment),
           "delete_project" => DeleteProject.new(orchestrator: deployment),
           "provision_service" => ProvisionManaged.new(orchestrator: managed),

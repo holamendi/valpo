@@ -120,19 +120,38 @@ module Valpo
               r.post do
                 hostname = required_string(parse_json_body, "hostname")
                 domain = nil
-                job = jobs.enqueue_service_operation("apply_caddy_config", service_id: service.id, payload: {project_id: service.project_id}) do
+                payload = {project_id: service.project_id}
+                job = jobs.enqueue_service_operation("verify_domain", service_id: service.id, payload: payload) do
                   domain = Valpo::Domain.create(service_id: service.id, hostname: hostname)
+                  payload[:domain_id] = domain.id
                 end
-                response.status = 201
+                response.status = 202
                 {domain: Serializers.domain(domain), job: Serializers.job(job)}
               end
             end
             r.on String do |domain_ref|
+              domain = Valpo::Domain.where(service_id: service.id, id: domain_ref).first ||
+                Valpo::Domain.where(service_id: service.id, hostname: domain_ref.downcase).first
+              next not_found("Domain not found") unless domain
+              r.on "verify" do
+                r.post do
+                  response.status = 202
+                  Serializers.job(jobs.enqueue_service_operation(
+                    "verify_domain",
+                    service_id: service.id,
+                    payload: {project_id: service.project_id, domain_id: domain.id}
+                  ))
+                end
+              end
               if r.delete?
-                domain = Valpo::Domain.where(service_id: service.id, id: domain_ref).first ||
-                  Valpo::Domain.where(service_id: service.id, hostname: domain_ref.downcase).first
-                next not_found("Domain not found") unless domain
+                raise Valpo::ValidationError, "Generated domains are managed by the platform app domain" if domain.kind == "generated"
+                if service.status == "running" && domain.verified? && Valpo::Domain.where(service_id: service.id, status: "verified").count == 1
+                  raise Valpo::ConflictError, "Stop the web service before removing its last verified domain"
+                end
                 job = jobs.enqueue_service_operation("apply_caddy_config", service_id: service.id, payload: {project_id: service.project_id}) do
+                  if domain.verified? && Valpo::Domain.where(service_id: service.id, status: "verified").count == 1
+                    Valpo::Release.active_for_service(service.id)&.ready!
+                  end
                   domain.destroy
                 end
                 {deleted: true, job: Serializers.job(job)}

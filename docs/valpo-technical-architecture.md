@@ -80,10 +80,10 @@ A user should be able to create a database with friendly settings instead of man
 Example:
 
 ```bash
-valpo service create myapp/web --type web --port 3000
-valpo service create myapp/database --type postgres --version 18
-valpo service bind myapp/web myapp/database
-valpo service env myapp/web
+valpo service create web --project myapp --type web --port 3000
+valpo service create database --project myapp --type postgres --version 18
+valpo service bind web database --project myapp
+valpo service env web --project myapp
 ```
 
 Valpo should provision the container, create credentials, create the volume, attach it to the right Docker network, generate connection configuration, inject the binding into the app, and include the service in backup/export/import workflows.
@@ -203,9 +203,23 @@ Release
 Domain
   id
   service_id
+  platform_domain_id
   hostname
+  kind
+  status
+  verification_token
+  verification_error
+  verified_at
   route_target
-  tls_status
+
+PlatformDomain
+  id
+  hostname
+  status
+  active
+  verification_token
+  verification_error
+  verified_at
 
 ServiceDependency
   id
@@ -239,7 +253,7 @@ JobEvent
 
 Projects are grouping boundaries, not runtime containers. Every runtime unit has one `svc_` identity. Shared operations such as status, logs, restart, and deletion operate on that identity; deployment and domains are app capabilities, while versions, credentials, and volumes are managed-service capabilities.
 
-The CLI uses `PROJECT/SERVICE` references for people and accepts immutable `svc_` IDs for scripts. API identity routes use service IDs.
+The CLI uses bare service names scoped by `--project` for people and accepts immutable `svc_` IDs without project context for scripts. API identity routes use service IDs.
 
 ## Background Jobs
 
@@ -346,6 +360,10 @@ The service catalog should hide low-level Docker details for common resources wh
 Caddy should be the default proxy and static file server.
 
 Valpo should store routing intent in SQLite and generate/apply Caddy config from that source of truth.
+
+Platform app domains are runtime database configuration rather than installer input. Valpo verifies the wildcard base with a temporary Caddy HTTPS challenge, creates generated `SERVICE.PROJECT.BASE` hostnames, and verifies each exact hostname before routing application traffic. Custom domains use the same exact-host verification flow.
+
+A web deployment can build and pass its health check without a domain, but its release remains `ready` and private. Verification promotes the latest ready release to `active`. Worker releases activate without domains.
 
 Routing examples:
 

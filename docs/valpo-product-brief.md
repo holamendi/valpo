@@ -81,13 +81,13 @@ CLI examples:
 
 ```bash
 valpo project create hello
-valpo service create hello/web --type web --port 3000
-valpo service create hello/database --type postgres
-valpo service bind hello/web hello/database
-valpo service deploy hello/web --image ghcr.io/example/hello:latest
-valpo domain add hello/web hello.example.com
-valpo service logs hello/web
-valpo release rollback hello/web
+valpo service create web --project hello --type web --port 3000
+valpo service create database --project hello --type postgres
+valpo service bind web database --project hello
+valpo service deploy web --project hello --image ghcr.io/example/hello:latest
+valpo domain add web hello.example.com --project hello
+valpo service logs web --project hello
+valpo release rollback web --project hello
 ```
 
 Dashboard examples:

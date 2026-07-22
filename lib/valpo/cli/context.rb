@@ -28,8 +28,8 @@ module Valpo
         raise OperationalError, e.message
       end
 
-      def service_path(reference)
-        "/services/#{resolver.service_id(reference)}"
+      def service_path(reference, project: nil)
+        "/services/#{resolver.service_id(reference, project: project)}"
       end
 
       def finish_operation(response, wait:, timeout:)

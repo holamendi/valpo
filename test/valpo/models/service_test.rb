@@ -22,7 +22,7 @@ class ValpoServiceTest < Minitest::Test
       Valpo::Service.create(project_id: project.id, name: "Main App", kind: "mysql", status: "lost")
     end
 
-    assert_match "name must use lowercase", error.message
+    assert_match "name must be a DNS-safe label", error.message
     assert_match "kind must be one of", error.message
     assert_match "status must be one of", error.message
   end

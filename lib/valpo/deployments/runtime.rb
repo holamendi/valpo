@@ -158,7 +158,7 @@ module Valpo
       end
 
       def allocate_port
-        used_ports = Valpo::Release.where(status: %w[pending active])
+        used_ports = Valpo::Release.where(status: %w[pending ready active])
           .exclude(route_target: nil)
           .map { |release| release.route_target.to_s.split(":").last.to_i }
         (config.app_port_start..config.app_port_end).each do |port|

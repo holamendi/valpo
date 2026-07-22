@@ -52,11 +52,11 @@ class ValpoCLITest < Minitest::Test
 
   def test_create_service_documents_and_rejects_incompatible_options_locally
     client = FakeAPIClient.new([])
-    status, _stdout, stderr = run_cli(client, %w[service create acme/database --type postgres --port 3000])
+    status, _stdout, stderr = run_cli(client, %w[service create database --project acme --type postgres --port 3000])
     assert_equal 2, status
     assert_includes stderr, "--port is not valid for postgres"
 
-    status, _stdout, stderr = run_cli(client, %w[service create acme/web --type web --version 18])
+    status, _stdout, stderr = run_cli(client, %w[service create web --project acme --type web --version 18])
     assert_equal 2, status
     assert_includes stderr, "--version is not valid"
     assert_empty client.requests
@@ -65,7 +65,7 @@ class ValpoCLITest < Minitest::Test
   def test_create_service_uses_project_collection_and_no_wait_returns_queued_job
     job = {"id" => job_id, "status" => "queued"}
     client = FakeAPIClient.new("service" => {"id" => service_id}, "job" => job)
-    status, stdout, stderr = run_cli(client, %w[service create acme/database --type postgres --version 17 --no-wait --json])
+    status, stdout, stderr = run_cli(client, %w[service create database --project acme --type postgres --version 17 --no-wait --json])
 
     assert_equal 0, status
     assert_equal job_id, JSON.parse(stdout).fetch("job").fetch("id")
@@ -83,7 +83,7 @@ class ValpoCLITest < Minitest::Test
     client = FakeAPIClient.new(queued)
     status, stdout, stderr = run_cli(
       client,
-      %w[service create acme/web --type web --source github:holamendi/smol-roda --deploy --no-wait --json]
+      %w[service create web --project acme --type web --source github:holamendi/smol-roda --deploy --no-wait --json]
     )
 
     assert_equal 0, status
@@ -99,12 +99,12 @@ class ValpoCLITest < Minitest::Test
   def test_create_source_service_waits_and_emits_service_and_job_as_one_document
     queued = {"id" => job_id, "status" => "queued"}
     succeeded = {"id" => job_id, "status" => "succeeded", "progress" => 100}
-    service = {"id" => service_id, "reference" => "acme/web", "kind" => "web", "status" => "created", "app" => {}, "dependencies" => []}
+    service = {"id" => service_id, "project" => "acme", "name" => "web", "kind" => "web", "status" => "created", "app" => {}, "dependencies" => []}
     client = FakeAPIClient.new([queued, [], queued, [], succeeded, [], service])
 
     status, stdout, stderr = run_cli(
       client,
-      %w[service create acme/web --type web --source github:acme/web --json]
+      %w[service create web --project acme --type web --source github:acme/web --json]
     )
 
     assert_equal 0, status
@@ -120,7 +120,7 @@ class ValpoCLITest < Minitest::Test
     client = FakeAPIClient.new([{"id" => service_id}, queued])
     status, stdout, = run_cli(
       client,
-      %w[service update acme/web --ref release --clear-port --clear-healthcheck --deploy --no-wait --json]
+      %w[service update web --project acme --ref release --clear-port --clear-healthcheck --deploy --no-wait --json]
     )
 
     assert_equal 0, status
@@ -135,11 +135,11 @@ class ValpoCLITest < Minitest::Test
 
   def test_source_options_require_a_valid_source_spec
     client = FakeAPIClient.new([])
-    status, _stdout, stderr = run_cli(client, %w[service create acme/web --type web --source wat])
+    status, _stdout, stderr = run_cli(client, %w[service create web --project acme --type web --source wat])
     assert_equal 2, status
     assert_includes stderr, "PROVIDER:OWNER/REPOSITORY"
 
-    status, _stdout, stderr = run_cli(client, %w[service create acme/web --type web --ref main])
+    status, _stdout, stderr = run_cli(client, %w[service create web --project acme --type web --ref main])
     assert_equal 2, status
     assert_includes stderr, "require --source"
     assert_empty client.requests
@@ -152,7 +152,7 @@ class ValpoCLITest < Minitest::Test
       {"id" => database_id, "name" => "database"},
       {"id" => job_id, "status" => "queued"}
     ])
-    status, = run_cli(client, %w[service bind acme/web acme/database --no-wait --json])
+    status, = run_cli(client, %w[service bind web database --project acme --no-wait --json])
 
     assert_equal 0, status
     assert_equal [
@@ -163,15 +163,45 @@ class ValpoCLITest < Minitest::Test
 
     cache_client = FakeAPIClient.new("id" => service_id)
     resolver = Valpo::CLI::ReferenceResolver.new(client: cache_client)
-    2.times { assert_equal service_id, resolver.service_id("acme/web") }
+    2.times { assert_equal service_id, resolver.service_id("web", project: "acme") }
     assert_equal 1, cache_client.requests.count { |request| request.fetch(:path) == "/projects/acme/services/web" }
   end
 
   def test_typed_service_id_skips_resolution
-    client = FakeAPIClient.new("id" => service_id, "reference" => "acme/web", "kind" => "web", "status" => "created", "app" => {}, "dependencies" => [])
+    client = FakeAPIClient.new("id" => service_id, "project" => "acme", "name" => "web", "kind" => "web", "status" => "created", "app" => {}, "dependencies" => [])
     status, = run_cli(client, ["service", "show", service_id, "--json"])
     assert_equal 0, status
     assert_equal ["/services/#{service_id}"], client.requests.map { |request| request.fetch(:path) }
+  end
+
+  def test_set_default_domain_uses_runtime_configuration_endpoint
+    job = {"id" => job_id, "status" => "queued"}
+    app_domain = {"hostname" => "apps.example.com", "status" => "pending"}
+    client = FakeAPIClient.new("app_domain" => app_domain, "job" => job)
+
+    status, stdout, stderr = run_cli(client, %w[domain set-default apps.example.com --no-wait --json])
+
+    assert_equal 0, status
+    assert_equal job_id, JSON.parse(stdout).dig("job", "id")
+    assert_empty stderr
+    assert_equal :put, client.requests.first.fetch(:method)
+    assert_equal "/system/app-domain", client.requests.first.fetch(:path)
+    assert_equal({"hostname" => "apps.example.com"}, client.requests.first.fetch(:payload))
+  end
+
+  def test_named_service_requires_project_and_slash_references_are_rejected
+    client = FakeAPIClient.new([])
+
+    status, stdout, stderr = run_cli(client, %w[service show web])
+    assert_equal 2, status
+    assert_empty stdout
+    assert_includes stderr, "--project is required"
+
+    status, stdout, stderr = run_cli(client, %w[service show acme/web --project acme])
+    assert_equal 2, status
+    assert_empty stdout
+    assert_includes stderr, "must not contain /"
+    assert_empty client.requests
   end
 
   def test_operations_wait_by_default_stream_unseen_events_and_emit_one_json_document
@@ -187,7 +217,7 @@ class ValpoCLITest < Minitest::Test
       {"id" => job_id, "status" => "succeeded", "progress" => 100},
       [event, finished_event]
     ])
-    status, stdout, stderr = run_cli(client, %w[service deploy acme/web --image nginx:alpine --json])
+    status, stdout, stderr = run_cli(client, %w[service deploy web --project acme --image nginx:alpine --json])
 
     assert_equal 0, status
     assert_equal "succeeded", JSON.parse(stdout).fetch("status")
@@ -202,7 +232,7 @@ class ValpoCLITest < Minitest::Test
       {"id" => job_id, "status" => "queued"}
     ])
 
-    status, = run_cli(client, %w[service deploy acme/web --ref release --no-wait --json])
+    status, = run_cli(client, %w[service deploy web --project acme --ref release --no-wait --json])
 
     assert_equal 0, status
     request = client.requests.last
@@ -331,7 +361,8 @@ class ValpoCLITest < Minitest::Test
   def test_human_service_show_includes_source_build_and_resolved_port
     service = {
       "id" => service_id,
-      "reference" => "acme/web",
+      "project" => "acme",
+      "name" => "web",
       "kind" => "web",
       "status" => "running",
       "app" => {
@@ -347,7 +378,7 @@ class ValpoCLITest < Minitest::Test
       "created_at" => "2026-07-14T00:00:00Z"
     }
 
-    status, stdout, stderr = run_cli(FakeAPIClient.new([{"id" => service_id}, service]), %w[service show acme/web])
+    status, stdout, stderr = run_cli(FakeAPIClient.new([{"id" => service_id}, service]), %w[service show web --project acme])
 
     assert_equal 0, status
     assert_includes stdout, "github:acme/backend"
@@ -360,7 +391,7 @@ class ValpoCLITest < Minitest::Test
 
   def test_optional_project_filter_is_not_treated_as_an_extra_argument
     client = FakeAPIClient.new([[]])
-    status, stdout, stderr = run_cli(client, %w[service list acme --json])
+    status, stdout, stderr = run_cli(client, %w[service list --project acme --json])
 
     assert_equal 0, status
     assert_equal [], JSON.parse(stdout)
@@ -389,7 +420,7 @@ class ValpoCLITest < Minitest::Test
 
   def test_delete_requires_force_before_api_call
     client = FakeAPIClient.new([])
-    status, stdout, stderr = run_cli(client, %w[service delete acme/web])
+    status, stdout, stderr = run_cli(client, %w[service delete web --project acme])
     assert_equal 2, status
     assert_empty stdout
     assert_includes stderr, "--force is required"

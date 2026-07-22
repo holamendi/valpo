@@ -37,8 +37,11 @@ module Valpo
         ["service env", Commands::Service::Env, false],
         ["service bind", Commands::Service::Bind, false],
         ["service unbind", Commands::Service::Unbind, false],
+        ["domain show-default", Commands::Domain::ShowDefault, false],
+        ["domain set-default", Commands::Domain::SetDefault, false],
         ["domain list", Commands::Domain::List, false],
         ["domain add", Commands::Domain::Add, false],
+        ["domain verify", Commands::Domain::Verify, false],
         ["domain remove", Commands::Domain::Remove, false],
         ["release list", Commands::Release::List, false],
         ["release rollback", Commands::Release::Rollback, false],
@@ -82,8 +85,11 @@ module Valpo
       end
 
       register "domain" do |prefix|
+        prefix.register "show-default", Commands::Domain::ShowDefault
+        prefix.register "set-default", Commands::Domain::SetDefault
         prefix.register "list", Commands::Domain::List
         prefix.register "add", Commands::Domain::Add
+        prefix.register "verify", Commands::Domain::Verify
         prefix.register "remove", Commands::Domain::Remove
       end
 

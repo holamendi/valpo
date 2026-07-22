@@ -15,7 +15,7 @@ class ValpoDeploymentsOrchestratorTest < Minitest::Test
       status: "active",
       env_json: JSON.generate("DATABASE_URL" => "postgres://example")
     )
-    domain = Valpo::Domain.create(service_id: app.id, hostname: "hello.example.com")
+    domain = create_domain(service: app)
     docker = ValpoTestSupport::FakeDocker.new
     caddy = ValpoTestSupport::FakeCaddy.new
 
@@ -89,6 +89,129 @@ class ValpoDeploymentsOrchestratorTest < Minitest::Test
     assert_equal %w[bundle exec sidekiq], docker.run_requests.first.fetch(:command_args)
   end
 
+  def test_web_deploy_without_a_domain_stays_ready_and_private
+    app = create_app_service
+    caddy = ValpoTestSupport::FakeCaddy.new
+
+    release = run_job do |queue, job|
+      orchestrator(docker: ValpoTestSupport::FakeDocker.new, caddy: caddy).deploy_registry_image(
+        service_id: app.id,
+        image: "example/app:v1",
+        internal_port: 3000,
+        healthcheck_path: nil,
+        queue: queue,
+        job_id: job.id
+      )
+    end
+
+    assert_equal "ready", release.status
+    assert_equal "ready", app.refresh.status
+    assert release.container_name
+    assert_nil caddy.routes
+  end
+
+  def test_verifying_domain_activates_ready_release
+    app = create_app_service
+    docker = ValpoTestSupport::FakeDocker.new
+    caddy = ValpoTestSupport::FakeCaddy.new
+    service = orchestrator(docker: docker, caddy: caddy)
+    release = run_job do |queue, job|
+      service.deploy_registry_image(
+        service_id: app.id,
+        image: "example/app:v1",
+        internal_port: 3000,
+        healthcheck_path: nil,
+        queue: queue,
+        job_id: job.id
+      )
+    end
+    domain = Valpo::Domain.create(service_id: app.id, hostname: "hello.example.com")
+
+    run_job { |queue, job| service.verify_domain(domain_id: domain.id, queue: queue, job_id: job.id) }
+
+    assert_equal "active", release.refresh.status
+    assert_equal "running", app.refresh.status
+    assert_equal "verified", domain.refresh.status
+    assert_equal "127.0.0.1:20000", domain.route_target
+  end
+
+  def test_failed_domain_verification_keeps_deployment_ready_and_private
+    app = create_app_service
+    domain = Valpo::Domain.create(service_id: app.id, hostname: "missing.example.com")
+    verifier = ValpoTestSupport::FakeDomainVerifier.new(error: Valpo::ValidationError.new("challenge unavailable"))
+
+    release = run_job do |queue, job|
+      orchestrator(docker: ValpoTestSupport::FakeDocker.new, domain_verifier: verifier).deploy_registry_image(
+        service_id: app.id,
+        image: "example/app:v1",
+        internal_port: 3000,
+        healthcheck_path: nil,
+        queue: queue,
+        job_id: job.id
+      )
+    end
+
+    assert_equal "ready", release.status
+    assert_equal "ready", app.refresh.status
+    assert_equal "failed", domain.refresh.status
+    assert_match "challenge unavailable", domain.verification_error
+  end
+
+  def test_configuring_platform_domain_backfills_and_activates_ready_web_release
+    app = create_app_service
+    verifier = ValpoTestSupport::FakeDomainVerifier.new
+    service = orchestrator(docker: ValpoTestSupport::FakeDocker.new, domain_verifier: verifier)
+    release = run_job do |queue, job|
+      service.deploy_registry_image(
+        service_id: app.id,
+        image: "example/app:v1",
+        internal_port: 3000,
+        healthcheck_path: nil,
+        queue: queue,
+        job_id: job.id
+      )
+    end
+    platform_domain, = Valpo::Domains::Configuration.stage("apps.example.com")
+
+    run_job do |queue, job|
+      service.configure_platform_domain(platform_domain_id: platform_domain.id, queue: queue, job_id: job.id)
+    end
+
+    domain = Valpo::Domain.where(service_id: app.id, kind: "generated").first
+    assert_equal "verified", platform_domain.refresh.status
+    assert platform_domain.active
+    assert_equal "web.hello.apps.example.com", domain.hostname
+    assert_equal "verified", domain.status
+    assert_equal "active", release.refresh.status
+    assert_equal "running", app.refresh.status
+    assert_equal 2, verifier.requests.length
+  end
+
+  def test_failed_generated_domain_replacement_keeps_previous_verified_hostname
+    old_platform = create_platform_domain(hostname: "old.example.com")
+    app = create_app_service(status: "running")
+    old_domain = Valpo::Domain.where(service_id: app.id, platform_domain_id: old_platform.id).first
+    old_domain.update(status: "verified", verified_at: Time.now.utc)
+    create_release(service: app, status: "active", route_target: "127.0.0.1:20000")
+    replacement, = Valpo::Domains::Configuration.stage("new.example.com")
+    verifier = ValpoTestSupport::FakeDomainVerifier.new(
+      error: Valpo::ValidationError.new("exact hostname is not reachable"),
+      fail_for: ->(hostname) { hostname == "web.hello.new.example.com" }
+    )
+    service = orchestrator(docker: ValpoTestSupport::FakeDocker.new, domain_verifier: verifier)
+
+    error = assert_raises Valpo::ValidationError do
+      run_job do |queue, job|
+        service.configure_platform_domain(platform_domain_id: replacement.id, queue: queue, job_id: job.id)
+      end
+    end
+
+    assert_match "exact hostname is not reachable", error.message
+    assert_equal "verified", old_domain.refresh.status
+    assert Valpo::Domain[old_domain.id]
+    assert_equal "failed", Valpo::Domain.where(service_id: app.id, platform_domain_id: replacement.id).first.status
+  end
+
   def test_built_image_deploy_skips_pull_and_records_git_metadata
     app = create_app_service
     docker = ValpoTestSupport::FakeDocker.new
@@ -130,6 +253,7 @@ class ValpoDeploymentsOrchestratorTest < Minitest::Test
 
   def test_rollback_reactivates_previous_release
     app = create_app_service(status: "running")
+    create_domain(service: app)
     previous = create_release(service: app, image: "example/app:v1", status: "inactive", container_name: "previous", route_target: "127.0.0.1:20000")
     current = create_release(service: app, image: "example/app:v2", status: "active", container_name: "current", route_target: "127.0.0.1:20001")
     rolled_back = run_job { |queue, job| orchestrator(docker: ValpoTestSupport::FakeDocker.new).rollback_service(service_id: app.id, queue: queue, job_id: job.id) }
@@ -142,7 +266,7 @@ class ValpoDeploymentsOrchestratorTest < Minitest::Test
   def test_stop_restart_and_logs_are_service_scoped
     app = create_app_service(status: "running")
     release = create_release(service: app, status: "active", container_name: "active", route_target: "127.0.0.1:20000")
-    domain = Valpo::Domain.create(service_id: app.id, hostname: "hello.example.com", route_target: release.route_target)
+    domain = create_domain(service: app, route_target: release.route_target)
     docker = ValpoTestSupport::FakeDocker.new
     service = orchestrator(docker: docker)
 
@@ -198,12 +322,13 @@ class ValpoDeploymentsOrchestratorTest < Minitest::Test
     yield queue, job
   end
 
-  def orchestrator(docker:, caddy: ValpoTestSupport::FakeCaddy.new)
+  def orchestrator(docker:, caddy: ValpoTestSupport::FakeCaddy.new, domain_verifier: ValpoTestSupport::FakeDomainVerifier.new)
     Valpo::Deployments::Orchestrator.new(
       config: VALPO_TEST_CONFIG,
       docker: docker,
       caddy: caddy,
       health_checker: ValpoTestSupport::FakeHealthChecker.new,
+      domain_verifier: domain_verifier,
       service_orchestrator: FakeServiceRepair.new
     )
   end

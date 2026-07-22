@@ -22,6 +22,10 @@ module Valpo
         when "static"
           root = route.fetch(:root)
           "#{hostname} {\n  root * #{root}\n  file_server\n}"
+        when "verification"
+          token = route.fetch(:token)
+          path = Valpo::Domains::ReachabilityVerifier.challenge_path(token)
+          "#{hostname} {\n  respond #{path} \"#{token}\" 200\n}"
         else
           raise Valpo::ValidationError, "Unsupported Caddy route kind: #{kind}"
         end
