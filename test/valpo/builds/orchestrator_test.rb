@@ -13,7 +13,7 @@ class ValpoBuildsOrchestratorTest < Minitest::Test
     docker = FakeDocker.new
     deployment = FakeDeployment.new
 
-    release = orchestrator(fetcher: fetcher, docker: docker, deployment: deployment).deploy_source(
+    release = orchestrator(fetcher:, docker:, deployment:).deploy_source(
       service_id: service.id,
       ref: "release",
       internal_port: nil,
@@ -34,11 +34,11 @@ class ValpoBuildsOrchestratorTest < Minitest::Test
   def test_failed_build_does_not_touch_the_active_release
     service, source, = configured_service
     service.update(status: "running")
-    active = create_release(service: service, status: "active")
+    active = create_release(service:, status: "active")
     deployment = FakeDeployment.new
 
     error = assert_raises Valpo::ValidationError do
-      orchestrator(fetcher: FakeFetcher.new, docker: FakeDocker.new(success: false), deployment: deployment).deploy_source(
+      orchestrator(fetcher: FakeFetcher.new, docker: FakeDocker.new(success: false), deployment:).deploy_source(
         service_id: service.id,
         ref: nil,
         internal_port: nil,
@@ -98,16 +98,16 @@ class ValpoBuildsOrchestratorTest < Minitest::Test
       dockerfile: "Dockerfile",
       context: "."
     )
-    service = create_app_service(project: project)
+    service = create_app_service(project:)
     Valpo::AppServiceConfig[service.id].update(build_target_id: build_target.id)
     [service, source, build_target]
   end
 
   def orchestrator(fetcher:, docker:, deployment:)
     Valpo::Builds::Orchestrator.new(
-      docker: docker,
+      docker:,
       source_fetcher: fetcher,
-      deployment_orchestrator: deployment
+      deployment_lifecycle: deployment
     )
   end
 

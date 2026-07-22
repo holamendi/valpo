@@ -6,8 +6,8 @@ require "time"
 module Valpo
   class Service < Sequel::Model(:services)
     NAME_PATTERN = Valpo::Project::NAME_PATTERN
-    APP_KINDS = Valpo::Services::Definitions::APP_TYPES
-    MANAGED_KINDS = Valpo::Services::Definitions::MANAGED_TYPES
+    APP_KINDS = Valpo::Services::Registry.app_types
+    MANAGED_KINDS = Valpo::Services::Registry.managed_types
     KINDS = (APP_KINDS + MANAGED_KINDS).freeze
     STATUSES = %w[created provisioning ready running stopped restarting deleting failed].freeze
 
@@ -22,7 +22,7 @@ module Valpo
     one_to_one :owned_build_target, class: "Valpo::BuildTarget", key: :owner_service_id
 
     def self.find_by_id(id)
-      where(id: id).first
+      where(id:).first
     end
 
     def app?

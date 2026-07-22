@@ -15,7 +15,7 @@ module Valpo
 
         loop do
           begin
-            return true if healthy?(route_target: route_target, path: path)
+            return true if healthy?(route_target:, path:)
           rescue => e
             last_error = e
           end
@@ -36,8 +36,8 @@ module Valpo
         port = Integer(port)
 
         if path && !path.empty?
-          response = Net::HTTP.start(host, port, open_timeout: 1, read_timeout: 1) do |http|
-            http.get(path)
+          response = Net::HTTP.start(host, port, open_timeout: 1, read_timeout: 1) do
+            it.get(path)
           end
           response.code.to_i.between?(200, 399)
         else

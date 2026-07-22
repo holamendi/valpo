@@ -14,7 +14,7 @@ class ValpoServicesAppUpdaterTest < Minitest::Test
 
     updater.update(
       service_id: service.id,
-      configuration: configuration,
+      configuration:,
       runtime_changes: {},
       deploy: false,
       queue: FakeQueue.new,
@@ -53,10 +53,10 @@ class ValpoServicesAppUpdaterTest < Minitest::Test
 
   def test_runtime_update_reconfigures_running_release
     service = create_app_service(status: "running", port: 3000)
-    create_release(service: service, status: "active", container_name: "active")
+    create_release(service:, status: "active", container_name: "active")
     deployment = FakeDeployment.new
 
-    updater(deployment: deployment).update(
+    updater(deployment:).update(
       service_id: service.id,
       configuration: nil,
       runtime_changes: {"internal_port" => 9292, "healthcheck_path" => "/health"},
@@ -72,7 +72,7 @@ class ValpoServicesAppUpdaterTest < Minitest::Test
 
   def test_failed_runtime_update_restores_previous_configuration
     service = create_app_service(status: "running", port: 3000)
-    create_release(service: service, status: "active", container_name: "active")
+    create_release(service:, status: "active", container_name: "active")
     failing = updater(deployment: FakeDeployment.new(error: Valpo::ValidationError.new("restart failed")))
 
     assert_raises Valpo::ValidationError do
@@ -93,13 +93,13 @@ class ValpoServicesAppUpdaterTest < Minitest::Test
   def test_failed_redeploy_restores_source_build_runtime_and_active_release
     project = create_project
     service = Valpo::Sources::ServiceConfigurator.new.create_service!(
-      project: project,
+      project:,
       service_attributes: {"name" => "web", "type" => "web", "internal_port" => 3000},
       source: {"provider" => "github", "repository" => "acme/backend", "ref" => "main"},
       build: {"dockerfile" => "Dockerfile", "context" => "."}
     )
     service.update(status: "running")
-    active = create_release(service: service, status: "active", container_name: "active", internal_port: 3000)
+    active = create_release(service:, status: "active", container_name: "active", internal_port: 3000)
     failing_builds = FakeBuilds.new(error: Valpo::ValidationError.new("Docker build failed"))
 
     assert_raises Valpo::ValidationError do
@@ -129,7 +129,7 @@ class ValpoServicesAppUpdaterTest < Minitest::Test
   def test_service_owned_configuration_is_deleted_with_the_service
     project = create_project
     service = Valpo::Sources::ServiceConfigurator.new.create_service!(
-      project: project,
+      project:,
       service_attributes: {"name" => "web", "type" => "web"},
       source: {"provider" => "github", "repository" => "acme/backend", "ref" => "HEAD"},
       build: {"dockerfile" => "Dockerfile", "context" => "."}
@@ -168,17 +168,17 @@ class ValpoServicesAppUpdaterTest < Minitest::Test
       dockerfile: "Dockerfile",
       context: "."
     )
-    service = create_app_service(project: project)
+    service = create_app_service(project:)
     Valpo::AppServiceConfig[service.id].update(build_target_id: build.id)
     [service, source, build]
   end
 
   def updater(preflight: FakePreflight.new, builds: FakeBuilds.new, deployment: FakeDeployment.new)
     Valpo::Services::AppUpdater.new(
-      preflight: preflight,
+      preflight:,
       configurator: Valpo::Sources::ServiceConfigurator.new,
-      builds: builds,
-      deployment: deployment
+      builds:,
+      deployment:
     )
   end
 

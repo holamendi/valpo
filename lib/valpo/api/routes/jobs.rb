@@ -3,23 +3,34 @@
 module Valpo
   module API
     class App
-      hash_branch("", "jobs") do |r|
-        r.is { r.get { jobs.list.map { |job| Serializers.job(job) } } }
+      hash_branch("/v1", "jobs") do |r|
+        # GET /v1/jobs — list jobs.
+        r.get true do
+          validate_query
+          jobs.list.map { V1::Jobs.render(it) }
+        end
+
         r.on String do |id|
-          r.on("events") do
-            r.get do
+          r.on "events" do
+            # GET /v1/jobs/{job}/events — list a job's events.
+            r.get true do
+              validate_query
               next not_found("Job not found") unless jobs.find(id)
-              jobs.events(id).map { |event| Serializers.job_event(event) }
+
+              jobs.events(id).map { V1::Jobs.render_event(it) }
             end
           end
-          r.is do
-            r.get do
-              job = jobs.find(id)
-              next not_found("Job not found") unless job
-              Serializers.job(job)
-            end
+
+          # GET /v1/jobs/{job} — show a job.
+          r.get true do
+            validate_query
+            job = jobs.find(id)
+            next not_found("Job not found") unless job
+
+            V1::Jobs.render(job)
           end
         end
+        not_found("Route not found")
       end
     end
   end

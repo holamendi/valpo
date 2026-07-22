@@ -12,20 +12,21 @@ module Valpo
       end
 
       def entries_for_service(service_id, reveal:)
-        Valpo::ServiceDependency.where(service_id: service_id, status: "active").order(:created_at).flat_map do |dependency|
-          managed = Valpo::Service[dependency.dependency_service_id]
+        Valpo::ServiceDependency.where(service_id:, status: "active").order(:created_at).flat_map do
+          managed = Valpo::Service[it.dependency_service_id]
           next [] unless managed
 
-          dependency.env.sort.map do |name, value|
-            redacted = !reveal && Catalog.secret_env_key?(name)
+          dependency_id = it.id
+          it.env.sort.map do |name, value|
+            redacted = !reveal && Registry.secret_env_key?(name)
             {
-              name: name,
+              name:,
               value: redacted ? "********" : value,
-              redacted: redacted,
+              redacted:,
               service_id: managed.id,
               service_name: managed.name,
               service_type: managed.kind,
-              dependency_id: dependency.id
+              dependency_id:
             }
           end
         end
@@ -33,10 +34,10 @@ module Valpo
 
       def conflicting_keys(service_id:, dependency_service_id:, env:)
         existing_keys = Valpo::ServiceDependency
-          .where(service_id: service_id, status: "active")
-          .exclude(dependency_service_id: dependency_service_id)
+          .where(service_id:, status: "active")
+          .exclude(dependency_service_id:)
           .all
-          .flat_map { |dependency| dependency.env.keys }
+          .flat_map { it.env.keys }
         existing_keys & env.keys
       end
     end

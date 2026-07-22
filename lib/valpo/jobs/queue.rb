@@ -26,6 +26,11 @@ module Valpo
         update_app_service
         delete_service
       ].freeze
+      SUPPORTED_TYPES = (
+        %w[system_check repair_system verify_platform_domain] +
+        PROJECT_OPERATION_TYPES +
+        SERVICE_OPERATION_TYPES
+      ).uniq.freeze
 
       def enqueue(type, payload = {})
         Valpo::Database.connection.transaction(mode: :immediate) do
@@ -43,7 +48,7 @@ module Valpo
 
           yield if block_given?
 
-          create_job(type, payload.merge(project_id: project_id))
+          create_job(type, payload.merge(project_id:))
         end
       end
 
@@ -54,15 +59,15 @@ module Valpo
           active_job ||= Valpo::Job.where(status: ACTIVE_PROJECT_JOB_STATUSES, type: "apply_project_manifest")
             .order(:created_at)
             .all
-            .find { |job| job.payload.dig("manifest", "project", "name") == project_name }
+            .find { it.payload.dig("manifest", "project", "name") == project_name }
           if active_job
             raise Valpo::ConflictError, "Project already has an active #{active_job.type} job: #{active_job.id}"
           end
 
           create_job(
             "apply_project_manifest",
-            manifest: manifest,
-            project_name: project_name,
+            manifest:,
+            project_name:,
             project_id: project&.id
           )
         end
@@ -90,7 +95,7 @@ module Valpo
 
           yield if block_given?
 
-          create_job(type, payload.merge(service_id: service_id))
+          create_job(type, payload.merge(service_id:))
         end
       end
 
@@ -100,8 +105,8 @@ module Valpo
         Valpo::Job.where(status: ACTIVE_PROJECT_JOB_STATUSES, type: types)
           .order(:created_at)
           .all
-          .find do |job|
-            payload = job.payload
+          .find do
+            payload = it.payload
             payload["project_id"].to_s == project_id ||
               (project_name && (payload["project_name"] == project_name || payload.dig("manifest", "project", "name") == project_name))
           end
@@ -112,8 +117,8 @@ module Valpo
         Valpo::Job.where(status: ACTIVE_PROJECT_JOB_STATUSES, type: types)
           .order(:created_at)
           .all
-          .find do |job|
-            payload = job.payload
+          .find do
+            payload = it.payload
             payload["service_id"].to_s == service_id || payload["dependency_service_id"].to_s == service_id
           end
       end
@@ -127,7 +132,7 @@ module Valpo
       end
 
       def events(job_id)
-        Valpo::JobEvent.where(job_id: job_id).order(:created_at).all
+        Valpo::JobEvent.where(job_id:).order(:created_at).all
       end
 
       def lock_next(worker_id)
@@ -156,7 +161,7 @@ module Valpo
       def succeed(job_id, worker_id:, progress: 100)
         updated = Valpo::Job.where(id: job_id, status: "running", locked_by: worker_id).update(
           status: "succeeded",
-          progress: progress,
+          progress:,
           error: nil,
           locked_by: nil,
           locked_at: nil,
@@ -170,7 +175,7 @@ module Valpo
       def fail(job_id, error, worker_id:)
         updated = Valpo::Job.where(id: job_id, status: "running", locked_by: worker_id).update(
           status: "failed",
-          error: error,
+          error:,
           locked_by: nil,
           locked_at: nil,
           finished_at: now
@@ -182,9 +187,9 @@ module Valpo
 
       def event(job_id, stream, message)
         Valpo::JobEvent.create(
-          job_id: job_id,
-          stream: stream,
-          message: message
+          job_id:,
+          stream:,
+          message:
         )
       end
 
@@ -192,7 +197,7 @@ module Valpo
 
       def create_job(type, payload)
         job = Valpo::Job.create(
-          type: type,
+          type:,
           payload_json: JSON.generate(payload)
         )
         event(job.id, "system", "Job queued")

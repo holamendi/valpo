@@ -23,7 +23,7 @@ module Valpo
       private
 
       def context(api_url:, config:, json:, **)
-        @context ||= CLI.context_factory.call(api_url: api_url, config: config, json: json, out: @out, err: @err)
+        @context ||= CLI.context_factory.call(api_url:, config:, json:, out: @out, err: @err)
       rescue Valpo::API::Client::Error, Valpo::ValidationError => e
         raise OperationalError, e.message
       end
@@ -51,12 +51,6 @@ module Valpo
         raise UsageError, "#{name} is required"
       end
 
-      def validate_service_options!(type:, options:)
-        Valpo::Services::Definitions.validate_options!(type: type, options: options)
-      rescue Valpo::ValidationError => e
-        raise UsageError, e.message
-      end
-
       def read_file(path)
         File.read(path)
       rescue Errno::ENOENT, Errno::EACCES => e
@@ -69,15 +63,6 @@ module Valpo
         raise UsageError, "Service name is required" if name.empty?
 
         name
-      end
-
-      def parse_source_spec(value)
-        provider, repository = value.to_s.split(":", 2)
-        if provider.to_s.empty? || repository.to_s.empty?
-          raise UsageError, "--source must use PROVIDER:OWNER/REPOSITORY"
-        end
-
-        {"provider" => provider.downcase, "repository" => repository}
       end
 
       def segment(value)

@@ -1,5 +1,7 @@
 # Valpo Extensibility And Positioning
 
+Research snapshot: 2026-07-22. This document records architectural lessons, not a continuously maintained feature comparison. Vendor capabilities and positioning change; only claims that influence a Valpo boundary are retained.
+
 ## Context
 
 Valpo should be extensible enough to grow beyond its built-in services, but it should not become a broad, everything-included self-hosting control panel.
@@ -36,7 +38,7 @@ Valpo should learn from Dokku's simplicity, but expose more structured extension
 
 ### Coolify
 
-Coolify is a broad self-hosted PaaS. Its public docs position it around applications, databases, services, Git integration, any server, multi-server setups, Docker Swarm clusters, one-click services, backups, monitoring, real-time terminal, collaboration, pull request deployments, automations, and API access.
+Coolify represents the broad, dashboard-first self-hosted PaaS category. The relevant architectural contrast is breadth across infrastructure and team workflows versus Valpo's deliberately independent single-server control plane.
 
 What to borrow:
 
@@ -50,14 +52,14 @@ What to avoid:
 
 - "Any use-case" positioning.
 - Too many one-click services too early.
-- Collaboration, monitoring, PR environments, terminal, and automations becoming required early scope.
+- Adjacent team, observability, and automation surfaces becoming required early scope.
 - Multi-server and cluster abstractions that weaken the single-server mental model.
 
 Valpo should not compete by matching feature count.
 
 ### Dokploy
 
-Dokploy is also broad. Its current public positioning includes Dockerfile/Nixpacks/buildpacks deployments, native Docker Compose, multi-server, user management, database backups, API/CLI access, Docker Swarm clusters, templates, Traefik, monitoring, alerts, and AI-assisted deployments.
+Dokploy represents a Compose- and infrastructure-oriented self-hosted deployment platform. The relevant contrast is a wide runtime/configuration surface versus Valpo's typed services, releases, and generated routing model.
 
 What to borrow:
 
@@ -71,14 +73,13 @@ What to avoid:
 - Docker Compose as the core happy path.
 - Traefik labels or proxy internals leaking into normal user workflows.
 - Docker Swarm or multi-node capabilities in early architecture.
-- AI-assisted deployment features as product surface.
 - Enterprise/team-management scope before the single-server experience is excellent.
 
 Valpo should feel more opinionated and calmer than Dokploy.
 
 ### Railway
 
-Railway is much broader than Valpo's intended scope, but it has useful UX ideas: projects, services, databases, variables, volumes, templates, and environments. Railway's service model is especially relevant: an app can live beside databases and supporting services, and configuration can reference outputs from other services.
+Railway is much broader than Valpo's intended scope, but its project/service mental model is the useful reference: an app can live beside databases and supporting services, with generated configuration connecting them.
 
 What to borrow:
 
@@ -261,12 +262,10 @@ multi-server orchestration
 shell hooks before stable domain events
 ```
 
-## Sources Reviewed
+## Sources Reviewed For This Snapshot
 
-- Coolify docs: https://coolify.io/docs
-- Dokploy docs: https://docs.dokploy.com/docs/core
-- Dokploy site: https://dokploy.com
-- Dokku plugin docs: https://dokku.com/docs/development/plugin-creation/
-- Dokku community plugin docs: https://dokku.com/docs/community/plugins/
-- Railway docs: https://docs.railway.com/
-
+- [Coolify documentation](https://coolify.io/docs)
+- [Dokploy documentation](https://docs.dokploy.com/docs/core)
+- [Dokku plugin documentation](https://dokku.com/docs/development/plugin-creation/)
+- [Dokku community plugin documentation](https://dokku.com/docs/community/plugins/)
+- [Railway documentation](https://docs.railway.com/)

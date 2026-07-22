@@ -6,7 +6,7 @@ class ValpoSourcesGitHubValidatorTest < Minitest::Test
   def test_validates_the_token_and_returns_the_authenticated_login
     requester = FakeRequester.new(status: 200, body: JSON.generate("login" => "octocat"))
 
-    login = Valpo::Sources::GitHub::Validator.new(requester: requester).validate("github_pat_secret")
+    login = Valpo::Sources::GitHub::Validator.new(requester:).validate("github_pat_secret")
 
     assert_equal "octocat", login
     uri, headers = requester.request
@@ -29,7 +29,7 @@ class ValpoSourcesGitHubValidatorTest < Minitest::Test
     attr_reader :request
 
     def initialize(status:, body:)
-      @response = {status: status, body: body}
+      @response = {status:, body:}
     end
 
     def get(uri, headers)

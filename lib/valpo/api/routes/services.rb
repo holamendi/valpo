@@ -3,198 +3,253 @@
 module Valpo
   module API
     class App
-      hash_branch("", "services") do |r|
-        r.is do
-          r.get do
-            dataset = Valpo::Service.order(:created_at, :name)
-            if request.params["project"] && !request.params["project"].empty?
-              project = Valpo::References.project(request.params["project"])
-              dataset = dataset.where(project_id: project.id)
-            end
-            dataset.all.map { |service| Serializers.service(service) }
+      hash_branch("/v1", "services") do |r|
+        # GET /v1/services — list services, optionally filtered by project.
+        r.get true do
+          query = validate_query(V1::Services::ListQueryContract)
+          dataset = Valpo::Service.order(:created_at, :name)
+          if query[:project]
+            project = Valpo::References.project(query.fetch(:project))
+            dataset = dataset.where(project_id: project.id)
           end
+          dataset.all.map { V1::Services.render(it) }
         end
 
-        r.on String do |id|
-          service = Valpo::Service[id]
+        r.on String do
+          service = Valpo::Service[it]
           next not_found("Service not found") unless service
 
           r.on "logs" do
-            r.get do
-              logs = logs_for(service, tail: optional_positive_integer(request.params["tail"], "tail"))
-              logs.merge(service: Serializers.service(service))
+            # GET /v1/services/{service}/logs — read service logs.
+            r.get true do
+              query = validate_query(V1::Services::TailQueryContract)
+              logs_for(service, tail: query[:tail]).merge(service: V1::Services.render(service))
             end
           end
 
           r.on "restart" do
-            r.post { enqueue_service_job("restart_service", service) }
+            # POST /v1/services/{service}/restart — enqueue a service restart.
+            r.post true do
+              validate_query
+              enqueue_service_job("restart_service", service)
+            end
           end
 
           r.on "stop" do
-            r.post { enqueue_service_job("stop_service", service) }
+            # POST /v1/services/{service}/stop — enqueue a service stop.
+            r.post true do
+              validate_query
+              enqueue_service_job("stop_service", service)
+            end
           end
 
           r.on "dependencies" do
-            r.is do
-              r.post do
-                require_app!(service)
-                dependency = Valpo::Service[required_string(parse_json_body, "dependency_service_id")]
-                raise Valpo::ValidationError, "Managed service not found" unless dependency&.managed?
-                response.status = 202
-                Serializers.job(jobs.enqueue_service_operation(
-                  "bind_service", service_id: service.id,
-                  payload: {project_id: service.project_id, dependency_service_id: dependency.id}
-                ))
-              end
+            # POST /v1/services/{service}/dependencies — bind a managed dependency.
+            r.post true do
+              validate_query
+              require_app!(service)
+              payload = validate_body(V1::Services::BindDependencyContract)
+              dependency = Valpo::Service[payload.fetch(:dependency_service_id)]
+              raise Valpo::ValidationError, "Managed service not found" unless dependency&.managed?
+
+              response.status = 202
+              V1::Jobs.render(jobs.enqueue_service_operation(
+                "bind_service",
+                service_id: service.id,
+                payload: {project_id: service.project_id, dependency_service_id: dependency.id}
+              ))
             end
+
             r.on String do |dependency_id|
               if r.delete?
-                require_app!(service)
-                dependency = Valpo::Service[dependency_id]
-                raise Valpo::ValidationError, "Managed service not found" unless dependency&.managed?
-                response.status = 202
-                Serializers.job(jobs.enqueue_service_operation(
-                  "unbind_service", service_id: service.id,
-                  payload: {project_id: service.project_id, dependency_service_id: dependency.id}
-                ))
+                # DELETE /v1/services/{service}/dependencies/{dependency} — unbind a managed dependency.
+                r.is do
+                  validate_query
+                  require_app!(service)
+                  dependency = Valpo::Service[dependency_id]
+                  raise Valpo::ValidationError, "Managed service not found" unless dependency&.managed?
+
+                  response.status = 202
+                  V1::Jobs.render(jobs.enqueue_service_operation(
+                    "unbind_service",
+                    service_id: service.id,
+                    payload: {project_id: service.project_id, dependency_service_id: dependency.id}
+                  ))
+                end
               end
             end
           end
 
           r.on "deployments" do
-            r.post do
+            # POST /v1/services/{service}/deployments — enqueue a registry or source deployment.
+            r.post true do
+              validate_query
               require_app!(service)
-              payload = parse_json_body
-              validate_keys!(payload, %w[image ref internal_port port healthcheck_path], "deployment")
-              Valpo::Services::Definitions.validate_options!(type: service.kind, options: payload)
-              port = optional_port(payload["internal_port"] || payload["port"])
-              image = optional_string(payload, "image")
-              ref = optional_string(payload, "ref")
+              payload = validate_body(V1::Services::DeployContract)
+              Valpo::Services::Registry.validate_options!(type: service.kind, options: payload)
+              image = payload[:image]
+              ref = payload[:ref]
               raise Valpo::ValidationError, "image and ref cannot be used together" if image && ref
+
               if image
                 job_type = "deploy_registry_image"
-                operation_payload = {image: image}
+                operation_payload = {image:}
               else
                 app_config = Valpo::AppServiceConfig[service.id]
-                raise Valpo::ValidationError, "Service has no configured build target" unless app_config&.build_target_id
+                unless app_config&.build_target_id
+                  raise Valpo::ValidationError, "Service has no configured build target"
+                end
                 job_type = "deploy_source"
-                operation_payload = {ref: ref}.compact
+                operation_payload = {ref:}.compact
               end
               response.status = 202
-              Serializers.job(jobs.enqueue_service_operation(
-                job_type, service_id: service.id,
+              V1::Jobs.render(jobs.enqueue_service_operation(
+                job_type,
+                service_id: service.id,
                 payload: operation_payload.merge(
                   project_id: service.project_id,
-                  internal_port: port,
-                  healthcheck_path: optional_healthcheck_path(payload["healthcheck_path"])
+                  internal_port: payload[:internal_port],
+                  healthcheck_path: payload[:healthcheck_path]
                 )
               ))
             end
           end
 
           r.on "releases" do
-            r.get do
+            # GET /v1/services/{service}/releases — list application releases.
+            r.get true do
+              validate_query
               require_app!(service)
-              Valpo::Release.where(service_id: service.id).order(Sequel.desc(:version)).all.map { |release| Serializers.release(release) }
+              Valpo::Release.where(service_id: service.id).order(Sequel.desc(:version)).all.map do
+                V1::Services.render_release(it)
+              end
             end
           end
 
           r.on "rollback" do
-            r.post do
+            # POST /v1/services/{service}/rollback — enqueue rollback to the prior release.
+            r.post true do
+              validate_query
               require_app!(service)
               enqueue_service_job("rollback_release", service)
             end
           end
 
           r.on "env" do
-            r.get do
+            # GET /v1/services/{service}/env — show generated service environment entries.
+            r.get true do
+              query = validate_query(V1::Services::EnvironmentQueryContract)
               require_app!(service)
-              {service: Serializers.service(service), env: Valpo::Services::Environment.entries_for_service(service.id, reveal: truthy_param?(request.params["reveal"]))}
+              {
+                service: V1::Services.render(service),
+                env: Valpo::Services::Environment.entries_for_service(
+                  service.id, reveal: query[:reveal] == "true"
+                )
+              }
             end
           end
 
           r.on "domains" do
             require_web!(service)
-            r.is do
-              r.get { Valpo::Domain.where(service_id: service.id).order(:hostname).all.map { |domain| Serializers.domain(domain) } }
-              r.post do
-                hostname = required_string(parse_json_body, "hostname")
-                domain = nil
-                payload = {project_id: service.project_id}
-                job = jobs.enqueue_service_operation("verify_domain", service_id: service.id, payload: payload) do
-                  domain = Valpo::Domain.create(service_id: service.id, hostname: hostname)
-                  payload[:domain_id] = domain.id
-                end
-                response.status = 202
-                {domain: Serializers.domain(domain), job: Serializers.job(job)}
+
+            # GET /v1/services/{service}/domains — list service domains.
+            r.get true do
+              validate_query
+              Valpo::Domain.where(service_id: service.id).order(:hostname).all.map do
+                V1::Services.render_domain(it)
               end
             end
-            r.on String do |domain_ref|
-              domain = Valpo::Domain.where(service_id: service.id, id: domain_ref).first ||
-                Valpo::Domain.where(service_id: service.id, hostname: domain_ref.downcase).first
+
+            # POST /v1/services/{service}/domains — create and verify a custom domain.
+            r.post true do
+              validate_query
+              payload = validate_body(V1::Services::CreateDomainContract)
+              domain = nil
+              job_payload = {project_id: service.project_id}
+              job = jobs.enqueue_service_operation(
+                "verify_domain", service_id: service.id, payload: job_payload
+              ) do
+                domain = Valpo::Domain.create(service_id: service.id, hostname: payload.fetch(:hostname))
+                job_payload[:domain_id] = domain.id
+              end
+              response.status = 202
+              {domain: V1::Services.render_domain(domain), job: V1::Jobs.render(job)}
+            end
+
+            r.on String do
+              domain = Valpo::Domain.where(service_id: service.id, id: it).first ||
+                Valpo::Domain.where(service_id: service.id, hostname: it.downcase).first
               next not_found("Domain not found") unless domain
+
               r.on "verify" do
-                r.post do
+                # POST /v1/services/{service}/domains/{domain}/verify — recheck a domain.
+                r.post true do
+                  validate_query
                   response.status = 202
-                  Serializers.job(jobs.enqueue_service_operation(
+                  V1::Jobs.render(jobs.enqueue_service_operation(
                     "verify_domain",
                     service_id: service.id,
                     payload: {project_id: service.project_id, domain_id: domain.id}
                   ))
                 end
               end
+
               if r.delete?
-                raise Valpo::ValidationError, "Generated domains are managed by the platform app domain" if domain.kind == "generated"
-                if service.status == "running" && domain.verified? && Valpo::Domain.where(service_id: service.id, status: "verified").count == 1
-                  raise Valpo::ConflictError, "Stop the web service before removing its last verified domain"
-                end
-                job = jobs.enqueue_service_operation("apply_caddy_config", service_id: service.id, payload: {project_id: service.project_id}) do
-                  if domain.verified? && Valpo::Domain.where(service_id: service.id, status: "verified").count == 1
-                    Valpo::Release.active_for_service(service.id)&.ready!
+                # DELETE /v1/services/{service}/domains/{domain} — remove a custom domain.
+                r.is do
+                  validate_query
+                  if domain.kind == "generated"
+                    raise Valpo::ValidationError, "Generated domains are managed by the platform app domain"
                   end
-                  domain.destroy
+                  if service.status == "running" && domain.verified? &&
+                      Valpo::Domain.where(service_id: service.id, status: "verified").count == 1
+                    raise Valpo::ConflictError, "Stop the web service before removing its last verified domain"
+                  end
+
+                  job = jobs.enqueue_service_operation(
+                    "apply_caddy_config", service_id: service.id, payload: {project_id: service.project_id}
+                  ) do
+                    if domain.verified? && Valpo::Domain.where(service_id: service.id, status: "verified").count == 1
+                      Valpo::Release.active_for_service(service.id)&.ready!
+                    end
+                    domain.destroy
+                  end
+                  {deleted: true, job: V1::Jobs.render(job)}
                 end
-                {deleted: true, job: Serializers.job(job)}
               end
             end
           end
 
-          r.is do
-            r.get { Serializers.service(service) }
-            if r.patch?
+          # GET /v1/services/{service} — show a service.
+          r.get true do
+            validate_query
+            V1::Services.render(service)
+          end
+
+          if r.patch?
+            # PATCH /v1/services/{service} — update application configuration.
+            r.is do
+              validate_query
               require_app!(service)
-              payload = parse_json_body
-              validate_keys!(
-                payload,
-                %w[source build command internal_port port healthcheck_path deploy],
-                "service update"
-              )
-              if payload.key?("deploy") && ![true, false].include?(payload["deploy"])
-                raise Valpo::ValidationError, "deploy must be a boolean"
-              end
+              payload = validate_body(V1::Services::UpdateContract)
 
               runtime = {}
-              if payload.key?("command")
-                command = payload["command"] || []
-                runtime["command"] = Valpo::Services::Catalog.normalize_command(command)
+              if payload.key?(:command)
+                runtime["command"] = Valpo::Services::Registry.normalize_command(payload.fetch(:command))
               end
-              if payload.key?("internal_port") || payload.key?("port")
-                runtime["internal_port"] = optional_port(payload["internal_port"] || payload["port"])
-              end
-              if payload.key?("healthcheck_path")
-                runtime["healthcheck_path"] = optional_healthcheck_path(payload["healthcheck_path"])
-              end
-              Valpo::Services::Definitions.validate_options!(type: service.kind, options: runtime)
+              runtime["internal_port"] = payload[:internal_port] if payload.key?(:internal_port)
+              runtime["healthcheck_path"] = payload[:healthcheck_path] if payload.key?(:healthcheck_path)
+              Valpo::Services::Registry.validate_options!(type: service.kind, options: runtime)
 
-              configuration = if payload.key?("source") || payload.key?("build")
+              configuration = if payload.key?(:source) || payload.key?(:build)
                 desired = Valpo::Sources::ServiceConfigurator.new.desired_for(
-                  service: service,
-                  source_changes: payload["source"],
-                  build_changes: payload["build"]
+                  service:,
+                  source_changes: payload[:source],
+                  build_changes: payload[:build]
                 )
                 {"source" => desired.fetch(:source), "build" => desired.fetch(:build)}
               end
-              deploy = payload.fetch("deploy", false)
+              deploy = payload.fetch(:deploy, false)
               if deploy && !configuration && Valpo::AppServiceConfig[service.id]&.build_target_id.nil?
                 raise Valpo::ValidationError, "Service has no configured build target"
               end
@@ -203,25 +258,35 @@ module Valpo
               end
 
               response.status = 202
-              Serializers.job(jobs.enqueue_service_operation(
+              V1::Jobs.render(jobs.enqueue_service_operation(
                 "update_app_service",
                 service_id: service.id,
                 payload: {
                   project_id: service.project_id,
-                  configuration: configuration,
-                  runtime: runtime,
-                  deploy: deploy
+                  configuration:,
+                  runtime:,
+                  deploy:
                 }
               ))
-            elsif r.delete?
-              raise Valpo::ValidationError, "force=true is required to delete a service" unless truthy_param?(request.params["force"])
+            end
+          end
+
+          if r.delete?
+            # DELETE /v1/services/{service} — enqueue forced service deletion.
+            r.is do
+              query = validate_query(V1::Services::DeleteQueryContract)
+              unless query[:force] == "true"
+                raise Valpo::ValidationError, "force=true is required to delete a service"
+              end
+
               response.status = 202
-              Serializers.job(jobs.enqueue_service_operation(
+              V1::Jobs.render(jobs.enqueue_service_operation(
                 "delete_service", service_id: service.id, payload: {project_id: service.project_id, force: true}
               ))
             end
           end
         end
+        not_found("Route not found")
       end
     end
   end

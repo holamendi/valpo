@@ -35,9 +35,9 @@ class ValpoDeploymentsPortResolverTest < Minitest::Test
 
   def resolve(service, explicit:, exposed:, source_type:)
     Valpo::Deployments::PortResolver.new.resolve(
-      service: service,
+      service:,
       explicit_port: explicit,
-      source_type: source_type,
+      source_type:,
       image_metadata: Valpo::Deployments::ImageMetadata.new(digest: nil, exposed_tcp_ports: exposed)
     )
   end

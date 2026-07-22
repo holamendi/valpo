@@ -28,13 +28,14 @@ module Valpo
             ref: source.fetch("ref"),
             dockerfile: build.fetch("dockerfile"),
             context: build.fetch("context")
-          ) do |checkout|
-            apply_changes(service, configuration: configuration, runtime_changes: runtime_changes)
-            operate(service, checkout: checkout, runtime_changed: !runtime_changes.empty?, deploy: deploy, queue: queue, job_id: job_id)
+          ) do
+            checkout = it
+            apply_changes(service, configuration:, runtime_changes:)
+            operate(service, checkout:, runtime_changed: !runtime_changes.empty?, deploy:, queue:, job_id:)
           end
         else
-          apply_changes(service, configuration: nil, runtime_changes: runtime_changes)
-          operate(service, checkout: nil, runtime_changed: !runtime_changes.empty?, deploy: deploy, queue: queue, job_id: job_id)
+          apply_changes(service, configuration: nil, runtime_changes:)
+          operate(service, checkout: nil, runtime_changed: !runtime_changes.empty?, deploy:, queue:, job_id:)
         end
         service.refresh
       rescue
@@ -49,7 +50,7 @@ module Valpo
       def apply_changes(service, configuration:, runtime_changes:)
         if configuration
           configurator.apply_owned_configuration!(
-            service: service,
+            service:,
             source: configuration.fetch("source"),
             build: configuration.fetch("build")
           )
@@ -70,12 +71,12 @@ module Valpo
           if checkout
             builds.deploy_checkout(
               service_id: service.id,
-              build_target: build_target,
-              checkout: checkout,
+              build_target:,
+              checkout:,
               internal_port: nil,
               healthcheck_path: nil,
-              queue: queue,
-              job_id: job_id
+              queue:,
+              job_id:
             )
           else
             builds.deploy_source(
@@ -83,12 +84,12 @@ module Valpo
               ref: nil,
               internal_port: nil,
               healthcheck_path: nil,
-              queue: queue,
-              job_id: job_id
+              queue:,
+              job_id:
             )
           end
         elsif runtime_changed && service.status == "running" && Valpo::Release.active_for_service(service.id)
-          deployment.reconfigure_service(service_id: service.id, queue: queue, job_id: job_id)
+          deployment.reconfigure_service(service_id: service.id, queue:, job_id:)
         end
       end
 

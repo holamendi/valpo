@@ -8,35 +8,35 @@ module Valpo
       def self.build(api_url:, config:, json:, out:, err:)
         client = Valpo::API::Client.new(base_url: api_url, config_path: config)
         new(
-          client: client,
-          presenter: Presenter.new(out: out, err: err, json: json),
-          resolver: ReferenceResolver.new(client: client),
-          waiter: JobWaiter.new(client: client, err: err)
+          client:,
+          presenter: Presenter.new(out:, err:, json:),
+          resolver: ReferenceResolver.new(client:),
+          waiter: JobWaiter.new(client:, err:)
         )
       end
 
       def initialize(client:, presenter:, resolver: nil, waiter: nil)
         @client = client
         @presenter = presenter
-        @resolver = resolver || ReferenceResolver.new(client: client)
-        @waiter = waiter || JobWaiter.new(client: client, err: presenter.err)
+        @resolver = resolver || ReferenceResolver.new(client:)
+        @waiter = waiter || JobWaiter.new(client:, err: presenter.err)
       end
 
       def request(method, path, payload = nil, query: nil)
-        client.request(method, path, payload, query: query)
+        client.request(method, path, payload, query:)
       rescue Valpo::API::Client::Error => e
         raise OperationalError, e.message
       end
 
       def service_path(reference, project: nil)
-        "/services/#{resolver.service_id(reference, project: project)}"
+        "/v1/services/#{resolver.service_id(reference, project:)}"
       end
 
       def finish_operation(response, wait:, timeout:)
         job, nested = operation_job(response)
         return response unless wait && job
 
-        completed = waiter.wait(job.fetch("id"), timeout: timeout)
+        completed = waiter.wait(job.fetch("id"), timeout:)
         nested ? response.merge("job" => completed) : completed
       end
 

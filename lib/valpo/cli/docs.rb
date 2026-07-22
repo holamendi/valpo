@@ -184,22 +184,22 @@ module Valpo
       private_class_method :job_command_lines
 
       def command_line(name, command)
-        arguments = command.arguments.map do |argument|
-          argument_name = argument.description_name.to_s
-          argument.required? ? argument_name : "[#{argument_name}]"
+        arguments = command.arguments.map do
+          argument_name = it.description_name.to_s
+          it.required? ? argument_name : "[#{argument_name}]"
         end
         (["valpo", name] + arguments + [REQUIRED_OPTIONS[name]]).compact.join(" ")
       end
       private_class_method :command_line
 
       def service_type_table
-        rows = Valpo::Services::Definitions::TYPES.map do |name, definition|
-          versions = if definition[:versions]
-            "#{definition.fetch(:versions).join(", ")} (default #{definition.fetch(:default_version)})"
+        rows = Valpo::Services::Registry.definitions.map do |name, definition|
+          versions = if definition.versions.any?
+            "#{definition.versions.join(", ")} (default #{definition.default_version})"
           else
             "n/a"
           end
-          "| `#{name}` | #{definition.fetch(:description)} | #{versions} |"
+          "| `#{name}` | #{definition.description} | #{versions} |"
         end
         (["| Type | Purpose | Versions |", "| --- | --- | --- |"] + rows).join("\n")
       end

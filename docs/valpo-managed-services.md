@@ -1,171 +1,47 @@
 # Valpo Managed Services
 
-## Purpose
+Valpo treats curated infrastructure as the normal path and raw containers as a future escape hatch. Postgres and Redis are implemented today as private, project-owned services with persistent runtime state and explicit app bindings.
 
-Valpo should let advanced users run arbitrary containers, but the main experience should be higher-level managed services that feel like Heroku add-ons.
+## Implemented Behavior
 
-The user should not need to know which Docker image, environment variables, volume paths, credentials, health checks, or connection strings are required to create a useful Postgres or MariaDB instance.
+### Definitions And Creation
 
-The ideal interaction is:
+`Valpo::Services::Registry` contains one definition object for each supported service type. Web, worker, Postgres, and Redis definitions declare their supported options. Managed definitions additionally own version selection, image, readiness command, runtime environment, credentials, volume path, and binding environment.
 
-```bash
-valpo service create web --project myapp --type web --port 3000
-valpo service create database --project myapp --type postgres --version 18
-valpo service bind web database --project myapp
-valpo service env web --project myapp
-```
+`Valpo::Services::Creator` is the single record-creation path used by the API, manifest reconciliation, and source-backed service configuration. Unsupported and type-incompatible options are rejected rather than silently ignored.
 
-Or in the dashboard:
+Supported managed versions:
 
-```text
-Project -> Add service -> Postgres -> Small -> Create
-```
+| Type | Versions | Default image |
+| --- | --- | --- |
+| Postgres | `16`, `17`, `18` | `postgres:18-alpine` |
+| Redis | `7`, `8` | `redis:8-alpine` |
 
-Valpo handles the details.
+Images are selected by Valpo and cannot be overridden through the managed-service API.
 
-## Product Principle
+### Runtime
 
-Arbitrary containers are the escape hatch. Curated services are the happy path.
+`Services::ManagedLifecycle` provisions, restarts, stops, deletes, repairs, and reads logs for managed containers. `Services::Runtime` performs the low-level Docker work.
 
-This matters because the target user misses the Heroku experience: they want to build and ship products, not hand-wire database containers.
+Implemented runtime guarantees:
 
-## Service Catalog
+- one private container on the shared `valpo` Docker network;
+- no public host port;
+- a persistent Docker volume;
+- generated credentials and connection information;
+- type-specific readiness polling;
+- `unless-stopped` restart policy;
+- reconciliation of stopped or missing containers through `System::Repairer`;
+- explicit `force=true` confirmation before deletion;
+- removal of the container, volume, and dependency records during deletion.
 
-Valpo should have a built-in service catalog. Each service definition describes how to provision, bind, back up, restore, inspect, and destroy a service.
+Projects are grouping boundaries. Each app and managed service has its own `svc_` identity and a name unique within its project. Project deletion is refused until all services have been removed.
 
-Initial catalog:
+### Bindings
 
-```text
-postgres
-redis
-```
+`Services::DependencyManager` owns binding and unbinding. A binding is explicit, stays within one project, and affects one app service only. Binding requires the managed service to be running and rejects generated environment keys that would collide with another dependency.
 
-Later catalog:
-
-```text
-mariadb
-mysql
-minio
-meilisearch
-typesense
-valkey
-clickhouse
-volume
-```
-
-These should be added carefully. A small set of excellent built-ins is better than many shallow wrappers.
-
-## User-Facing Settings
-
-A managed service should expose friendly settings:
-
-```text
-name
-type
-version
-plan
-storage size
-backup schedule
-backup retention
-private-only or public exposure
-maintenance window
-```
-
-For v1, the settings can be minimal:
-
-```text
-name
-type
-version
-plan
-```
-
-Phase 2A supports Postgres versions `16`, `17`, and `18`, defaulting to `18`, and Redis versions `7` and `8`, defaulting to `8`. Managed-service flows reject arbitrary image tags; the catalog maps versions to `postgres:<version>-alpine` and `redis:<version>-alpine`.
-
-The plan should map to practical defaults:
-
-```text
-small
-medium
-large
-custom
-```
-
-For example, a `small` Postgres plan might define default memory hints, storage location, backup retention, and health checks. Valpo does not need to enforce hard resource limits on day one, but the plan abstraction gives the UI and API a friendly shape.
-
-## Internal Model
-
-Suggested objects:
-
-```text
-ServiceDefinition
-  type
-  display_name
-  supported_versions
-  default_version
-  plans
-  provisioner
-  backup_strategy
-  restore_strategy
-  bind_strategy
-
-Service
-  id
-  project_id
-  name
-  kind: web, worker, postgres, or redis
-  status
-
-ManagedServiceConfig
-  service_id
-  version
-  image
-  plan
-  container_name
-  volume_name
-  internal_host
-  internal_port
-  credentials_json
-  created_at
-  updated_at
-
-ServiceDependency
-  id
-  service_id
-  dependency_service_id
-  status
-  env_json
-  created_at
-  updated_at
-```
-
-`ServiceDefinition` can start as Ruby code rather than database rows. Built-in services should be versioned with Valpo.
-
-## Provisioner Interface
-
-Each managed service should implement a small lifecycle interface:
-
-```text
-validate_settings
-provision
-status
-bind
-unbind
-backup
-restore
-rotate_credentials
-destroy
-export
-import
-```
-
-These operations should run as background jobs and write job events.
-
-## Binding Model
-
-Binding a managed service to an app service means Valpo generates configuration for that specific app container. Other app services in the project receive nothing unless they declare the same dependency.
-
-For Postgres, binding might generate:
+Postgres bindings generate:
 
 ```text
 DATABASE_URL
@@ -176,195 +52,47 @@ PGUSER
 PGPASSWORD
 ```
 
-For MariaDB, binding might generate:
+Redis bindings generate:
 
 ```text
-DATABASE_URL
-MYSQL_HOST
-MYSQL_PORT
-MYSQL_DATABASE
-MYSQL_USER
-MYSQL_PASSWORD
+REDIS_URL
+REDIS_HOST
+REDIS_PORT
+REDIS_PASSWORD
 ```
 
-The user should not need to manually create these values.
+An app with an active release is restarted after a binding changes so its generated environment reflects the new dependency set. `valpo service env SERVICE --project PROJECT` redacts secret values; `--reveal` displays them on the host.
 
-Advanced users can still override or add environment variables manually. Generated values should be marked as managed so Valpo can update them when credentials rotate.
-
-Valpo stores generated service credentials in SQLite and redacts secret env values by default. Use `valpo service env SERVICE --project PROJECT --reveal` to inspect actual values on the host.
-
-## Phase 2B CLI Surface
+### CLI And Manifest Surface
 
 ```bash
-valpo service create NAME --project PROJECT --type postgres|redis [--version VERSION] [--no-wait]
-valpo service list [--project PROJECT]
-valpo service show SERVICE
-valpo service logs SERVICE [--tail N]
-valpo service restart SERVICE [--no-wait]
-valpo service bind APP_SERVICE MANAGED_SERVICE [--no-wait]
-valpo service unbind APP_SERVICE MANAGED_SERVICE [--no-wait]
-valpo service delete SERVICE --force [--no-wait]
-valpo service env APP_SERVICE [--reveal]
+valpo service create database --project myapp --type postgres --version 18
+valpo service create cache --project myapp --type redis --version 8
+valpo service bind web database --project myapp
+valpo service env web --project myapp
+valpo service restart database --project myapp
+valpo service delete database --project myapp --force
 ```
 
-Deleting a managed service removes its container, Docker volume, and explicit dependencies. Deleting a project is refused while any app or managed services remain.
+The unchanged `valpo.toml` schema can declare Postgres and Redis services and app `depends_on` edges. `Manifests::Planner` previews changes without mutation; `Manifests::Reconciler` applies add/update-only changes through the same creator and lifecycle collaborators used elsewhere.
 
-## Postgres V1 Behavior
+## Current Security Gap
 
-Initial Postgres support should include:
+Managed credentials are generated with cryptographically secure randomness and written to the local SQLite database, but they are not encrypted at rest. Filesystem permissions and host access are the present protection. Host-key-backed encryption, key rotation, and migration behavior are near-term security work tracked in the [roadmap](./valpo-roadmap.md); documentation must not claim encrypted storage until that work ships.
 
-- Create private Postgres container.
-- Create persistent Docker volume.
-- Generate database name, user, password, and connection URL.
-- Bind to one or more app services in its owning project.
-- Health check readiness.
-- App restart or redeploy after binding.
+## Future Work
 
-Useful defaults:
+The following are intentionally not implemented:
 
-- Private network access only.
-- No public port exposed.
-- Latest supported stable major version selected by Valpo.
-- One database and one application user per resource.
-- Backups disabled until an explicit backup/restore phase.
+- MariaDB, MySQL, and additional managed definitions;
+- backup, restore, and retention scheduling;
+- project export/import of dumps, snapshots, credentials, and dependency metadata;
+- credential rotation;
+- descriptive or enforced resource plans;
+- storage resizing and first-class volume resources;
+- public database exposure;
+- arbitrary custom service containers;
+- automatic app binding at creation time;
+- dashboard service-management flows.
 
-Follow-up Postgres support should include:
-
-- Manual backup using `pg_dump`.
-- Manual restore using `pg_restore` or `psql`, depending on dump format.
-- Include database dump in project export.
-- Restore database during project import.
-
-## MariaDB V1 Behavior
-
-Initial MariaDB support should include:
-
-- Create private MariaDB container.
-- Create persistent Docker volume.
-- Generate database name, user, password, and connection URL.
-- Bind to explicit app services in its owning project.
-- Health check readiness.
-- Manual backup using `mariadb-dump` or `mysqldump`.
-- Manual restore from dump.
-- Include database dump in project export.
-- Restore database during project import.
-
-## Redis V1 Behavior
-
-Initial Redis support should include:
-
-- Create private Redis container.
-- Optional persistence.
-- Generate connection URL.
-- Bind to explicit app services in its owning project.
-
-Follow-up Redis support should include:
-
-- Include configuration in export.
-- Include data snapshot only when persistence is enabled.
-
-## Custom Containers
-
-Valpo should also allow custom service containers:
-
-```bash
-valpo containers:create search --image getmeili/meilisearch:v1.8
-```
-
-But custom containers should be clearly different from managed services:
-
-- Valpo does not promise automatic backups.
-- Valpo does not infer safe credential rotation.
-- Valpo does not guarantee import/export semantics.
-- User supplies ports, volumes, env vars, and health checks.
-
-This preserves flexibility without weakening the curated service promise.
-
-## Dashboard Experience
-
-Dashboard service creation should avoid raw container fields by default.
-
-Good default flow:
-
-```text
-Project
-  Add service
-  Choose Postgres
-  Choose plan and version
-  Confirm
-  Watch provisioning job
-  Service is automatically bound to the app
-```
-
-Advanced settings can include:
-
-```text
-version
-storage path
-storage size
-backup schedule
-backup retention
-maintenance window
-public exposure
-custom environment variables
-```
-
-Advanced settings should be collapsed by default.
-
-## API Sketch
-
-```text
-GET    /services
-POST   /services
-GET    /services/:id
-GET    /services/:id/logs
-POST   /services/:id/restart
-POST   /services/:id/bind
-DELETE /services/:id
-
-GET    /projects/:project_id/env
-```
-
-Future service operations should add endpoints for unbinding, backups, restores, credential rotation, and catalog introspection.
-
-Create Postgres request:
-
-```json
-{
-  "type": "postgres",
-  "name": "main-db",
-  "version": "default",
-  "plan": "small",
-  "bind_to_project": true
-}
-```
-
-## Migration And Export
-
-Managed services should be first-class in export/import.
-
-Export should include:
-
-- resource manifest
-- service type and version
-- friendly settings
-- encrypted credentials or regenerated credential policy
-- backup artifact or dump
-- binding metadata
-
-Import should preflight:
-
-- service type supported on target server
-- version available or compatible
-- enough disk space
-- backup artifact readable
-- binding target exists
-- naming conflicts
-
-## Open Questions
-
-- Should credentials be preserved during import or regenerated by default?
-- Should a managed service be owned by exactly one project in v1?
-- Should backups be enabled by default for Postgres/MariaDB?
-- Should Valpo expose any database publicly, or require explicit advanced configuration?
-- Should resource plans enforce Docker memory/CPU limits or remain descriptive at first?
+MariaDB, backups, exports, and encrypted managed credentials are roadmap work, not “v1 behavior.” New definitions should be added only after their lifecycle, readiness, binding, deletion, repair, and eventual backup semantics can be supported coherently.

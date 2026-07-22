@@ -11,7 +11,7 @@ module Valpo
         adapter = adapters[source.provider]
         raise Valpo::ValidationError, "Unsupported source provider: #{source.provider}" unless adapter
 
-        adapter.checkout(source: source, destination: destination, ref: ref)
+        adapter.checkout(source:, destination:, ref:)
       end
 
       private

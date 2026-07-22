@@ -7,7 +7,7 @@ module Valpo
     class GitCommandRunner
       def capture(environment, command)
         stdout, stderr, status = Open3.capture3(environment, *command)
-        {stdout: stdout, stderr: stderr, status: status.exitstatus, success: status.success?}
+        {stdout:, stderr:, status: status.exitstatus, success: status.success?}
       end
     end
   end

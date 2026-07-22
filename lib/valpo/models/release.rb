@@ -12,19 +12,19 @@ module Valpo
     many_to_one :build_target
 
     def self.next_version(service_id)
-      where(service_id: service_id).max(:version).to_i + 1
+      where(service_id:).max(:version).to_i + 1
     end
 
     def self.active_for_service(service_id)
-      where(service_id: service_id, status: "active").order(Sequel.desc(:version)).first
+      where(service_id:, status: "active").order(Sequel.desc(:version)).first
     end
 
     def self.ready_for_service(service_id)
-      where(service_id: service_id, status: "ready").order(Sequel.desc(:version)).first
+      where(service_id:, status: "ready").order(Sequel.desc(:version)).first
     end
 
     def self.previous_deployable_for_service(service_id, excluding_release_id: nil)
-      dataset = where(service_id: service_id, status: %w[active inactive])
+      dataset = where(service_id:, status: %w[active inactive])
       dataset = dataset.exclude(id: excluding_release_id) if excluding_release_id
       dataset.order(Sequel.desc(:version)).first
     end
@@ -53,14 +53,14 @@ module Valpo
 
     def activate!(activated_at: Time.now.utc)
       db.transaction do
-        self.class.where(service_id: service_id, status: "active").exclude(id: id).update(status: "inactive")
-        update(status: "active", activated_at: activated_at)
+        self.class.where(service_id:, status: "active").exclude(id:).update(status: "inactive")
+        update(status: "active", activated_at:)
       end
     end
 
     def ready!
       db.transaction do
-        self.class.where(service_id: service_id, status: "ready").exclude(id: id).update(status: "inactive")
+        self.class.where(service_id:, status: "ready").exclude(id:).update(status: "inactive")
         update(status: "ready", activated_at: nil)
       end
     end

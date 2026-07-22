@@ -90,19 +90,19 @@ module Valpo
         services.sort.to_h do |name, config|
           validate_name!(name, "service name")
           validate_table!(config, "services.#{name}")
-          type = Valpo::Services::Definitions.normalize_type(required_string(config, "type"))
-          Valpo::Services::Definitions.validate_options!(type: type, options: config)
-          if Valpo::Services::Definitions.managed_type?(type)
+          type = Valpo::Services::Registry.normalize_type(required_string(config, "type"))
+          Valpo::Services::Registry.validate_options!(type:, options: config)
+          if Valpo::Services::Registry.managed_type?(type)
             validate_keys!(config, MANAGED_KEYS, "services.#{name}")
-            normalized = {"type" => type, "version" => Valpo::Services::Definitions.normalize_version(type, config["version"])}
+            normalized = {"type" => type, "version" => Valpo::Services::Registry.normalize_version(type, config["version"])}
           else
             validate_keys!(config, APP_KEYS, "services.#{name}")
             command = config.fetch("command", [])
-            unless command.is_a?(Array) && command.all? { |entry| entry.is_a?(String) && !entry.empty? }
+            unless command.is_a?(Array) && command.all? { it.is_a?(String) && !it.empty? }
               raise Valpo::ValidationError, "services.#{name}.command must be an array of strings"
             end
             dependencies = config.fetch("depends_on", [])
-            unless dependencies.is_a?(Array) && dependencies.all? { |entry| entry.is_a?(String) && !entry.empty? }
+            unless dependencies.is_a?(Array) && dependencies.all? { it.is_a?(String) && !it.empty? }
               raise Valpo::ValidationError, "services.#{name}.depends_on must be an array of service names"
             end
             port = config["port"]
@@ -132,10 +132,10 @@ module Valpo
         services.each do |name, service|
           build = service["build"]
           raise Valpo::ValidationError, "services.#{name} references unknown build #{build}" if build && !builds.key?(build)
-          service.fetch("depends_on", []).each do |dependency_name|
-            dependency = services[dependency_name]
-            raise Valpo::ValidationError, "services.#{name} depends on unknown service #{dependency_name}" unless dependency
-            unless Valpo::Services::Definitions.managed_type?(dependency.fetch("type"))
+          service.fetch("depends_on", []).each do
+            dependency = services[it]
+            raise Valpo::ValidationError, "services.#{name} depends on unknown service #{it}" unless dependency
+            unless Valpo::Services::Registry.managed_type?(dependency.fetch("type"))
               raise Valpo::ValidationError, "services.#{name} can only depend on managed services"
             end
           end

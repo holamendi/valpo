@@ -21,7 +21,7 @@ class ValpoSourcesServiceConfiguratorTest < Minitest::Test
 
     assert_raises Sequel::ValidationFailed do
       configurator.create_service!(
-        project: project,
+        project:,
         service_attributes: {"name" => "web", "type" => "web"},
         source: {"provider" => "github", "repository" => "acme/backend", "ref" => "HEAD"},
         build: {"dockerfile" => "Dockerfile", "context" => ".."}

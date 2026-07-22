@@ -10,11 +10,11 @@ class ValpoJobsWorkerTest < Minitest::Test
   def test_system_check_succeeds_and_unknown_job_fails
     queue = Valpo::Jobs::Queue.new
     success = queue.enqueue("system_check")
-    Valpo::Jobs::Worker.new(queue: queue, worker_id: "worker-1").run(once: true)
+    Valpo::Jobs::Worker.new(queue:, worker_id: "worker-1").run(once: true)
     assert_equal "succeeded", queue.find(success.id).status
 
     failure = queue.enqueue("missing_handler")
-    Valpo::Jobs::Worker.new(queue: queue, worker_id: "worker-1").run(once: true)
+    Valpo::Jobs::Worker.new(queue:, worker_id: "worker-1").run(once: true)
     assert_equal "failed", queue.find(failure.id).status
     assert_equal "Unknown job type: missing_handler", queue.find(failure.id).error
   end
@@ -28,8 +28,8 @@ class ValpoJobsWorkerTest < Minitest::Test
     )
     fake = FakeDeployment.new
     worker = Valpo::Jobs::Worker.new(
-      queue: queue,
-      handlers: {"deploy_registry_image" => Valpo::Jobs::DeployRegistryImage.new(orchestrator: fake)},
+      queue:,
+      handlers: {"deploy_registry_image" => Valpo::Jobs::Handlers::DeployRegistryImage.new(orchestrator: fake)},
       worker_id: "worker-1"
     )
     worker.run(once: true)
@@ -40,8 +40,8 @@ class ValpoJobsWorkerTest < Minitest::Test
 
   def test_bind_handler_dispatches_both_service_ids
     project = create_project
-    app = create_app_service(project: project)
-    database = create_managed_service(project: project)
+    app = create_app_service(project:)
+    database = create_managed_service(project:)
     queue = Valpo::Jobs::Queue.new
     job = queue.enqueue_service_operation(
       "bind_service", service_id: app.id,
@@ -49,8 +49,8 @@ class ValpoJobsWorkerTest < Minitest::Test
     )
     fake = FakeManaged.new
     Valpo::Jobs::Worker.new(
-      queue: queue,
-      handlers: {"bind_service" => Valpo::Jobs::BindDependency.new(orchestrator: fake, method: :bind_service)},
+      queue:,
+      handlers: {"bind_service" => Valpo::Jobs::Handlers::BindDependency.new(orchestrator: fake, method: :bind_service)},
       worker_id: "worker-1"
     ).run(once: true)
 
@@ -67,8 +67,8 @@ class ValpoJobsWorkerTest < Minitest::Test
     )
     fake = FakeBuild.new
     Valpo::Jobs::Worker.new(
-      queue: queue,
-      handlers: {"deploy_source" => Valpo::Jobs::DeploySource.new(orchestrator: fake)},
+      queue:,
+      handlers: {"deploy_source" => Valpo::Jobs::Handlers::DeploySource.new(orchestrator: fake)},
       worker_id: "worker-1"
     ).run(once: true)
 
@@ -79,11 +79,11 @@ class ValpoJobsWorkerTest < Minitest::Test
   def test_manifest_handler_passes_normalized_manifest
     queue = Valpo::Jobs::Queue.new
     manifest = {"project" => {"name" => "hello"}}
-    job = queue.enqueue("apply_project_manifest", manifest: manifest)
+    job = queue.enqueue("apply_project_manifest", manifest:)
     fake = FakeReconciler.new
     Valpo::Jobs::Worker.new(
-      queue: queue,
-      handlers: {"apply_project_manifest" => Valpo::Jobs::ApplyProjectManifest.new(reconciler: fake)},
+      queue:,
+      handlers: {"apply_project_manifest" => Valpo::Jobs::Handlers::ApplyProjectManifest.new(reconciler: fake)},
       worker_id: "worker-1"
     ).run(once: true)
     assert_equal manifest, fake.manifest
@@ -98,13 +98,13 @@ class ValpoJobsWorkerTest < Minitest::Test
       project_id: project.id,
       payload: source_service_payload
     )
-    handler = Valpo::Jobs::CreateSource.new(
+    handler = Valpo::Jobs::Handlers::CreateSource.new(
       preflight: FakePreflight.new,
       configurator: Valpo::Sources::ServiceConfigurator.new,
       builds: FakeBuild.new
     )
     Valpo::Jobs::Worker.new(
-      queue: queue,
+      queue:,
       handlers: {"create_source_service" => handler},
       worker_id: "worker-1"
     ).run(once: true)
@@ -125,13 +125,13 @@ class ValpoJobsWorkerTest < Minitest::Test
       project_id: project.id,
       payload: source_service_payload
     )
-    handler = Valpo::Jobs::CreateSource.new(
+    handler = Valpo::Jobs::Handlers::CreateSource.new(
       preflight: FakePreflight.new(error: Valpo::ValidationError.new("GitHub fetch failed")),
       configurator: Valpo::Sources::ServiceConfigurator.new,
       builds: FakeBuild.new
     )
     Valpo::Jobs::Worker.new(
-      queue: queue,
+      queue:,
       handlers: {"create_source_service" => handler},
       worker_id: "worker-1"
     ).run(once: true)
@@ -151,16 +151,16 @@ class ValpoJobsWorkerTest < Minitest::Test
     job = queue.enqueue_project_operation(
       "create_source_service",
       project_id: project.id,
-      payload: payload
+      payload:
     )
-    handler = Valpo::Jobs::CreateSource.new(
-      preflight: preflight,
+    handler = Valpo::Jobs::Handlers::CreateSource.new(
+      preflight:,
       configurator: Valpo::Sources::ServiceConfigurator.new,
-      builds: builds
+      builds:
     )
 
     Valpo::Jobs::Worker.new(
-      queue: queue,
+      queue:,
       handlers: {"create_source_service" => handler},
       worker_id: "worker-1"
     ).run(once: true)

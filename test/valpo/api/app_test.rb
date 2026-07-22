@@ -20,6 +20,7 @@ class ValpoAPIAppTest < Minitest::Test
     with_api_token("secret") do
       get "/health"
       assert_equal 401, last_response.status
+      assert_equal "unauthorized", json.fetch("error")
       header "Authorization", "Bearer secret"
       get "/health"
       assert_equal 200, last_response.status
@@ -27,62 +28,63 @@ class ValpoAPIAppTest < Minitest::Test
   end
 
   def test_system_repair_enqueues_job
-    post "/system/repair"
+    post "/v1/system/repair"
 
     assert_equal 202, last_response.status
     assert_equal "repair_system", json.fetch("type")
   end
 
   def test_project_create_list_show_and_empty_delete
-    post_json "/projects", name: "hello"
+    post_json "/v1/projects", name: "hello"
     assert_equal 201, last_response.status
     project = json
     assert_match(/\Aprj_/, project.fetch("id"))
 
-    get "/projects"
-    assert_equal ["hello"], json.map { |entry| entry.fetch("name") }
-    get "/projects/hello"
+    get "/v1/projects"
+    assert_equal ["hello"], json.map { it.fetch("name") }
+    get "/v1/projects/hello"
     assert_equal project.fetch("id"), json.fetch("id")
 
-    delete "/projects/hello"
+    delete "/v1/projects/hello"
     assert_equal 202, last_response.status
     assert_equal "delete_project", json.fetch("type")
   end
 
   def test_project_delete_refuses_nonempty_project
     project = create_project
-    create_app_service(project: project)
-    delete "/projects/#{project.id}"
+    create_app_service(project:)
+    delete "/v1/projects/#{project.id}"
     assert_equal 409, last_response.status
+    assert_equal "conflict", json.fetch("error")
     assert_match "still has services", json.fetch("message")
   end
 
   def test_create_and_list_app_and_managed_services
     project = create_project
-    post_json "/projects/#{project.id}/services", name: "web", type: "web", port: 3000
+    post_json "/v1/projects/#{project.id}/services", name: "web", type: "web", internal_port: 3000
     assert_equal 201, last_response.status
     web = json.fetch("service")
     assert_equal "web", web.fetch("kind")
     assert_nil json["job"]
 
-    post_json "/projects/#{project.id}/services", name: "database", type: "postgres", version: "17"
+    post_json "/v1/projects/#{project.id}/services", name: "database", type: "postgres", version: "17"
     assert_equal 202, last_response.status
     database = json.fetch("service")
     assert_equal "17", database.fetch("managed").fetch("version")
     assert_equal "provision_service", json.fetch("job").fetch("type")
 
-    get "/services?project=hello"
-    assert_equal %w[web database].sort, json.map { |entry| entry.fetch("name") }.sort
+    get "/v1/services?project=hello"
+    assert_equal %w[web database].sort, json.map { it.fetch("name") }.sort
 
-    get "/projects/hello/services/database"
+    get "/v1/projects/hello/services/database"
     assert_equal database.fetch("id"), json.fetch("id")
-    get "/projects/#{project.id}/services/#{web.fetch("id")}"
+    get "/v1/projects/#{project.id}/services/#{web.fetch("id")}"
     assert_equal web.fetch("id"), json.fetch("id")
   end
 
   def test_source_backed_service_creation_enqueues_validation_without_creating_records
     project = create_project
-    post_json "/projects/#{project.id}/services",
+    post_json "/v1/projects/#{project.id}/services",
       name: "web",
       type: "web",
       source: {provider: "github", repository: "acme/backend"},
@@ -100,7 +102,7 @@ class ValpoAPIAppTest < Minitest::Test
 
   def test_source_backed_service_creation_rejects_invalid_configuration_before_enqueue
     project = create_project
-    post_json "/projects/#{project.id}/services",
+    post_json "/v1/projects/#{project.id}/services",
       name: "web",
       type: "web",
       source: {provider: "github", repository: "https://github.com/acme/backend"}
@@ -110,78 +112,100 @@ class ValpoAPIAppTest < Minitest::Test
     assert_equal 0, Valpo::Job.count
   end
 
+  def test_service_creation_enforces_source_build_relationships_semantically
+    project = create_project
+
+    post_json "/v1/projects/#{project.id}/services",
+      name: "web",
+      type: "web",
+      build: {dockerfile: "Dockerfile"}
+    assert_equal 422, last_response.status
+    assert_match "build requires source", json.fetch("message")
+
+    post_json "/v1/projects/#{project.id}/services", name: "web", type: "web", deploy: true
+    assert_equal 422, last_response.status
+    assert_match "deploy requires source", json.fetch("message")
+
+    post_json "/v1/projects/#{project.id}/services",
+      name: "database",
+      type: "postgres",
+      source: {provider: "github", repository: "acme/database"}
+    assert_equal 422, last_response.status
+    assert_match "source is only valid", json.fetch("message")
+  end
+
   def test_service_options_are_type_specific
     project = create_project
 
-    post_json "/projects/#{project.id}/services", name: "database", type: "postgres", command: []
+    post_json "/v1/projects/#{project.id}/services", name: "database", type: "postgres", command: []
     assert_equal 422, last_response.status
     assert_match "command", json.fetch("message")
 
-    post_json "/projects/#{project.id}/services", name: "web-version", type: "web", version: "18"
+    post_json "/v1/projects/#{project.id}/services", name: "web-version", type: "web", version: "18"
     assert_equal 422, last_response.status
     assert_match "version", json.fetch("message")
 
-    post_json "/projects/#{project.id}/services", name: "worker", type: "worker", port: 3000
+    post_json "/v1/projects/#{project.id}/services", name: "worker", type: "worker", internal_port: 3000
     assert_equal 422, last_response.status
     assert_match "port", json.fetch("message")
 
-    worker = create_app_service(project: project, name: "jobs", kind: "worker")
-    post_json "/services/#{worker.id}/deployments", image: "example/worker:v1", healthcheck_path: "/health"
+    worker = create_app_service(project:, name: "jobs", kind: "worker")
+    post_json "/v1/services/#{worker.id}/deployments", image: "example/worker:v1", healthcheck_path: "/health"
     assert_equal 422, last_response.status
     assert_match "healthcheck", json.fetch("message")
 
-    post_json "/projects/#{project.id}/services", name: "cache", type: "redis", image: "redis:latest"
-    assert_equal 422, last_response.status
-    assert_match "Unknown service keys: image", json.fetch("message")
+    post_json "/v1/projects/#{project.id}/services", name: "cache", type: "redis", image: "redis:latest"
+    assert_equal 400, last_response.status
+    assert_equal "image", json.fetch("details").first.fetch("field")
   end
 
   def test_service_identity_endpoints_reject_unsupported_capabilities
     database = create_managed_service
-    post_json "/services/#{database.id}/deployments", image: "example/db:v1"
+    post_json "/v1/services/#{database.id}/deployments", image: "example/db:v1"
     assert_equal 422, last_response.status
     assert_match "app service", json.fetch("message")
 
-    get "/services/#{database.id}"
+    get "/v1/services/#{database.id}"
     assert_equal "hello", json.fetch("project")
     assert_equal "database", json.fetch("name")
   end
 
   def test_service_creation_rejects_malformed_commands_and_fractional_ports
     project = create_project
-    post_json "/projects/#{project.id}/services", name: "web", type: "web", command: "bin/server"
-    assert_equal 422, last_response.status
-    assert_match "array", json.fetch("message")
+    post_json "/v1/projects/#{project.id}/services", name: "web", type: "web", command: "bin/server"
+    assert_equal 400, last_response.status
+    assert_match "array", json.fetch("details").first.fetch("message")
 
-    post_json "/projects/#{project.id}/services", name: "web", type: "web", port: 3000.5
-    assert_equal 422, last_response.status
-    assert_match "integer", json.fetch("message")
+    post_json "/v1/projects/#{project.id}/services", name: "web", type: "web", internal_port: 3000.5
+    assert_equal 400, last_response.status
+    assert_match "integer", json.fetch("details").first.fetch("message")
   end
 
   def test_deploy_release_domain_and_env_endpoints_are_app_scoped
     project = create_project
-    app_service = create_app_service(project: project)
-    database = create_managed_service(project: project)
+    app_service = create_app_service(project:)
+    database = create_managed_service(project:)
 
-    post_json "/services/#{app_service.id}/dependencies", dependency_service_id: database.id
+    post_json "/v1/services/#{app_service.id}/dependencies", dependency_service_id: database.id
     assert_equal 202, last_response.status
     assert_equal "bind_service", json.fetch("type")
     bind_job = json.fetch("id")
     Valpo::Jobs::Queue.new.lock_next("test-worker")
     Valpo::Jobs::Queue.new.succeed(bind_job, worker_id: "test-worker")
 
-    post_json "/services/#{app_service.id}/deployments", image: "example/app:v1"
+    post_json "/v1/services/#{app_service.id}/deployments", image: "example/app:v1"
     assert_equal 202, last_response.status
     assert_equal app_service.id, json.fetch("payload").fetch("service_id")
     deploy_job = json.fetch("id")
     Valpo::Jobs::Queue.new.lock_next("test-worker")
     Valpo::Jobs::Queue.new.succeed(deploy_job, worker_id: "test-worker")
 
-    post_json "/services/#{app_service.id}/domains", hostname: "hello.example.com"
+    post_json "/v1/services/#{app_service.id}/domains", hostname: "hello.example.com"
     assert_equal 202, last_response.status
     assert_equal app_service.id, json.fetch("domain").fetch("service_id")
     assert_equal "verify_domain", json.fetch("job").fetch("type")
 
-    get "/services/#{app_service.id}/env"
+    get "/v1/services/#{app_service.id}/env"
     assert_equal [], json.fetch("env")
   end
 
@@ -193,10 +217,10 @@ class ValpoAPIAppTest < Minitest::Test
     build_target = Valpo::BuildTarget.create(
       project_id: project.id, source_id: source.id, name: "backend", dockerfile: "Dockerfile", context: "."
     )
-    service = create_app_service(project: project)
+    service = create_app_service(project:)
     Valpo::AppServiceConfig[service.id].update(build_target_id: build_target.id)
 
-    post_json "/services/#{service.id}/deployments", ref: "release"
+    post_json "/v1/services/#{service.id}/deployments", ref: "release"
 
     assert_equal 202, last_response.status
     assert_equal "deploy_source", json.fetch("type")
@@ -207,11 +231,11 @@ class ValpoAPIAppTest < Minitest::Test
   def test_source_deploy_requires_build_target_and_rejects_image_with_ref
     service = create_app_service
 
-    post_json "/services/#{service.id}/deployments", {}
+    post_json "/v1/services/#{service.id}/deployments", {}
     assert_equal 422, last_response.status
     assert_match "build target", json.fetch("message")
 
-    post_json "/services/#{service.id}/deployments", image: "example/app:v1", ref: "main"
+    post_json "/v1/services/#{service.id}/deployments", image: "example/app:v1", ref: "main"
     assert_equal 422, last_response.status
     assert_match "cannot be used together", json.fetch("message")
   end
@@ -232,15 +256,22 @@ class ValpoAPIAppTest < Minitest::Test
       dockerfile: "Dockerfile",
       context: "."
     )
-    service = create_app_service(project: project)
+    service = create_app_service(project:)
     Valpo::AppServiceConfig[service.id].update(build_target_id: build.id)
 
-    patch_json "/services/#{service.id}", source: {ref: "release"}, port: nil, deploy: true
+    patch_json "/v1/services/#{service.id}",
+      source: {ref: "release"},
+      command: [],
+      internal_port: nil,
+      healthcheck_path: nil,
+      deploy: true
 
     assert_equal 202, last_response.status
     assert_equal "update_app_service", json.fetch("type")
     assert_equal "release", json.dig("payload", "configuration", "source", "ref")
     assert_nil json.dig("payload", "runtime", "internal_port")
+    assert_nil json.dig("payload", "runtime", "healthcheck_path")
+    assert_equal [], json.dig("payload", "runtime", "command")
     assert_equal true, json.dig("payload", "deploy")
     assert_equal "main", source.refresh.ref
   end
@@ -248,14 +279,14 @@ class ValpoAPIAppTest < Minitest::Test
   def test_service_show_includes_source_build_and_automatic_resolved_port
     project = create_project
     service = Valpo::Sources::ServiceConfigurator.new.create_service!(
-      project: project,
+      project:,
       service_attributes: {"name" => "web", "type" => "web"},
       source: {"provider" => "github", "repository" => "acme/backend", "ref" => "HEAD"},
       build: {"dockerfile" => "Dockerfile", "context" => "."}
     )
-    create_release(service: service, status: "active", internal_port: 3000)
+    create_release(service:, status: "active", internal_port: 3000)
 
-    get "/services/#{service.id}"
+    get "/v1/services/#{service.id}"
 
     assert_equal 200, last_response.status
     assert_equal "acme/backend", json.dig("app", "source", "repository")
@@ -268,21 +299,26 @@ class ValpoAPIAppTest < Minitest::Test
 
   def test_dependency_endpoint_validates_same_project_at_runtime_and_unbinds
     project = create_project
-    app_service = create_app_service(project: project)
-    database = create_managed_service(project: project)
+    app_service = create_app_service(project:)
+    database = create_managed_service(project:)
     dependency = Valpo::ServiceDependency.create(
       service_id: app_service.id, dependency_service_id: database.id, status: "active", env_json: "{}"
     )
-    delete "/services/#{app_service.id}/dependencies/#{database.id}"
+    delete "/v1/services/#{app_service.id}/dependencies/#{database.id}"
     assert_equal 202, last_response.status
     assert_equal dependency.id, Valpo::ServiceDependency[dependency.id].id
   end
 
   def test_service_delete_requires_force
     service = create_app_service
-    delete "/services/#{service.id}"
+    delete "/v1/services/#{service.id}?force=1"
+    assert_equal 400, last_response.status
+    assert_equal "invalid_request", json.fetch("error")
+
+    delete "/v1/services/#{service.id}"
     assert_equal 422, last_response.status
-    delete "/services/#{service.id}?force=true"
+    assert_equal "validation_failed", json.fetch("error")
+    delete "/v1/services/#{service.id}?force=true"
     assert_equal 202, last_response.status
     assert_equal "delete_service", json.fetch("type")
   end
@@ -298,58 +334,148 @@ class ValpoAPIAppTest < Minitest::Test
       type = "web"
       port = 3000
     TOML
-    post_json "/projects/apply", manifest: manifest, dry_run: true
+    post_json "/v1/projects/apply", manifest:, dry_run: true
     assert_equal 200, last_response.status
     assert_equal "create", json.fetch("actions").first.fetch("operation")
     assert_nil Valpo::Project.find_by_id_or_name("acme")
 
-    post_json "/projects/apply", manifest: manifest
+    post_json("/v1/projects/apply", manifest:)
     assert_equal 202, last_response.status
     assert_equal "apply_project_manifest", json.fetch("type")
   end
 
-  def test_manifest_and_json_validation_errors_are_422
-    post_json "/projects/apply", manifest: "schema = 2"
+  def test_manifest_errors_are_422_and_json_errors_are_400
+    post_json "/v1/projects/apply", manifest: "schema = 2"
     assert_equal 422, last_response.status
+    assert_equal "validation_failed", json.fetch("error")
     assert_match "schema", json.fetch("message")
 
-    post "/projects", "{", "CONTENT_TYPE" => "application/json"
-    assert_equal 422, last_response.status
+    post "/v1/projects", "{", "CONTENT_TYPE" => "application/json"
+    assert_equal 400, last_response.status
     assert_match "valid JSON", json.fetch("message")
+  end
+
+  def test_unexpected_errors_are_logged_but_return_a_generic_500
+    job = Valpo::Jobs::Queue.new.enqueue("system_check")
+    job.update(payload_json: "{")
+
+    _stdout, stderr = capture_io { get "/v1/jobs/#{job.id}" }
+
+    assert_equal 500, last_response.status
+    assert_equal "internal_error", json.fetch("error")
+    assert_equal "An internal error occurred", json.fetch("message")
+    assert_match "JSON::ParserError", stderr
+    refute_includes last_response.body, "unexpected end"
+  end
+
+  def test_request_contract_rejects_non_object_missing_and_unknown_json
+    post "/v1/projects", "[]", "CONTENT_TYPE" => "application/json"
+    assert_invalid_request("Request body must be a JSON object")
+
+    post "/v1/projects", JSON.generate("hello"), "CONTENT_TYPE" => "application/json"
+    assert_invalid_request("Request body must be a JSON object")
+
+    post "/v1/projects", JSON.generate({}), "CONTENT_TYPE" => "application/json"
+    assert_equal 400, last_response.status
+    assert_equal "name", json.fetch("details").first.fetch("field")
+
+    post_json "/v1/projects", name: "hello", unexpected: true
+    assert_equal 400, last_response.status
+    assert_equal "unexpected", json.fetch("details").first.fetch("field")
+  end
+
+  def test_request_contract_rejects_unknown_nested_keys_and_non_native_types
+    project = create_project
+    post_json "/v1/projects/#{project.id}/services",
+      name: "web",
+      type: "web",
+      deploy: "false",
+      source: {provider: "github", repository: "acme/web", token: "secret"}
+
+    assert_equal 400, last_response.status
+    fields = json.fetch("details").map { it.fetch("field") }
+    assert_includes fields, "deploy"
+    assert_includes fields, "source.token"
+
+    post_json "/v1/projects/#{project.id}/services", name: "web", type: "web", port: 3000
+    assert_equal 400, last_response.status
+    assert_equal "port", json.fetch("details").first.fetch("field")
+  end
+
+  def test_query_contracts_reject_unknown_keys_and_non_literal_booleans
+    service = create_app_service
+    get "/v1/services/#{service.id}/env?reveal=1"
+    assert_equal 400, last_response.status
+    assert_equal "invalid_request", json.fetch("error")
+
+    get "/v1/services?unknown=value"
+    assert_equal 400, last_response.status
+    assert_equal "unknown", json.fetch("details").first.fetch("field")
+
+    get "/health?verbose=true"
+    assert_equal 400, last_response.status
+
+    get "/?verbose=true"
+    assert_equal 400, last_response.status
+  end
+
+  def test_v1_routes_are_exact_and_old_routes_are_removed
+    project = create_project
+    service = create_app_service(project:)
+    job = Valpo::Jobs::Queue.new.enqueue("system_check")
+
+    %w[/projects /services /jobs /system/repair].each do
+      get it
+      assert_json_not_found(it)
+    end
+
+    [
+      "/health/extra",
+      "/v1/projects/#{project.id}/extra",
+      "/v1/services/#{service.id}/logs/extra",
+      "/v1/jobs/#{job.id}/events/extra",
+      "/v1/unknown"
+    ].each do
+      get it
+      assert_json_not_found(it)
+    end
+
+    put "/v1/projects", JSON.generate(name: "nope"), "CONTENT_TYPE" => "application/json"
+    assert_json_not_found("PUT /v1/projects")
   end
 
   def test_jobs_and_events
     job = Valpo::Jobs::Queue.new.enqueue("system_check", source: "test")
-    get "/jobs/#{job.id}"
+    get "/v1/jobs/#{job.id}"
     assert_equal({"source" => "test"}, json.fetch("payload"))
-    get "/jobs/#{job.id}/events"
+    get "/v1/jobs/#{job.id}/events"
     assert_equal "Job queued", json.first.fetch("message")
   end
 
   def test_platform_app_domain_is_configured_after_install
-    put "/system/app-domain", JSON.generate(hostname: "apps.example.com"), "CONTENT_TYPE" => "application/json"
+    put "/v1/system/app-domain", JSON.generate(hostname: "apps.example.com"), "CONTENT_TYPE" => "application/json"
 
     assert_equal 202, last_response.status, last_response.body
     assert_equal "apps.example.com", json.dig("app_domain", "hostname")
     assert_equal "pending", json.dig("app_domain", "status")
     assert_equal "verify_platform_domain", json.dig("job", "type")
 
-    get "/system/app-domain"
+    get "/v1/system/app-domain"
     assert_nil json["active"]
     assert_equal "apps.example.com", json.dig("candidate", "hostname")
   end
 
   def test_running_web_service_keeps_its_last_verified_domain
     service = create_app_service(status: "running")
-    release = create_release(service: service, status: "active", route_target: "127.0.0.1:20000")
-    domain = create_domain(service: service)
+    release = create_release(service:, status: "active", route_target: "127.0.0.1:20000")
+    domain = create_domain(service:)
 
-    delete "/services/#{service.id}/domains/#{domain.id}"
+    delete "/v1/services/#{service.id}/domains/#{domain.id}"
     assert_equal 409, last_response.status
     assert_match "Stop the web service", json.fetch("message")
 
     service.update(status: "stopped")
-    delete "/services/#{service.id}/domains/#{domain.id}"
+    delete "/v1/services/#{service.id}/domains/#{domain.id}"
     assert_equal 200, last_response.status
     assert_equal true, json.fetch("deleted")
     assert_equal "ready", release.refresh.status
@@ -367,6 +493,18 @@ class ValpoAPIAppTest < Minitest::Test
 
   def patch_json(path, payload)
     patch path, JSON.generate(payload), "CONTENT_TYPE" => "application/json"
+  end
+
+  def assert_invalid_request(message)
+    assert_equal 400, last_response.status
+    assert_equal "invalid_request", json.fetch("error")
+    assert_equal message, json.fetch("message")
+  end
+
+  def assert_json_not_found(label)
+    assert_equal 404, last_response.status, label
+    assert_equal "application/json", last_response.media_type, label
+    assert_equal "not_found", json.fetch("error"), label
   end
 
   def with_api_token(token)

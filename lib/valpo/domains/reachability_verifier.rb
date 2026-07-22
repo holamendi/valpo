@@ -56,7 +56,7 @@ module Valpo
           use_ssl: true,
           open_timeout: 5,
           read_timeout: 5
-        ) { |http| http.get(uri.request_uri) }
+        ) { it.get(uri.request_uri) }
         {status: response.code.to_i, body: response.body}
       end
     end

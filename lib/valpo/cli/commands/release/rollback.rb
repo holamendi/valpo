@@ -1,0 +1,23 @@
+# frozen_string_literal: true
+
+module Valpo
+  module CLI
+    module Commands
+      module Release
+        class Rollback < BaseCommand
+          desc "Roll back an app service to its previous release"
+          argument :service, required: true, desc: "Service name or ID"
+          project_option
+          wait_options
+
+          def call(service:, wait:, timeout:, api_url:, project: nil, config: nil, json: false, args: nil, **)
+            reject_extra_arguments!(args)
+            current = context(api_url:, config:, json:)
+            response = current.request(:post, "#{current.service_path(service, project:)}/rollback")
+            current.presenter.operation(current.finish_operation(response, wait:, timeout:))
+          end
+        end
+      end
+    end
+  end
+end

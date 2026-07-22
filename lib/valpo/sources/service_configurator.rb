@@ -29,7 +29,7 @@ module Valpo
 
       def create_service!(project:, service_attributes:, source:, build:)
         Valpo::Database.connection.transaction do
-          service = Valpo::Services::Catalog.create_service(
+          service = Valpo::Services::Creator.call(
             project_id: project.id,
             name: service_attributes.fetch("name"),
             type: service_attributes.fetch("type"),
@@ -168,8 +168,8 @@ module Valpo
       end
 
       def available_name(model, project_id, base)
-        candidates = [base, "#{base}-cli"] + (2..100).map { |number| "#{base}-cli-#{number}" }
-        candidates.find { |name| model.where(project_id: project_id, name: name).empty? } ||
+        candidates = [base, "#{base}-cli"] + (2..100).map { "#{base}-cli-#{it}" }
+        candidates.find { model.where(project_id:, name: it).empty? } ||
           raise(Valpo::ConflictError, "No source configuration name is available for #{base}")
       end
     end

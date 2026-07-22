@@ -9,7 +9,7 @@ class ValpoSourcesGitHubTest < Minitest::Test
     runner = FakeRunner.new
     client = Valpo::Sources::GitHub.new(
       token: "github-secret",
-      runner: runner,
+      runner:,
       askpass_path: "/opt/valpo/exe/valpo-git-askpass"
     )
 
@@ -32,7 +32,7 @@ class ValpoSourcesGitHubTest < Minitest::Test
   def test_rejects_non_github_repository_names_before_running_git
     runner = FakeRunner.new
     error = assert_raises Valpo::ValidationError do
-      Valpo::Sources::GitHub.new(runner: runner).checkout(
+      Valpo::Sources::GitHub.new(runner:).checkout(
         source: Source.new(repository: "https://evil.example/repo", ref: "main"),
         destination: "/tmp/checkout"
       )
@@ -45,12 +45,12 @@ class ValpoSourcesGitHubTest < Minitest::Test
   def test_resolves_callable_tokens_for_each_checkout
     token = "first-token"
     runner = FakeRunner.new
-    client = Valpo::Sources::GitHub.new(token: -> { token }, runner: runner)
+    client = Valpo::Sources::GitHub.new(token: -> { token }, runner:)
     source = Source.new(repository: "acme/backend", ref: "main")
 
-    client.checkout(source: source, destination: "/tmp/first")
+    client.checkout(source:, destination: "/tmp/first")
     token = "second-token"
-    client.checkout(source: source, destination: "/tmp/second")
+    client.checkout(source:, destination: "/tmp/second")
 
     fetches = runner.calls.select { |_environment, command| command.include?("fetch") }
     assert_equal %w[first-token second-token], fetches.map { |environment, _command| environment.fetch("VALPO_GIT_ASKPASS_TOKEN") }
@@ -65,7 +65,7 @@ class ValpoSourcesGitHubTest < Minitest::Test
 
     cases.each do |detail, token|
       error = assert_raises Valpo::ValidationError do
-        Valpo::Sources::GitHub.new(token: token, runner: FakeRunner.new(fetch_error: detail)).checkout(
+        Valpo::Sources::GitHub.new(token:, runner: FakeRunner.new(fetch_error: detail)).checkout(
           source: Source.new(repository: "acme/private", ref: "missing"),
           destination: "/tmp/checkout"
         )
@@ -94,7 +94,7 @@ class ValpoSourcesGitHubTest < Minitest::Test
       end
 
       stdout = command.include?("rev-parse") ? "#{COMMIT}\n" : ""
-      {stdout: stdout, stderr: "", status: 0, success: true}
+      {stdout:, stderr: "", status: 0, success: true}
     end
   end
 end

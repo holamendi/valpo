@@ -58,7 +58,7 @@ module Valpo
       end
 
       def run(command, message, authenticated: false)
-        result = runner.capture(environment(authenticated: authenticated), command)
+        result = runner.capture(environment(authenticated:), command)
         return result if result.fetch(:success)
 
         detail = result.fetch(:stderr).to_s.strip

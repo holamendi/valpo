@@ -2,6 +2,8 @@
 
 Valpo is a self-hosted platform for deploying containerized web apps and background processes, managing Postgres and Redis, and configuring HTTPS routing on a single VPS.
 
+The project is pre-release and intentionally does not preserve compatibility with retired APIs or internal constants. See the [documentation index](./docs/README.md), [CLI guide](./docs/valpo-cli.md), [API v1 guide](./docs/valpo-api.md), and [OpenAPI 3.1 specification](./docs/openapi.yaml).
+
 ## Installation
 
 Valpo currently targets a fresh Ubuntu 26.04 LTS server. Run all commands below as root. Install the development version from `main`:

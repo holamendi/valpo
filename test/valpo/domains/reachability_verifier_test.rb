@@ -6,8 +6,8 @@ class ValpoDomainsReachabilityVerifierTest < Minitest::Test
   def test_accepts_only_matching_https_challenge
     requests = []
     verifier = Valpo::Domains::ReachabilityVerifier.new(
-      requester: lambda do |url|
-        requests << url
+      requester: lambda do
+        requests << it
         {status: 200, body: "token-123\n"}
       end
     )

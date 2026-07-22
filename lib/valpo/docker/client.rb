@@ -91,7 +91,7 @@ module Valpo
 
       def execute(command)
         stdout, stderr, status = Open3.capture3(*command)
-        {stdout: stdout, stderr: stderr, status: status.exitstatus, success: status.success?}
+        {stdout:, stderr:, status: status.exitstatus, success: status.success?}
       end
 
       private

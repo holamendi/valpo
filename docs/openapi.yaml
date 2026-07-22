@@ -1,0 +1,1098 @@
+openapi: 3.1.0
+info:
+  title: Valpo API
+  version: 0.1.0
+  description: >-
+    HTTP API for the pre-release Valpo server. Ruby dry-validation contracts are
+    the runtime authority; this document is the maintained public mirror.
+servers:
+  - url: http://127.0.0.1:7092
+security:
+  - bearerAuth: []
+paths:
+  /:
+    get:
+      operationId: describeApi
+      summary: Describe the API service
+      responses:
+        '200':
+          description: API identity
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [service, version]
+                properties:
+                  service: {type: string}
+                  version: {type: string}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /health:
+    get:
+      operationId: getHealth
+      summary: Report API process health
+      responses:
+        '200':
+          description: Process health
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [ok, service, version]
+                properties:
+                  ok: {type: boolean}
+                  service: {type: string}
+                  version: {type: string}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /v1/projects:
+    get:
+      operationId: listProjects
+      summary: List projects
+      responses:
+        '200': {$ref: '#/components/responses/ProjectList'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '500': {$ref: '#/components/responses/InternalError'}
+    post:
+      operationId: createProject
+      summary: Create a project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateProjectRequest'}
+      responses:
+        '201': {$ref: '#/components/responses/Project'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /v1/projects/apply:
+    post:
+      operationId: applyProjectManifest
+      summary: Preview or enqueue a project manifest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ApplyProjectRequest'}
+      responses:
+        '200':
+          description: Dry-run reconciliation plan
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ManifestPlan'}
+        '202': {$ref: '#/components/responses/Job'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /v1/projects/{project}:
+    parameters:
+      - {$ref: '#/components/parameters/ProjectReference'}
+    get:
+      operationId: getProject
+      summary: Show a project
+      responses:
+        '200': {$ref: '#/components/responses/Project'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '500': {$ref: '#/components/responses/InternalError'}
+    delete:
+      operationId: deleteProject
+      summary: Enqueue deletion of an empty project
+      responses:
+        '202': {$ref: '#/components/responses/Job'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /v1/projects/{project}/services:
+    parameters:
+      - {$ref: '#/components/parameters/ProjectReference'}
+    get:
+      operationId: listProjectServices
+      summary: List a project's services
+      responses:
+        '200': {$ref: '#/components/responses/ServiceList'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '500': {$ref: '#/components/responses/InternalError'}
+    post:
+      operationId: createService
+      summary: Create a service in a project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateServiceRequest'}
+      responses:
+        '201': {$ref: '#/components/responses/ServiceOperation'}
+        '202': {$ref: '#/components/responses/ServiceOperation'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /v1/projects/{project}/services/{service}:
+    parameters:
+      - {$ref: '#/components/parameters/ProjectReference'}
+      - {$ref: '#/components/parameters/ServiceReference'}
+    get:
+      operationId: getProjectService
+      summary: Show a service scoped to a project
+      responses:
+        '200': {$ref: '#/components/responses/Service'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /v1/projects/{project}/sources:
+    parameters:
+      - {$ref: '#/components/parameters/ProjectReference'}
+    get:
+      operationId: listProjectSources
+      summary: List a project's sources
+      responses:
+        '200':
+          description: Sources
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Source'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /v1/projects/{project}/logs:
+    parameters:
+      - {$ref: '#/components/parameters/ProjectReference'}
+      - {$ref: '#/components/parameters/Tail'}
+      - name: service
+        in: query
+        required: false
+        schema: {$ref: '#/components/schemas/NonEmptyString'}
+    get:
+      operationId: getProjectLogs
+      summary: Aggregate logs for a project
+      responses:
+        '200':
+          description: Project log entries
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ProjectLogs'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /v1/services:
+    get:
+      operationId: listServices
+      summary: List services
+      parameters:
+        - name: project
+          in: query
+          required: false
+          schema: {$ref: '#/components/schemas/NonEmptyString'}
+      responses:
+        '200': {$ref: '#/components/responses/ServiceList'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /v1/services/{service}:
+    parameters:
+      - {$ref: '#/components/parameters/ServiceReference'}
+    get:
+      operationId: getService
+      summary: Show a service
+      responses:
+        '200': {$ref: '#/components/responses/Service'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '500': {$ref: '#/components/responses/InternalError'}
+    patch:
+      operationId: updateService
+      summary: Update application configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/UpdateServiceRequest'}
+      responses:
+        '202': {$ref: '#/components/responses/Job'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '500': {$ref: '#/components/responses/InternalError'}
+    delete:
+      operationId: deleteService
+      summary: Enqueue forced service deletion
+      parameters:
+        - name: force
+          in: query
+          required: false
+          schema: {type: boolean}
+      responses:
+        '202': {$ref: '#/components/responses/Job'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /v1/services/{service}/logs:
+    parameters:
+      - {$ref: '#/components/parameters/ServiceReference'}
+      - {$ref: '#/components/parameters/Tail'}
+    get:
+      operationId: getServiceLogs
+      summary: Read service logs
+      responses:
+        '200':
+          description: Service logs
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ServiceLogs'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /v1/services/{service}/restart:
+    parameters:
+      - {$ref: '#/components/parameters/ServiceReference'}
+    post:
+      operationId: restartService
+      summary: Enqueue a service restart
+      responses:
+        '202': {$ref: '#/components/responses/Job'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /v1/services/{service}/stop:
+    parameters:
+      - {$ref: '#/components/parameters/ServiceReference'}
+    post:
+      operationId: stopService
+      summary: Enqueue a service stop
+      responses:
+        '202': {$ref: '#/components/responses/Job'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /v1/services/{service}/dependencies:
+    parameters:
+      - {$ref: '#/components/parameters/ServiceReference'}
+    post:
+      operationId: bindServiceDependency
+      summary: Bind a managed dependency
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/BindDependencyRequest'}
+      responses:
+        '202': {$ref: '#/components/responses/Job'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /v1/services/{service}/dependencies/{dependency}:
+    parameters:
+      - {$ref: '#/components/parameters/ServiceReference'}
+      - {$ref: '#/components/parameters/DependencyReference'}
+    delete:
+      operationId: unbindServiceDependency
+      summary: Unbind a managed dependency
+      responses:
+        '202': {$ref: '#/components/responses/Job'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /v1/services/{service}/deployments:
+    parameters:
+      - {$ref: '#/components/parameters/ServiceReference'}
+    post:
+      operationId: deployService
+      summary: Enqueue a registry or source deployment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/DeployServiceRequest'}
+      responses:
+        '202': {$ref: '#/components/responses/Job'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /v1/services/{service}/releases:
+    parameters:
+      - {$ref: '#/components/parameters/ServiceReference'}
+    get:
+      operationId: listServiceReleases
+      summary: List application releases
+      responses:
+        '200':
+          description: Releases
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Release'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /v1/services/{service}/rollback:
+    parameters:
+      - {$ref: '#/components/parameters/ServiceReference'}
+    post:
+      operationId: rollbackService
+      summary: Enqueue rollback to the prior release
+      responses:
+        '202': {$ref: '#/components/responses/Job'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /v1/services/{service}/env:
+    parameters:
+      - {$ref: '#/components/parameters/ServiceReference'}
+    get:
+      operationId: getServiceEnvironment
+      summary: Show generated service environment entries
+      parameters:
+        - name: reveal
+          in: query
+          required: false
+          schema: {type: boolean}
+      responses:
+        '200':
+          description: Generated environment
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ServiceEnvironment'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /v1/services/{service}/domains:
+    parameters:
+      - {$ref: '#/components/parameters/ServiceReference'}
+    get:
+      operationId: listServiceDomains
+      summary: List service domains
+      responses:
+        '200':
+          description: Domains
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Domain'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '500': {$ref: '#/components/responses/InternalError'}
+    post:
+      operationId: createServiceDomain
+      summary: Create and verify a custom domain
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateDomainRequest'}
+      responses:
+        '202': {$ref: '#/components/responses/DomainOperation'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /v1/services/{service}/domains/{domain}/verify:
+    parameters:
+      - {$ref: '#/components/parameters/ServiceReference'}
+      - {$ref: '#/components/parameters/DomainReference'}
+    post:
+      operationId: verifyServiceDomain
+      summary: Recheck a domain
+      responses:
+        '202': {$ref: '#/components/responses/Job'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /v1/services/{service}/domains/{domain}:
+    parameters:
+      - {$ref: '#/components/parameters/ServiceReference'}
+      - {$ref: '#/components/parameters/DomainReference'}
+    delete:
+      operationId: deleteServiceDomain
+      summary: Remove a custom domain
+      responses:
+        '200':
+          description: Domain deletion and route-reconciliation job
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DeleteDomainResult'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /v1/system/app-domain:
+    get:
+      operationId: getPlatformDomain
+      summary: Show active and staged platform domains
+      responses:
+        '200': {$ref: '#/components/responses/PlatformDomainState'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '500': {$ref: '#/components/responses/InternalError'}
+    put:
+      operationId: configurePlatformDomain
+      summary: Stage and verify the platform app domain
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ConfigureAppDomainRequest'}
+      responses:
+        '200': {$ref: '#/components/responses/PlatformDomainOperation'}
+        '202': {$ref: '#/components/responses/PlatformDomainOperation'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /v1/system/repair:
+    post:
+      operationId: repairSystem
+      summary: Enqueue whole-system reconciliation
+      responses:
+        '202': {$ref: '#/components/responses/Job'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /v1/jobs:
+    get:
+      operationId: listJobs
+      summary: List jobs
+      responses:
+        '200':
+          description: Jobs
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Job'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /v1/jobs/{job}:
+    parameters:
+      - {$ref: '#/components/parameters/JobReference'}
+    get:
+      operationId: getJob
+      summary: Show a job
+      responses:
+        '200': {$ref: '#/components/responses/Job'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /v1/jobs/{job}/events:
+    parameters:
+      - {$ref: '#/components/parameters/JobReference'}
+    get:
+      operationId: listJobEvents
+      summary: List a job's events
+      responses:
+        '200':
+          description: Job events
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/JobEvent'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '500': {$ref: '#/components/responses/InternalError'}
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    ProjectReference:
+      name: project
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/NonEmptyString'}
+    ServiceReference:
+      name: service
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/NonEmptyString'}
+    DependencyReference:
+      name: dependency
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/NonEmptyString'}
+    DomainReference:
+      name: domain
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/NonEmptyString'}
+    JobReference:
+      name: job
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/NonEmptyString'}
+    Tail:
+      name: tail
+      in: query
+      required: false
+      schema: {type: integer, minimum: 1}
+  responses:
+    InvalidRequest:
+      description: Malformed JSON or request-contract failure
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    Unauthorized:
+      description: Missing or invalid bearer token
+      headers:
+        WWW-Authenticate: {schema: {type: string}}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    NotFound:
+      description: Resource or route not found
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    Conflict:
+      description: Current state conflicts with the requested operation
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    ValidationFailed:
+      description: Validly shaped request failed semantic validation
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    InternalError:
+      description: Unexpected server failure with a generic client message
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    Project:
+      description: Project
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Project'}
+    ProjectList:
+      description: Projects
+      content:
+        application/json:
+          schema:
+            type: array
+            items: {$ref: '#/components/schemas/Project'}
+    Service:
+      description: Service
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Service'}
+    ServiceList:
+      description: Services
+      content:
+        application/json:
+          schema:
+            type: array
+            items: {$ref: '#/components/schemas/Service'}
+    Job:
+      description: Background job
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Job'}
+    ServiceOperation:
+      description: Created service and optional provisioning job
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ServiceOperation'}
+    DomainOperation:
+      description: Created domain and verification job
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/DomainOperation'}
+    PlatformDomainState:
+      description: Active and candidate platform domains
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/PlatformDomainState'}
+    PlatformDomainOperation:
+      description: Staged platform domain and optional verification job
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/PlatformDomainOperation'}
+  schemas:
+    NonEmptyString:
+      type: string
+      pattern: '\S'
+    Timestamp:
+      type: [string, 'null']
+      format: date-time
+    ErrorDetail:
+      type: object
+      additionalProperties: false
+      required: [field, code, message]
+      properties:
+        field: {type: string}
+        code: {type: string}
+        message: {type: string}
+    Error:
+      type: object
+      additionalProperties: false
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          enum: [invalid_request, unauthorized, not_found, conflict, validation_failed, internal_error]
+        message: {type: string}
+        details:
+          type: array
+          items: {$ref: '#/components/schemas/ErrorDetail'}
+    CreateProjectRequest:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: {$ref: '#/components/schemas/NonEmptyString'}
+    ApplyProjectRequest:
+      type: object
+      additionalProperties: false
+      required: [manifest]
+      properties:
+        manifest: {$ref: '#/components/schemas/NonEmptyString'}
+        dry_run: {type: boolean}
+    SourceInput:
+      type: object
+      additionalProperties: false
+      required: [provider, repository]
+      properties:
+        provider: {$ref: '#/components/schemas/NonEmptyString'}
+        repository: {$ref: '#/components/schemas/NonEmptyString'}
+        ref: {$ref: '#/components/schemas/NonEmptyString'}
+    SourceChanges:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        provider: {$ref: '#/components/schemas/NonEmptyString'}
+        repository: {$ref: '#/components/schemas/NonEmptyString'}
+        ref: {$ref: '#/components/schemas/NonEmptyString'}
+    BuildInput:
+      type: object
+      additionalProperties: false
+      properties:
+        dockerfile: {$ref: '#/components/schemas/NonEmptyString'}
+        context: {$ref: '#/components/schemas/NonEmptyString'}
+    BuildChanges:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        dockerfile: {$ref: '#/components/schemas/NonEmptyString'}
+        context: {$ref: '#/components/schemas/NonEmptyString'}
+    Command:
+      type: array
+      items: {$ref: '#/components/schemas/NonEmptyString'}
+    Port:
+      type: integer
+      minimum: 1
+      maximum: 65535
+    NullablePort:
+      anyOf:
+        - {$ref: '#/components/schemas/Port'}
+        - {type: 'null'}
+    NullableHealthcheckPath:
+      type: [string, 'null']
+      pattern: '^/\S*$'
+    CreateServiceRequest:
+      type: object
+      additionalProperties: false
+      required: [name, type]
+      properties:
+        name: {$ref: '#/components/schemas/NonEmptyString'}
+        type: {$ref: '#/components/schemas/NonEmptyString'}
+        version: {$ref: '#/components/schemas/NonEmptyString'}
+        command: {$ref: '#/components/schemas/Command'}
+        internal_port: {$ref: '#/components/schemas/NullablePort'}
+        healthcheck_path: {$ref: '#/components/schemas/NullableHealthcheckPath'}
+        source: {$ref: '#/components/schemas/SourceInput'}
+        build: {$ref: '#/components/schemas/BuildInput'}
+        deploy: {type: boolean}
+    UpdateServiceRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        source: {$ref: '#/components/schemas/SourceChanges'}
+        build: {$ref: '#/components/schemas/BuildChanges'}
+        command: {$ref: '#/components/schemas/Command'}
+        internal_port: {$ref: '#/components/schemas/NullablePort'}
+        healthcheck_path: {$ref: '#/components/schemas/NullableHealthcheckPath'}
+        deploy: {type: boolean}
+    DeployServiceRequest:
+      type: object
+      additionalProperties: false
+      description: image and ref are mutually exclusive semantic options.
+      properties:
+        image: {$ref: '#/components/schemas/NonEmptyString'}
+        ref: {$ref: '#/components/schemas/NonEmptyString'}
+        internal_port: {$ref: '#/components/schemas/NullablePort'}
+        healthcheck_path: {$ref: '#/components/schemas/NullableHealthcheckPath'}
+    BindDependencyRequest:
+      type: object
+      additionalProperties: false
+      required: [dependency_service_id]
+      properties:
+        dependency_service_id: {$ref: '#/components/schemas/NonEmptyString'}
+    CreateDomainRequest:
+      type: object
+      additionalProperties: false
+      required: [hostname]
+      properties:
+        hostname: {$ref: '#/components/schemas/NonEmptyString'}
+    ConfigureAppDomainRequest:
+      type: object
+      additionalProperties: false
+      required: [hostname]
+      properties:
+        hostname: {$ref: '#/components/schemas/NonEmptyString'}
+    Project:
+      type: object
+      additionalProperties: false
+      required: [id, name, manifest_digest, last_applied_at, created_at, updated_at, service_count, source_count]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        manifest_digest: {type: [string, 'null']}
+        last_applied_at: {$ref: '#/components/schemas/Timestamp'}
+        created_at: {$ref: '#/components/schemas/Timestamp'}
+        updated_at: {$ref: '#/components/schemas/Timestamp'}
+        service_count: {type: integer, minimum: 0}
+        source_count: {type: integer, minimum: 0}
+    Source:
+      type: object
+      additionalProperties: false
+      required: [id, project_id, name, provider, repository, ref, auto_deploy, status, created_at, updated_at]
+      properties:
+        id: {type: string}
+        project_id: {type: string}
+        name: {type: string}
+        provider: {type: string}
+        repository: {type: string}
+        ref: {type: string}
+        auto_deploy: {type: boolean}
+        status: {type: string}
+        created_at: {$ref: '#/components/schemas/Timestamp'}
+        updated_at: {$ref: '#/components/schemas/Timestamp'}
+    BuildTarget:
+      type: object
+      additionalProperties: false
+      required: [id, project_id, source_id, name, dockerfile, context, created_at, updated_at]
+      properties:
+        id: {type: string}
+        project_id: {type: string}
+        source_id: {type: string}
+        name: {type: string}
+        dockerfile: {type: string}
+        context: {type: string}
+        created_at: {$ref: '#/components/schemas/Timestamp'}
+        updated_at: {$ref: '#/components/schemas/Timestamp'}
+    ServiceDependency:
+      type: object
+      additionalProperties: false
+      required: [id, service_id, dependency_service_id, status, created_at, updated_at]
+      properties:
+        id: {type: string}
+        service_id: {type: string}
+        dependency_service_id: {type: string}
+        status: {type: string}
+        created_at: {$ref: '#/components/schemas/Timestamp'}
+        updated_at: {$ref: '#/components/schemas/Timestamp'}
+    AppConfiguration:
+      type: object
+      additionalProperties: false
+      required: [build_target_id, internal_port, healthcheck_path, command, port_mode, resolved_internal_port, source, build]
+      properties:
+        build_target_id: {type: [string, 'null']}
+        internal_port: {anyOf: [{$ref: '#/components/schemas/Port'}, {type: 'null'}]}
+        healthcheck_path: {type: [string, 'null']}
+        command: {$ref: '#/components/schemas/Command'}
+        port_mode: {type: string, enum: [automatic, explicit]}
+        resolved_internal_port: {anyOf: [{$ref: '#/components/schemas/Port'}, {type: 'null'}]}
+        source: {anyOf: [{$ref: '#/components/schemas/Source'}, {type: 'null'}]}
+        build: {anyOf: [{$ref: '#/components/schemas/BuildTarget'}, {type: 'null'}]}
+    ManagedConfiguration:
+      type: object
+      additionalProperties: false
+      required: [version, image, plan, container_name, volume_name, internal_host, internal_port]
+      properties:
+        version: {type: string}
+        image: {type: string}
+        plan: {type: string}
+        container_name: {type: [string, 'null']}
+        volume_name: {type: [string, 'null']}
+        internal_host: {type: [string, 'null']}
+        internal_port: {anyOf: [{$ref: '#/components/schemas/Port'}, {type: 'null'}]}
+    Service:
+      type: object
+      additionalProperties: false
+      required: [id, project_id, project, name, kind, status, created_at, updated_at, dependencies]
+      properties:
+        id: {type: string}
+        project_id: {type: string}
+        project: {type: string}
+        name: {type: string}
+        kind: {type: string, enum: [web, worker, postgres, redis]}
+        status: {type: string}
+        created_at: {$ref: '#/components/schemas/Timestamp'}
+        updated_at: {$ref: '#/components/schemas/Timestamp'}
+        app: {$ref: '#/components/schemas/AppConfiguration'}
+        managed: {$ref: '#/components/schemas/ManagedConfiguration'}
+        dependencies:
+          type: array
+          items: {$ref: '#/components/schemas/ServiceDependency'}
+      oneOf:
+        - required: [app]
+        - required: [managed]
+    Release:
+      type: object
+      additionalProperties: false
+      required: [id, service_id, build_target_id, version, source_type, source_ref, artifact_ref, image_digest, status, internal_port, healthcheck_path, container_name, route_target, activated_at, created_at]
+      properties:
+        id: {type: string}
+        service_id: {type: string}
+        build_target_id: {type: [string, 'null']}
+        version: {type: integer}
+        source_type: {type: string}
+        source_ref: {type: string}
+        artifact_ref: {type: [string, 'null']}
+        image_digest: {type: [string, 'null']}
+        status: {type: string}
+        internal_port: {anyOf: [{$ref: '#/components/schemas/Port'}, {type: 'null'}]}
+        healthcheck_path: {type: [string, 'null']}
+        container_name: {type: [string, 'null']}
+        route_target: {type: [string, 'null']}
+        activated_at: {$ref: '#/components/schemas/Timestamp'}
+        created_at: {$ref: '#/components/schemas/Timestamp'}
+    Domain:
+      type: object
+      additionalProperties: false
+      required: [id, service_id, platform_domain_id, hostname, kind, status, verification_error, verified_at, route_target, created_at, updated_at]
+      properties:
+        id: {type: string}
+        service_id: {type: string}
+        platform_domain_id: {type: [string, 'null']}
+        hostname: {type: string}
+        kind: {type: string}
+        status: {type: string}
+        verification_error: {type: [string, 'null']}
+        verified_at: {$ref: '#/components/schemas/Timestamp'}
+        route_target: {type: [string, 'null']}
+        created_at: {$ref: '#/components/schemas/Timestamp'}
+        updated_at: {$ref: '#/components/schemas/Timestamp'}
+    PlatformDomain:
+      type: object
+      additionalProperties: false
+      required: [id, hostname, status, active, verification_error, verified_at, created_at, updated_at]
+      properties:
+        id: {type: string}
+        hostname: {type: string}
+        status: {type: string}
+        active: {type: boolean}
+        verification_error: {type: [string, 'null']}
+        verified_at: {$ref: '#/components/schemas/Timestamp'}
+        created_at: {$ref: '#/components/schemas/Timestamp'}
+        updated_at: {$ref: '#/components/schemas/Timestamp'}
+    Job:
+      type: object
+      additionalProperties: false
+      required: [id, type, status, progress, error, locked_by, locked_at, started_at, finished_at, created_at, payload]
+      properties:
+        id: {type: string}
+        type: {type: string}
+        status: {type: string}
+        progress: {type: integer, minimum: 0, maximum: 100}
+        error: {type: [string, 'null']}
+        locked_by: {type: [string, 'null']}
+        locked_at: {$ref: '#/components/schemas/Timestamp'}
+        started_at: {$ref: '#/components/schemas/Timestamp'}
+        finished_at: {$ref: '#/components/schemas/Timestamp'}
+        created_at: {$ref: '#/components/schemas/Timestamp'}
+        payload: {type: object}
+    JobEvent:
+      type: object
+      additionalProperties: false
+      required: [id, job_id, stream, message, created_at]
+      properties:
+        id: {type: string}
+        job_id: {type: string}
+        stream: {type: string}
+        message: {type: string}
+        created_at: {$ref: '#/components/schemas/Timestamp'}
+    ServiceOperation:
+      type: object
+      additionalProperties: false
+      required: [service, job]
+      properties:
+        service: {$ref: '#/components/schemas/Service'}
+        job: {anyOf: [{$ref: '#/components/schemas/Job'}, {type: 'null'}]}
+    DomainOperation:
+      type: object
+      additionalProperties: false
+      required: [domain, job]
+      properties:
+        domain: {$ref: '#/components/schemas/Domain'}
+        job: {$ref: '#/components/schemas/Job'}
+    PlatformDomainState:
+      type: object
+      additionalProperties: false
+      required: [active, candidate]
+      properties:
+        active: {anyOf: [{$ref: '#/components/schemas/PlatformDomain'}, {type: 'null'}]}
+        candidate: {anyOf: [{$ref: '#/components/schemas/PlatformDomain'}, {type: 'null'}]}
+    PlatformDomainOperation:
+      type: object
+      additionalProperties: false
+      required: [app_domain, job]
+      properties:
+        app_domain: {$ref: '#/components/schemas/PlatformDomain'}
+        job: {anyOf: [{$ref: '#/components/schemas/Job'}, {type: 'null'}]}
+    ManifestAction:
+      type: object
+      additionalProperties: false
+      required: [operation, type, name]
+      properties:
+        operation: {type: string, enum: [create, update, noop, retain]}
+        type: {type: string}
+        name: {type: string}
+    ManifestPlan:
+      type: object
+      additionalProperties: false
+      required: [project, digest, actions]
+      properties:
+        project: {type: string}
+        digest: {type: string}
+        actions:
+          type: array
+          items: {$ref: '#/components/schemas/ManifestAction'}
+    LogOutput:
+      type: object
+      additionalProperties: false
+      required: [stdout, stderr]
+      properties:
+        stdout: {type: string}
+        stderr: {type: string}
+    ServiceLogs:
+      type: object
+      additionalProperties: false
+      required: [stdout, stderr, service]
+      properties:
+        stdout: {type: string}
+        stderr: {type: string}
+        service: {$ref: '#/components/schemas/Service'}
+    ProjectLogEntry:
+      type: object
+      additionalProperties: false
+      required: [service_id, service_name, kind]
+      properties:
+        service_id: {type: string}
+        service_name: {type: string}
+        kind: {type: string}
+        stdout: {type: string}
+        stderr: {type: string}
+        error: {type: string}
+      oneOf:
+        - required: [stdout, stderr]
+        - required: [error]
+    ProjectLogs:
+      type: object
+      additionalProperties: false
+      required: [project, logs]
+      properties:
+        project: {$ref: '#/components/schemas/Project'}
+        logs:
+          type: array
+          items: {$ref: '#/components/schemas/ProjectLogEntry'}
+    EnvironmentEntry:
+      type: object
+      additionalProperties: false
+      required: [name, value, service_id, service_name]
+      properties:
+        name: {type: string}
+        value: {type: string}
+        service_id: {type: string}
+        service_name: {type: string}
+    ServiceEnvironment:
+      type: object
+      additionalProperties: false
+      required: [service, env]
+      properties:
+        service: {$ref: '#/components/schemas/Service'}
+        env:
+          type: array
+          items: {$ref: '#/components/schemas/EnvironmentEntry'}
+    DeleteDomainResult:
+      type: object
+      additionalProperties: false
+      required: [deleted, job]
+      properties:
+        deleted: {type: boolean}
+        job: {$ref: '#/components/schemas/Job'}

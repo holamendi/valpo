@@ -3,9 +3,9 @@
 module Valpo
   module Builds
     class Orchestrator
-      def initialize(docker:, source_fetcher:, deployment_orchestrator:, preflight: nil)
+      def initialize(docker:, source_fetcher:, deployment_lifecycle:, preflight: nil)
         @docker = docker
-        @deployment_orchestrator = deployment_orchestrator
+        @deployment_lifecycle = deployment_lifecycle
         @preflight = preflight || Valpo::Sources::Preflight.new(fetcher: source_fetcher)
       end
 
@@ -25,17 +25,18 @@ module Valpo
           ref: selected_ref,
           dockerfile: build_target.dockerfile,
           context: build_target.context
-        ) do |checkout|
+        ) do
+          checkout = it
           preflight_succeeded = true
           source.update(status: "connected") unless source.status == "connected"
           deploy_checkout(
             service_id: service.id,
-            build_target: build_target,
-            checkout: checkout,
-            internal_port: internal_port,
-            healthcheck_path: healthcheck_path,
-            queue: queue,
-            job_id: job_id
+            build_target:,
+            checkout:,
+            internal_port:,
+            healthcheck_path:,
+            queue:,
+            job_id:
           )
         end
       rescue
@@ -51,30 +52,30 @@ module Valpo
         execute_build(
           dockerfile: checkout.dockerfile,
           context: checkout.context,
-          image: image,
-          queue: queue,
-          job_id: job_id
+          image:,
+          queue:,
+          job_id:
         )
         build_succeeded = true
-        deployment_orchestrator.deploy_built_image(
+        deployment_lifecycle.deploy_built_image(
           service_id: service.id,
-          image: image,
+          image:,
           source_ref: checkout.commit,
           build_target_id: build_target.id,
-          internal_port: internal_port,
-          healthcheck_path: healthcheck_path,
-          queue: queue,
-          job_id: job_id
+          internal_port:,
+          healthcheck_path:,
+          queue:,
+          job_id:
         )
       rescue
         unless build_succeeded
           record_failed_build(
-            service: service,
-            build_target: build_target,
-            checkout: checkout,
-            image: image,
-            internal_port: internal_port,
-            healthcheck_path: healthcheck_path
+            service:,
+            build_target:,
+            checkout:,
+            image:,
+            internal_port:,
+            healthcheck_path:
           )
         end
         raise
@@ -82,7 +83,7 @@ module Valpo
 
       private
 
-      attr_reader :docker, :deployment_orchestrator, :preflight
+      attr_reader :docker, :deployment_lifecycle, :preflight
 
       def find_app_service(service_id)
         service = Valpo::Service[service_id]
@@ -97,8 +98,8 @@ module Valpo
       end
 
       def execute_build(dockerfile:, context:, image:, queue:, job_id:)
-        result = docker.execute(docker.build_command(dockerfile: dockerfile, tag: image, context: context))
-        emit_result(result, queue: queue, job_id: job_id)
+        result = docker.execute(docker.build_command(dockerfile:, tag: image, context:))
+        emit_result(result, queue:, job_id:)
         return if result.fetch(:success)
 
         detail = result.fetch(:stderr).to_s.strip

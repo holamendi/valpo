@@ -19,7 +19,7 @@ module Valpo
       Thread.current[CONTEXT_FACTORY_KEY] = context_factory if context_factory
       Thread.current[GITHUB_VALIDATOR_KEY] = github_validator if github_validator
       Thread.current[INPUT_KEY] = input
-      Runner.new(out: out, err: err).call(arguments)
+      Runner.new(out:, err:).call(arguments)
     ensure
       Thread.current[CONTEXT_FACTORY_KEY] = previous_factory
       Thread.current[GITHUB_VALIDATOR_KEY] = previous_validator

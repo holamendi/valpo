@@ -27,7 +27,7 @@ VALPO_TEST_CONFIG = Valpo::Config.new(
 
 Valpo::Boot.run(config: VALPO_TEST_CONFIG, migrate: true)
 
-Dir[File.expand_path("support/**/*.rb", __dir__)].sort.each { |path| require path }
+Dir[File.expand_path("support/**/*.rb", __dir__)].sort.each { require it }
 
 Minitest.after_run do
   Valpo::Database.disconnect
@@ -50,14 +50,14 @@ module ValpoTestDatabase
   end
 
   def create_project(name: "hello")
-    Valpo::Project.create(name: name)
+    Valpo::Project.create(name:)
   end
 
   def create_platform_domain(hostname: "apps.example.com", status: "verified", active: true)
     Valpo::PlatformDomain.create(
-      hostname: hostname,
-      status: status,
-      active: active,
+      hostname:,
+      status:,
+      active:,
       verified_at: (Time.now.utc if status == "verified")
     )
   end
@@ -65,31 +65,31 @@ module ValpoTestDatabase
   def create_domain(service:, hostname: "hello.example.com", status: "verified", kind: "custom", **attributes)
     Valpo::Domain.create({
       service_id: service.id,
-      hostname: hostname,
-      status: status,
-      kind: kind,
+      hostname:,
+      status:,
+      kind:,
       verified_at: (Time.now.utc if status == "verified")
     }.merge(attributes))
   end
 
   def create_app_service(project: nil, name: "web", kind: "web", status: "created", port: 3000, command: [])
     project ||= create_project
-    service = Valpo::Services::Catalog.create_service(
+    service = Valpo::Services::Creator.call(
       project_id: project.id,
-      name: name,
+      name:,
       type: kind,
       internal_port: (port if kind == "web"),
-      command: command
+      command:
     )
-    service.update(status: status)
+    service.update(status:)
     service
   end
 
   def create_managed_service(project: nil, name: "database", kind: "postgres", version: nil, status: "running", runtime: true)
     project ||= create_project
-    service = Valpo::Services::Catalog.create_service(project_id: project.id, name: name, type: kind, version: version)
-    Valpo::Services::Catalog.managed_config(service).update(Valpo::Services::Catalog.runtime_attributes(service)) if runtime
-    service.update(status: status)
+    service = Valpo::Services::Creator.call(project_id: project.id, name:, type: kind, version:)
+    Valpo::Services::Registry.managed_config(service).update(Valpo::Services::Registry.runtime_attributes(service)) if runtime
+    service.update(status:)
     service
   end
 
@@ -99,7 +99,7 @@ module ValpoTestDatabase
       source_type: "registry",
       source_ref: image,
       artifact_ref: image,
-      status: status,
+      status:,
       internal_port: Valpo::AppServiceConfig[service.id]&.internal_port
     }.merge(attributes))
   end
@@ -108,7 +108,7 @@ module ValpoTestDatabase
 
   def clean_database
     db.transaction do
-      TABLE_DELETE_ORDER.each { |table| db[table].delete }
+      TABLE_DELETE_ORDER.each { db[it].delete }
     end
   end
 end

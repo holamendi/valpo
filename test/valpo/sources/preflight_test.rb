@@ -10,12 +10,12 @@ class ValpoSourcesPreflightTest < Minitest::Test
     result = nil
     context_directory = false
 
-    Valpo::Sources::Preflight.new(fetcher: fetcher).with_checkout(
+    Valpo::Sources::Preflight.new(fetcher:).with_checkout(
       provider: "github",
       repository: "acme/backend"
-    ) do |checkout|
-      result = checkout
-      context_directory = File.directory?(checkout.context)
+    ) do
+      result = it
+      context_directory = File.directory?(it.context)
     end
 
     assert_equal "HEAD", fetcher.ref

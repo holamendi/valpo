@@ -7,8 +7,8 @@ class ValpoServiceDependencyTest < Minitest::Test
 
   def test_dependency_exposes_env_and_validates_status
     project = create_project
-    app = create_app_service(project: project)
-    database = create_managed_service(project: project)
+    app = create_app_service(project:)
+    database = create_managed_service(project:)
     dependency = Valpo::ServiceDependency.create(
       service_id: app.id,
       dependency_service_id: database.id,
@@ -23,8 +23,8 @@ class ValpoServiceDependencyTest < Minitest::Test
 
   def test_dependency_rejects_cross_project_and_non_managed_targets
     project = create_project
-    app = create_app_service(project: project)
-    worker = create_app_service(project: project, name: "worker", kind: "worker")
+    app = create_app_service(project:)
+    worker = create_app_service(project:, name: "worker", kind: "worker")
     error = assert_raises(Sequel::ValidationFailed) do
       Valpo::ServiceDependency.create(service_id: app.id, dependency_service_id: worker.id)
     end

@@ -57,8 +57,8 @@ class ValpoPackagingInstallScriptTest < Minitest::Test
 
     assert_includes script, "umask 077"
     assert_includes script, 'chmod 0600 "${STATE_DIR}/valpo.db"'
-    [API_SERVICE, WORKER_SERVICE, MIGRATE_SERVICE].each do |path|
-      assert_includes File.read(path), "UMask=0077"
+    [API_SERVICE, WORKER_SERVICE, MIGRATE_SERVICE].each do
+      assert_includes File.read(it), "UMask=0077"
     end
   end
 
@@ -72,8 +72,8 @@ class ValpoPackagingInstallScriptTest < Minitest::Test
   end
 
   def test_uninstaller_and_clean_install_smoke_test_have_valid_bash_syntax
-    [UNINSTALL_SCRIPT, CLEAN_INSTALL_SMOKE_SCRIPT].each do |script|
-      stdout, stderr, status = Open3.capture3("bash", "-n", script)
+    [UNINSTALL_SCRIPT, CLEAN_INSTALL_SMOKE_SCRIPT].each do
+      stdout, stderr, status = Open3.capture3("bash", "-n", it)
 
       assert status.success?, [stdout, stderr].join("\n")
     end
@@ -92,8 +92,8 @@ class ValpoPackagingInstallScriptTest < Minitest::Test
   def test_installer_has_no_public_layout_or_lifecycle_flags
     script = File.read(INSTALL_SCRIPT)
 
-    %w[--source --prefix --config --state-dir --app-domain --skip-deps --no-start].each do |flag|
-      refute_includes script, flag
+    %w[--source --prefix --config --state-dir --app-domain --skip-deps --no-start].each do
+      refute_includes script, it
     end
     assert_includes script, "VALPO_INSTALL_SKIP_DEPS"
     assert_includes script, "VALPO_INSTALL_NO_START"
@@ -145,8 +145,8 @@ class ValpoPackagingInstallScriptTest < Minitest::Test
   end
 
   def test_systemd_units_run_through_mise
-    [API_SERVICE, WORKER_SERVICE, MIGRATE_SERVICE].each do |path|
-      service = File.read(path)
+    [API_SERVICE, WORKER_SERVICE, MIGRATE_SERVICE].each do
+      service = File.read(it)
 
       assert_includes service, "Environment=HOME=/var/lib/valpo"
       assert_includes service, "Environment=MISE_RUBY_COMPILE=false"

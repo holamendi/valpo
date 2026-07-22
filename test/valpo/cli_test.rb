@@ -72,7 +72,7 @@ class ValpoCLITest < Minitest::Test
     assert_empty stderr
     request = client.requests.first
     assert_equal :post, request.fetch(:method)
-    assert_equal "/projects/acme/services", request.fetch(:path)
+    assert_equal "/v1/projects/acme/services", request.fetch(:path)
     assert_equal "database", request.fetch(:payload).fetch("name")
     assert_equal "17", request.fetch(:payload).fetch("version")
     assert_equal 1, client.requests.length
@@ -111,7 +111,7 @@ class ValpoCLITest < Minitest::Test
     output = JSON.parse(stdout)
     assert_equal service_id, output.dig("service", "id")
     assert_equal "succeeded", output.dig("job", "status")
-    assert_includes client.requests.map { |request| request.fetch(:path) }, "/projects/acme/services/web"
+    assert_includes client.requests.map { it.fetch(:path) }, "/v1/projects/acme/services/web"
     assert_empty stderr
   end
 
@@ -156,22 +156,22 @@ class ValpoCLITest < Minitest::Test
 
     assert_equal 0, status
     assert_equal [
-      "/projects/acme/services/web",
-      "/projects/acme/services/database",
-      "/services/#{service_id}/dependencies"
-    ], client.requests.map { |request| request.fetch(:path) }
+      "/v1/projects/acme/services/web",
+      "/v1/projects/acme/services/database",
+      "/v1/services/#{service_id}/dependencies"
+    ], client.requests.map { it.fetch(:path) }
 
     cache_client = FakeAPIClient.new("id" => service_id)
     resolver = Valpo::CLI::ReferenceResolver.new(client: cache_client)
     2.times { assert_equal service_id, resolver.service_id("web", project: "acme") }
-    assert_equal 1, cache_client.requests.count { |request| request.fetch(:path) == "/projects/acme/services/web" }
+    assert_equal 1, cache_client.requests.count { it.fetch(:path) == "/v1/projects/acme/services/web" }
   end
 
   def test_typed_service_id_skips_resolution
     client = FakeAPIClient.new("id" => service_id, "project" => "acme", "name" => "web", "kind" => "web", "status" => "created", "app" => {}, "dependencies" => [])
     status, = run_cli(client, ["service", "show", service_id, "--json"])
     assert_equal 0, status
-    assert_equal ["/services/#{service_id}"], client.requests.map { |request| request.fetch(:path) }
+    assert_equal ["/v1/services/#{service_id}"], client.requests.map { it.fetch(:path) }
   end
 
   def test_set_default_domain_uses_runtime_configuration_endpoint
@@ -185,7 +185,7 @@ class ValpoCLITest < Minitest::Test
     assert_equal job_id, JSON.parse(stdout).dig("job", "id")
     assert_empty stderr
     assert_equal :put, client.requests.first.fetch(:method)
-    assert_equal "/system/app-domain", client.requests.first.fetch(:path)
+    assert_equal "/v1/system/app-domain", client.requests.first.fetch(:path)
     assert_equal({"hostname" => "apps.example.com"}, client.requests.first.fetch(:payload))
   end
 
@@ -223,7 +223,7 @@ class ValpoCLITest < Minitest::Test
     assert_equal "succeeded", JSON.parse(stdout).fetch("status")
     assert_equal 1, stderr.scan("Deploy started").length
     assert_equal 1, stderr.scan("healthy").length
-    assert_equal 3, client.requests.count { |request| request.fetch(:path).end_with?("/events") }
+    assert_equal 3, client.requests.count { it.fetch(:path).end_with?("/events") }
   end
 
   def test_source_deploy_sends_ref_without_requiring_an_image
@@ -303,7 +303,7 @@ class ValpoCLITest < Minitest::Test
     status, _stdout, stderr = run_cli(
       FakeAPIClient.new([]),
       ["auth", "login", "github", "--config", config_path],
-      input: input
+      input:
     )
 
     assert_equal 0, status
@@ -437,14 +437,14 @@ class ValpoCLITest < Minitest::Test
     assert_equal({"actions" => []}, JSON.parse(stdout))
     assert_empty stderr
     request = client.requests.first
-    assert_equal "/projects/apply", request.fetch(:path)
+    assert_equal "/v1/projects/apply", request.fetch(:path)
     assert_equal true, request.fetch(:payload).fetch("dry_run")
   end
 
   def test_cli_module_loads_without_booting_database
     stdout, stderr, status = Open3.capture3(
       RbConfig.ruby, "-Ilib", "-e",
-      "require 'stringio'; require 'valpo'; puts Valpo::Services::Definitions::TYPES.keys.join(','); puts Valpo::CLI.call(['--help'], out: StringIO.new, err: StringIO.new)",
+      "require 'stringio'; require 'valpo'; puts Valpo::Services::Registry.names.join(','); puts Valpo::CLI.call(['--help'], out: StringIO.new, err: StringIO.new)",
       chdir: Valpo.root
     )
     assert status.success?, stderr
@@ -469,17 +469,17 @@ class ValpoCLITest < Minitest::Test
     stdout = StringIO.new
     stderr = StringIO.new
     factory = lambda do |api_url:, config:, json:, out:, err:|
-      presenter = Valpo::CLI::Presenter.new(out: out, err: err, json: json)
-      waiter = Valpo::CLI::JobWaiter.new(client: client, err: err, clock: clock, sleeper: ->(_duration) {})
-      Valpo::CLI::Context.new(client: client, presenter: presenter, waiter: waiter)
+      presenter = Valpo::CLI::Presenter.new(out:, err:, json:)
+      waiter = Valpo::CLI::JobWaiter.new(client:, err:, clock:, sleeper: ->(_duration) {})
+      Valpo::CLI::Context.new(client:, presenter:, waiter:)
     end
     status = Valpo::CLI.call(
       arguments,
       out: stdout,
       err: stderr,
-      input: input,
+      input:,
       context_factory: factory,
-      github_validator: github_validator
+      github_validator:
     )
     [status, stdout.string, stderr.string]
   end
@@ -493,7 +493,7 @@ class ValpoCLITest < Minitest::Test
     end
 
     def request(method, path, payload = nil, query: nil)
-      requests << {method: method, path: path, payload: payload, query: query}
+      requests << {method:, path:, payload:, query:}
       response = (@responses.length > 1) ? @responses.shift : @responses.first
       raise response if response.is_a?(StandardError)
 

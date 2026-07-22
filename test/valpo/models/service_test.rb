@@ -7,7 +7,7 @@ class ValpoServiceTest < Minitest::Test
 
   def test_service_has_project_scoped_name_and_typed_id
     project = create_project
-    web = create_app_service(project: project)
+    web = create_app_service(project:)
     other = create_project(name: "other")
     create_app_service(project: other)
 
@@ -30,7 +30,7 @@ class ValpoServiceTest < Minitest::Test
   def test_service_kind_and_managed_version_are_immutable
     service = create_managed_service
     assert_raises(Sequel::ValidationFailed) { service.update(kind: "redis") }
-    managed = Valpo::Services::Catalog.managed_config(service)
+    managed = Valpo::Services::Registry.managed_config(service)
     error = assert_raises(Sequel::ValidationFailed) { managed.update(version: "17") }
     assert_match "version is immutable", error.message
   end

@@ -24,15 +24,15 @@ module ValpoTestSupport
 
     def run_command(name:, image:, network:, labels:, ports:, env: {}, volumes: {}, restart_policy: nil, command_args: [], **)
       run_requests << {
-        name: name,
-        image: image,
-        network: network,
-        labels: labels,
-        env: env,
-        ports: ports,
-        volumes: volumes,
-        restart_policy: restart_policy,
-        command_args: command_args
+        name:,
+        image:,
+        network:,
+        labels:,
+        env:,
+        ports:,
+        volumes:,
+        restart_policy:,
+        command_args:
       }
       [:run, name]
     end
@@ -87,7 +87,7 @@ module ValpoTestSupport
 
       case command.first
       when :inspect
-        exposed = @exposed_ports.to_h { |port| ["#{port}/tcp", {}] }
+        exposed = @exposed_ports.to_h { ["#{it}/tcp", {}] }
         success(JSON.generate([{
           "RepoDigests" => ["#{command.fetch(1)}@sha256:abc"],
           "Config" => {"ExposedPorts" => exposed}
@@ -109,11 +109,11 @@ module ValpoTestSupport
     private
 
     def success(stdout)
-      {stdout: stdout, stderr: "", status: 0, success: true}
+      {stdout:, stderr: "", status: 0, success: true}
     end
 
     def failure(stderr)
-      {stdout: "", stderr: stderr, status: 1, success: false}
+      {stdout: "", stderr:, status: 1, success: false}
     end
   end
 
@@ -152,7 +152,7 @@ module ValpoTestSupport
     end
 
     def verify!(hostname:, token:)
-      requests << {hostname: hostname, token: token}
+      requests << {hostname:, token:}
       raise @error if @error && (!@fail_for || @fail_for.call(hostname))
 
       true

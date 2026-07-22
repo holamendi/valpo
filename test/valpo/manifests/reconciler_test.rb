@@ -5,13 +5,9 @@ require "test_helper"
 class ValpoManifestReconcilerTest < Minitest::Test
   include ValpoTestDatabase
 
-  def test_preview_does_not_mutate_and_apply_is_idempotent
+  def test_apply_is_idempotent
     manifest = parsed_manifest
     reconciler = build_reconciler
-    preview = reconciler.preview(manifest)
-    assert_equal "create", preview.fetch("actions").first.fetch("operation")
-    assert_nil Valpo::Project.find_by_id_or_name("acme")
-
     apply(reconciler, manifest)
     project = Valpo::Project.find_by_id_or_name("acme")
     assert_equal 3, Valpo::Service.where(project_id: project.id).count
@@ -47,7 +43,7 @@ class ValpoManifestReconcilerTest < Minitest::Test
 
   def test_runtime_config_change_restarts_running_app
     deployment = FakeDeployment.new
-    reconciler = build_reconciler(deployment: deployment)
+    reconciler = build_reconciler(deployment:)
     manifest = parsed_manifest
     apply(reconciler, manifest)
     project = Valpo::Project.find_by_id_or_name("acme")
@@ -101,18 +97,27 @@ class ValpoManifestReconcilerTest < Minitest::Test
   end
 
   def build_reconciler(deployment: FakeDeployment.new)
-    managed = Valpo::Services::Orchestrator.new(
+    dependencies = Valpo::Services::DependencyManager.new(
       config: VALPO_TEST_CONFIG,
       docker: ValpoTestSupport::FakeDocker.new,
-      deployment_orchestrator: deployment
+      deployment_lifecycle: deployment
     )
-    Valpo::Manifests::Reconciler.new(service_orchestrator: managed, deployment_orchestrator: deployment)
+    managed = Valpo::Services::ManagedLifecycle.new(
+      config: VALPO_TEST_CONFIG,
+      docker: ValpoTestSupport::FakeDocker.new,
+      dependency_manager: dependencies
+    )
+    Valpo::Manifests::Reconciler.new(
+      managed_lifecycle: managed,
+      dependency_manager: dependencies,
+      deployment_lifecycle: deployment
+    )
   end
 
   def apply(reconciler, manifest)
     queue = Valpo::Jobs::Queue.new
     job = queue.enqueue("test")
-    reconciler.apply(manifest, queue: queue, job_id: job.id)
+    reconciler.apply(manifest, queue:, job_id: job.id)
   end
 
   class FakeDeployment

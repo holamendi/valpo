@@ -22,7 +22,7 @@ module Valpo
       end
 
       def start_service_container(service)
-        managed = Catalog.managed_config(service)
+        managed = Registry.managed_config(service)
         ensure_network
         create_volume(managed.volume_name)
         event("system", "Starting #{managed.container_name}")
@@ -31,11 +31,11 @@ module Valpo
           image: managed.image,
           network: config.docker_network,
           labels: labels_for(service),
-          env: Catalog.container_env(service),
+          env: Registry.container_environment(service),
           ports: {},
-          volumes: {managed.volume_name => Catalog.volume_path(service)},
+          volumes: {managed.volume_name => Registry.volume_path(service)},
           restart_policy: "unless-stopped",
-          command_args: Catalog.command_args(service)
+          command_args: Registry.command(service)
         ))
         emit_command_output(result)
         raise_command_error("Docker run failed", result) unless result.fetch(:success)
@@ -45,7 +45,7 @@ module Valpo
       end
 
       def restart_service_container(service)
-        stop_container(Catalog.managed_config(service).container_name, ignore_missing: true)
+        stop_container(Registry.managed_config(service).container_name, ignore_missing: true)
         start_service_container(service)
       end
 
@@ -78,11 +78,11 @@ module Valpo
         event("system", "Stopping #{container_name}")
         stop_result = docker.execute(docker.stop_command(container_name))
         emit_command_output(stop_result)
-        raise_command_error("Docker stop failed", stop_result) if command_failed?(stop_result, ignore_missing: ignore_missing)
+        raise_command_error("Docker stop failed", stop_result) if command_failed?(stop_result, ignore_missing:)
 
         rm_result = docker.execute(docker.rm_command(container_name, force: true))
         emit_command_output(rm_result)
-        raise_command_error("Docker rm failed", rm_result) if command_failed?(rm_result, ignore_missing: ignore_missing)
+        raise_command_error("Docker rm failed", rm_result) if command_failed?(rm_result, ignore_missing:)
 
         sleeper.sleep(config.deploy_drain_delay) if config.deploy_drain_delay.positive?
       end
@@ -92,11 +92,11 @@ module Valpo
 
         result = docker.execute(docker.volume_rm_command(volume_name, force: true))
         emit_command_output(result)
-        raise_command_error("Docker volume rm failed", result) if command_failed?(result, ignore_missing: ignore_missing)
+        raise_command_error("Docker volume rm failed", result) if command_failed?(result, ignore_missing:)
       end
 
       def logs(container_name:, tail: nil)
-        result = docker.execute(docker.logs_command(container_name, tail: tail))
+        result = docker.execute(docker.logs_command(container_name, tail:))
         raise_command_error("Docker logs failed", result) unless result.fetch(:success)
 
         {stdout: result.fetch(:stdout), stderr: result.fetch(:stderr)}
@@ -108,7 +108,7 @@ module Valpo
         last_result = nil
 
         loop do
-          last_result = docker.execute(docker.exec_command(Catalog.managed_config(service).container_name, *Catalog.readiness_args(service)))
+          last_result = docker.execute(docker.exec_command(Registry.managed_config(service).container_name, *Registry.readiness_command(service)))
           return true if last_result.fetch(:success)
 
           break if Time.now >= deadline
@@ -146,7 +146,7 @@ module Valpo
       end
 
       def execute_docker(command, failure_message:)
-        execute_command(docker, command, failure_message: failure_message)
+        execute_command(docker, command, failure_message:)
       end
 
       def missing_container?(result)

@@ -8,7 +8,7 @@ module Valpo
 
         def call(api_url:, config: nil, json: false, args: nil, **)
           reject_extra_arguments!(args)
-          Presenter.new(out: @out, err: @err, json: json).version("version" => Valpo::VERSION)
+          Presenter.new(out: @out, err: @err, json:).version("version" => Valpo::VERSION)
         end
       end
     end

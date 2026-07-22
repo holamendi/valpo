@@ -54,63 +54,21 @@ module Valpo
         ["version", Commands::Version, false]
       ].freeze
 
-      register "auth" do |prefix|
-        prefix.register "login", Commands::Auth::Login
-        prefix.register "status", Commands::Auth::Status
-        prefix.register "logout", Commands::Auth::Logout
-      end
+      grouped = COMMANDS.group_by { |path, _command, _hidden| path.split.first }
+      grouped.each do |group, definitions|
+        if definitions.length == 1 && definitions.first.first == group
+          register group, definitions.first[1]
+          next
+        end
 
-      register "project" do |prefix|
-        prefix.register "list", Commands::Project::List
-        prefix.register "create", Commands::Project::Create
-        prefix.register "show", Commands::Project::Show
-        prefix.register "delete", Commands::Project::Delete
-        prefix.register "apply", Commands::Project::Apply
-        prefix.register "logs", Commands::Project::Logs
+        options = (definitions.all? { |_path, _command, hidden| hidden }) ? {hidden: true} : {}
+        register group, **options do
+          group_registry = it
+          definitions.each do |path, command, _hidden|
+            group_registry.register path.split.drop(1).join(" "), command
+          end
+        end
       end
-
-      register "service" do |prefix|
-        prefix.register "list", Commands::Service::List
-        prefix.register "create", Commands::Service::Create
-        prefix.register "show", Commands::Service::Show
-        prefix.register "update", Commands::Service::Update
-        prefix.register "delete", Commands::Service::Delete
-        prefix.register "deploy", Commands::Service::Deploy
-        prefix.register "logs", Commands::Service::Logs
-        prefix.register "restart", Commands::Service::Restart
-        prefix.register "stop", Commands::Service::Stop
-        prefix.register "env", Commands::Service::Env
-        prefix.register "bind", Commands::Service::Bind
-        prefix.register "unbind", Commands::Service::Unbind
-      end
-
-      register "domain" do |prefix|
-        prefix.register "show-default", Commands::Domain::ShowDefault
-        prefix.register "set-default", Commands::Domain::SetDefault
-        prefix.register "list", Commands::Domain::List
-        prefix.register "add", Commands::Domain::Add
-        prefix.register "verify", Commands::Domain::Verify
-        prefix.register "remove", Commands::Domain::Remove
-      end
-
-      register "release" do |prefix|
-        prefix.register "list", Commands::Release::List
-        prefix.register "rollback", Commands::Release::Rollback
-      end
-
-      register "system" do |prefix|
-        prefix.register "status", Commands::System::Status
-        prefix.register "repair", Commands::System::Repair
-      end
-
-      register "job", hidden: true do |prefix|
-        prefix.register "list", Commands::Job::List
-        prefix.register "show", Commands::Job::Show
-        prefix.register "wait", Commands::Job::Wait
-        prefix.register "events", Commands::Job::Events
-      end
-
-      register "version", Commands::Version
     end
   end
 end

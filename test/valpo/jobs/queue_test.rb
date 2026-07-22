@@ -24,8 +24,8 @@ class ValpoJobsQueueTest < Minitest::Test
 
   def test_service_operations_are_serialized_per_service
     project = create_project
-    first_service = create_app_service(project: project)
-    second_service = create_managed_service(project: project)
+    first_service = create_app_service(project:)
+    second_service = create_managed_service(project:)
     queue = Valpo::Jobs::Queue.new
     first = queue.enqueue_service_operation("deploy_registry_image", service_id: first_service.id, payload: {project_id: project.id})
 
@@ -41,7 +41,7 @@ class ValpoJobsQueueTest < Minitest::Test
 
   def test_project_operation_conflicts_with_active_service_operation
     project = create_project
-    service = create_app_service(project: project)
+    service = create_app_service(project:)
     queue = Valpo::Jobs::Queue.new
     queue.enqueue_service_operation("deploy_registry_image", service_id: service.id, payload: {project_id: project.id})
 
@@ -53,7 +53,7 @@ class ValpoJobsQueueTest < Minitest::Test
 
   def test_enqueue_block_is_atomic_when_resource_is_busy
     project = create_project
-    service = create_app_service(project: project)
+    service = create_app_service(project:)
     queue = Valpo::Jobs::Queue.new
     queue.enqueue_service_operation("restart_service", service_id: service.id, payload: {project_id: project.id})
     called = false
@@ -65,8 +65,8 @@ class ValpoJobsQueueTest < Minitest::Test
 
   def test_binding_locks_both_app_and_managed_service
     project = create_project
-    app = create_app_service(project: project)
-    database = create_managed_service(project: project)
+    app = create_app_service(project:)
+    database = create_managed_service(project:)
     queue = Valpo::Jobs::Queue.new
     queue.enqueue_service_operation(
       "bind_service", service_id: app.id,
@@ -80,7 +80,7 @@ class ValpoJobsQueueTest < Minitest::Test
   def test_manifest_job_remains_project_visible_after_project_is_created
     manifest = {"project" => {"name" => "acme"}}
     queue = Valpo::Jobs::Queue.new
-    queue.enqueue_manifest_operation(project_name: "acme", manifest: manifest)
+    queue.enqueue_manifest_operation(project_name: "acme", manifest:)
     project = create_project(name: "acme")
     assert_equal "apply_project_manifest", queue.active_project_job(project.id).type
   end

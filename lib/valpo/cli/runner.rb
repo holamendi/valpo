@@ -16,7 +16,7 @@ module Valpo
         arguments = normalize_global_options(arguments)
         return render_group_help(help_path(arguments)) if group_help?(arguments)
 
-        Application.new(Registry).call(arguments: arguments, out: out, err: err)
+        Application.new(Registry).call(arguments:, out:, err:)
         0
       rescue HelpShown
         0
@@ -49,7 +49,7 @@ module Valpo
         index = 0
         while index < arguments.length
           argument = arguments[index]
-          if GLOBAL_BOOLEAN_OPTIONS.include?(argument) || GLOBAL_VALUE_OPTIONS.any? { |name| argument.start_with?("#{name}=") }
+          if GLOBAL_BOOLEAN_OPTIONS.include?(argument) || GLOBAL_VALUE_OPTIONS.any? { argument.start_with?("#{it}=") }
             global << argument
           elsif GLOBAL_VALUE_OPTIONS.include?(argument)
             global << argument
@@ -76,7 +76,7 @@ module Valpo
         index = 0
         while index < arguments.length
           argument = arguments[index]
-          if argument == "--help" || GLOBAL_BOOLEAN_OPTIONS.include?(argument) || GLOBAL_VALUE_OPTIONS.any? { |name| argument.start_with?("#{name}=") }
+          if argument == "--help" || GLOBAL_BOOLEAN_OPTIONS.include?(argument) || GLOBAL_VALUE_OPTIONS.any? { argument.start_with?("#{it}=") }
             # Omit help and global flags from the command path.
           elsif GLOBAL_VALUE_OPTIONS.include?(argument)
             index += 1
@@ -126,7 +126,7 @@ module Valpo
 
       def usage_message(message, arguments)
         canonical = canonicalize(message)
-        path = arguments.take_while { |argument| !argument.start_with?("-") }.take(2)
+        path = arguments.take_while { !it.start_with?("-") }.take(2)
         suggestion = path.empty? ? "Run `valpo --help` for usage." : "Run `valpo #{path.join(" ")} --help` for usage."
         "#{canonical}\n#{suggestion}"
       end

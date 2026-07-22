@@ -11,14 +11,14 @@ require "rackup"
 require "valpo"
 
 options = {}
-OptionParser.new do |parser|
-  parser.banner = "Usage: valpo-api [options]"
-  parser.on("--config PATH", "Path to valpo.yml") { |path| options[:config] = path }
-  parser.on("--migrate", "Run migrations before booting") { options[:migrate] = true }
+OptionParser.new do
+  it.banner = "Usage: valpo-api [options]"
+  it.on("--config PATH", "Path to valpo.yml") { options[:config] = it }
+  it.on("--migrate", "Run migrations before booting") { options[:migrate] = true }
 end.parse!(ARGV)
 
 config = Valpo::Config.load(path: options[:config])
-Valpo::Boot.run(config: config, migrate: options[:migrate])
+Valpo::Boot.run(config:, migrate: options[:migrate])
 
 Rackup::Server.start(
   app: Valpo::API::App,

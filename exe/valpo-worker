@@ -10,15 +10,15 @@ require "optparse"
 require "valpo"
 
 options = {}
-OptionParser.new do |parser|
-  parser.banner = "Usage: valpo-worker [options]"
-  parser.on("--config PATH", "Path to valpo.yml") { |path| options[:config] = path }
-  parser.on("--once", "Process at most one job and exit") { options[:once] = true }
-  parser.on("--migrate", "Run migrations before starting") { options[:migrate] = true }
+OptionParser.new do
+  it.banner = "Usage: valpo-worker [options]"
+  it.on("--config PATH", "Path to valpo.yml") { options[:config] = it }
+  it.on("--once", "Process at most one job and exit") { options[:once] = true }
+  it.on("--migrate", "Run migrations before starting") { options[:migrate] = true }
 end.parse!(ARGV)
 
 config = Valpo::Config.load(path: options[:config])
-Valpo::Boot.run(config: config, migrate: options[:migrate])
+Valpo::Boot.run(config:, migrate: options[:migrate])
 
-worker = Valpo::Jobs::Worker.new(config: config, poll_interval: config.worker_poll_interval)
+worker = Valpo::Jobs::Worker.new(config:, poll_interval: config.worker_poll_interval)
 worker.run(once: options[:once])

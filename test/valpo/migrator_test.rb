@@ -21,7 +21,7 @@ class ValpoMigratorTest < Minitest::Test
   end
 
   def test_pre_release_schema_is_entirely_in_the_first_migration
-    migrations = Dir[File.join(Valpo::Migrator::MIGRATIONS_PATH, "*.rb")].map { |path| File.basename(path) }
+    migrations = Dir[File.join(Valpo::Migrator::MIGRATIONS_PATH, "*.rb")].map { File.basename(it) }
 
     assert_equal ["001_bootstrap.rb"], migrations
     assert_includes db.schema(:sources).to_h, :owner_service_id

@@ -7,8 +7,8 @@ class ValpoReleaseTest < Minitest::Test
 
   def test_assigns_versions_per_service_and_finds_active_release
     service = create_app_service
-    first = create_release(service: service, image: "example/hello:v1")
-    second = create_release(service: service, image: "example/hello:v2")
+    first = create_release(service:, image: "example/hello:v1")
+    second = create_release(service:, image: "example/hello:v2")
     first.activate!
     second.activate!
 
@@ -20,8 +20,8 @@ class ValpoReleaseTest < Minitest::Test
 
   def test_previous_deployable_release_excludes_current
     service = create_app_service
-    first = create_release(service: service)
-    second = create_release(service: service, image: "example/hello:v2")
+    first = create_release(service:)
+    second = create_release(service:, image: "example/hello:v2")
     first.activate!
     second.activate!
     assert_equal first.id, Valpo::Release.previous_deployable_for_service(service.id, excluding_release_id: second.id).id
@@ -30,7 +30,7 @@ class ValpoReleaseTest < Minitest::Test
   def test_validates_runtime_fields
     service = create_app_service
     error = assert_raises Sequel::ValidationFailed do
-      create_release(service: service, status: "mystery", internal_port: 0, healthcheck_path: "health")
+      create_release(service:, status: "mystery", internal_port: 0, healthcheck_path: "health")
     end
     assert_match "status", error.message
     assert_match "internal_port", error.message

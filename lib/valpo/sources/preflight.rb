@@ -15,16 +15,17 @@ module Valpo
 
       def with_checkout(provider:, repository:, ref: "HEAD", dockerfile: "Dockerfile", context: ".")
         selected_ref = blank_to_default(ref, "HEAD")
-        source = Candidate.new(provider: provider, repository: repository, ref: selected_ref)
+        source = Candidate.new(provider:, repository:, ref: selected_ref)
 
-        Dir.mktmpdir("valpo-source-") do |checkout|
-          commit = fetcher.checkout(source: source, destination: checkout, ref: selected_ref).to_s
+        Dir.mktmpdir("valpo-source-") do
+          checkout = it
+          commit = fetcher.checkout(source:, destination: checkout, ref: selected_ref).to_s
           unless commit.match?(COMMIT_PATTERN)
             raise Valpo::ValidationError, "Git revision lookup returned an invalid commit SHA"
           end
 
           result = Result.new(
-            checkout: checkout,
+            checkout:,
             dockerfile: checked_path(checkout, blank_to_default(dockerfile, "Dockerfile"), type: :file),
             context: checked_path(checkout, blank_to_default(context, "."), type: :directory),
             commit: commit.downcase,

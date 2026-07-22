@@ -33,7 +33,7 @@ module Valpo
       env_data = data.fetch(env, data)
 
       new(
-        env: env,
+        env:,
         root: Valpo.root,
         database_path: value(env_data, "database_path", ENV["VALPO_DATABASE_PATH"], default_database_path(env)),
         api_host: value(env_data, "api_host", ENV["VALPO_API_HOST"], "127.0.0.1"),

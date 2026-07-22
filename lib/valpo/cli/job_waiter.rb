@@ -11,7 +11,7 @@ module Valpo
         @client = client
         @err = err
         @clock = clock || -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }
-        @sleeper = sleeper || ->(duration) { sleep(duration) }
+        @sleeper = sleeper || -> { sleep(it) }
       end
 
       def wait(id, timeout: DEFAULT_TIMEOUT)
@@ -21,7 +21,7 @@ module Valpo
 
         loop do
           emit_events(id, seen_event_ids)
-          job = client.request(:get, "/jobs/#{segment(id)}")
+          job = client.request(:get, "/v1/jobs/#{segment(id)}")
           case job.fetch("status")
           when "succeeded"
             emit_events(id, seen_event_ids)
@@ -46,13 +46,13 @@ module Valpo
       attr_reader :client, :err, :clock, :sleeper
 
       def emit_events(id, seen)
-        client.request(:get, "/jobs/#{segment(id)}/events").each do |event|
-          event_id = event.fetch("id")
+        client.request(:get, "/v1/jobs/#{segment(id)}/events").each do
+          event_id = it.fetch("id")
           next if seen[event_id]
 
           seen[event_id] = true
-          stream = event.fetch("stream", "system")
-          err.puts "[#{stream}] #{event.fetch("message")}" unless stream == "system" && event.fetch("message").to_s.empty?
+          stream = it.fetch("stream", "system")
+          err.puts "[#{stream}] #{it.fetch("message")}" unless stream == "system" && it.fetch("message").to_s.empty?
         end
       end
 

@@ -12,12 +12,10 @@ module Valpo
       DEFAULT_READ_TIMEOUT = 60
       MAX_ERROR_BODY_BYTES = 4096
 
-      class Error < StandardError; end
-
       def initialize(base_url:, config_path: nil, http_factory: nil)
         @base_uri = parse_base_uri(base_url)
         @config_path = config_path
-        @http_factory = http_factory || ->(uri) { Net::HTTP.new(uri.host, uri.port) }
+        @http_factory = http_factory || -> { Net::HTTP.new(it.host, it.port) }
       end
 
       def request(method, path, payload = nil, query: nil)

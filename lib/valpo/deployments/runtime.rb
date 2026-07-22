@@ -30,8 +30,8 @@ module Valpo
         parsed = JSON.parse(result.fetch(:stdout))
         first = parsed.first || {}
         repo_digest = Array(first["RepoDigests"]).first
-        exposed_ports = first.dig("Config", "ExposedPorts").to_h.keys.filter_map do |entry|
-          port, protocol = entry.to_s.split("/", 2)
+        exposed_ports = first.dig("Config", "ExposedPorts").to_h.keys.filter_map do
+          port, protocol = it.to_s.split("/", 2)
           Integer(port, exception: false) if protocol == "tcp"
         end.uniq.sort
         Valpo::Deployments::ImageMetadata.new(
@@ -60,7 +60,7 @@ module Valpo
         environment = environment.merge("PORT" => release.internal_port.to_s) if service.web?
         result = docker.execute(docker.run_command(
           name: container_name,
-          image: image,
+          image:,
           network: config.docker_network,
           labels: {
             MANAGED_LABEL => "true",
@@ -76,7 +76,7 @@ module Valpo
         emit_command_output(result)
         raise_command_error("Docker run failed", result) unless result.fetch(:success)
 
-        release.update(container_name: container_name, route_target: route_target)
+        release.update(container_name:, route_target:)
         container_name
       end
 
@@ -109,11 +109,11 @@ module Valpo
         event("system", "Stopping #{container_name}")
         stop_result = docker.execute(docker.stop_command(container_name))
         emit_command_output(stop_result)
-        raise_command_error("Docker stop failed", stop_result) if command_failed?(stop_result, ignore_missing: ignore_missing)
+        raise_command_error("Docker stop failed", stop_result) if command_failed?(stop_result, ignore_missing:)
 
         rm_result = docker.execute(docker.rm_command(container_name, force: true))
         emit_command_output(rm_result)
-        raise_command_error("Docker rm failed", rm_result) if command_failed?(rm_result, ignore_missing: ignore_missing)
+        raise_command_error("Docker rm failed", rm_result) if command_failed?(rm_result, ignore_missing:)
 
         sleeper.sleep(config.deploy_drain_delay) if config.deploy_drain_delay.positive?
       end
@@ -125,7 +125,7 @@ module Valpo
       end
 
       def app_logs(container_name:, tail: nil)
-        result = docker.execute(docker.logs_command(container_name, tail: tail))
+        result = docker.execute(docker.logs_command(container_name, tail:))
         raise_command_error("Docker logs failed", result) unless result.fetch(:success)
 
         {stdout: result.fetch(:stdout), stderr: result.fetch(:stderr)}
@@ -145,7 +145,7 @@ module Valpo
       end
 
       def execute_docker(command, failure_message:)
-        execute_command(docker, command, failure_message: failure_message)
+        execute_command(docker, command, failure_message:)
       end
 
       def missing_container?(result)
@@ -160,9 +160,9 @@ module Valpo
       def allocate_port
         used_ports = Valpo::Release.where(status: %w[pending ready active])
           .exclude(route_target: nil)
-          .map { |release| release.route_target.to_s.split(":").last.to_i }
-        (config.app_port_start..config.app_port_end).each do |port|
-          return port unless used_ports.include?(port)
+          .map { it.route_target.to_s.split(":").last.to_i }
+        (config.app_port_start..config.app_port_end).each do
+          return it unless used_ports.include?(it)
         end
 
         raise Valpo::ValidationError, "No app ports are available"

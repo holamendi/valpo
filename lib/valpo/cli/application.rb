@@ -8,9 +8,10 @@ module Valpo
       def parse(command, arguments, names)
         built_command, parsed = super
         extras = Array(parsed[:args]).dup
-        built_command.optional_arguments.each do |argument|
-          Array(parsed[argument.name]).each do |value|
-            extras.shift if extras.first == value
+        built_command.optional_arguments.each do
+          argument = it
+          Array(parsed[argument.name]).each do
+            extras.shift if extras.first == it
           end
         end
         extras.empty? ? parsed.delete(:args) : parsed[:args] = extras

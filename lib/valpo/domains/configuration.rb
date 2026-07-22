@@ -48,8 +48,8 @@ module Valpo
       def activate!(record, verified_at: Time.now.utc)
         Valpo::Database.connection.transaction do
           Valpo::PlatformDomain.exclude(id: record.id).where(active: true).update(active: false)
-          record.update(status: "verified", active: true, verification_error: nil, verified_at: verified_at)
-          Valpo::Service.where(kind: "web").order(:created_at).each { |service| reconcile_service(service, platform_domain: record) }
+          record.update(status: "verified", active: true, verification_error: nil, verified_at:)
+          Valpo::Service.where(kind: "web").order(:created_at).each { reconcile_service(it, platform_domain: record) }
         end
         record.refresh
       end
@@ -62,14 +62,14 @@ module Valpo
           service_name: service.name,
           app_domain: platform_domain.hostname
         )
-        domain = Valpo::Domain.where(service_id: service.id, hostname: hostname).first
+        domain = Valpo::Domain.where(service_id: service.id, hostname:).first
         if domain && domain.kind != "generated"
           raise Valpo::ConflictError, "Custom domain #{hostname} conflicts with the generated app domain"
         end
         domain || Valpo::Domain.create(
           service_id: service.id,
           platform_domain_id: platform_domain.id,
-          hostname: hostname,
+          hostname:,
           kind: "generated"
         )
       end

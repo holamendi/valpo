@@ -19,7 +19,7 @@ module Valpo
         project = required_project(project)
         @service_ids[[project, service]] ||= client.request(
           :get,
-          "/projects/#{segment(project)}/services/#{segment(service)}"
+          "/v1/projects/#{segment(project)}/services/#{segment(service)}"
         ).fetch("id")
       rescue KeyError
         raise OperationalError, "API response did not include a service ID for #{value}"

@@ -1,519 +1,207 @@
 # Valpo Technical Architecture
 
-## Architecture Summary
+## Current System
 
-Valpo runs a small control plane on each VPS. The control plane exposes an API, stores local metadata in SQLite, performs long-running work through a background worker, and delegates runtime concerns to Docker, Caddy, systemd, and the host filesystem.
-
-The happy path should be Heroku-like: create an app, attach a managed service, deploy, and let Valpo generate the low-level configuration. Raw container configuration remains available for advanced users.
-
-The dashboard and CLI talk to each server API. Servers do not need to communicate with each other.
+Valpo is a self-contained control plane for one VPS. It exposes a Roda JSON API, stores metadata in SQLite through Sequel, runs long operations through a SQLite-backed worker, and delegates runtime concerns to Docker, Caddy, systemd, and the host filesystem.
 
 ```text
-Dashboard / CLI
-      |
-      | HTTPS, SSH tunnel, WireGuard, Tailscale, or mTLS
-      |
-Valpo API on VPS
-      |
-      | creates jobs, reads state, streams events
-      |
-Valpo Worker
-      |
-      | orchestrates
-      |
-Docker, Caddy, systemd, SQLite, filesystem volumes
+CLI / future dashboard
+          |
+          | HTTP API v1
+          v
+      Valpo API ----> SQLite
+          |
+          | enqueue / inspect
+          v
+      Valpo Worker
+          |
+          +----> Docker containers, images, networks, volumes
+          +----> Caddy routes and TLS
 ```
 
-## Proposed Host Components
+Every server owns its state and keeps running without a dashboard or another Valpo server. Server-to-server coordination is not part of the model. The dashboard remains a future API client, not an owner of runtime state.
 
-Each Valpo server should run:
+Current host stack:
 
-```text
-valpo-api        Roda API service, served by Puma
-valpo-worker     background worker for deploys, builds, backups, restores
-valpo-db.sqlite  local metadata database
-Docker Engine    app containers, database containers, image builds
-Caddy            reverse proxy, TLS, static file serving
-systemd          service supervision for Valpo itself
-filesystem       uploads, releases, backups, build cache, volume snapshots
-```
+- Ruby 4.0, Roda, Sequel, SQLite, Puma, and Zeitwerk;
+- a custom SQLite-backed job queue and one worker process;
+- Docker Engine through a strict CLI wrapper;
+- Caddy through generated configuration and an explicit reload boundary;
+- systemd units and Ubuntu packaging;
+- a bundled Ruby CLI built with `dry-cli`.
 
-## Suggested Ruby Stack
+The public HTTP surface and validation boundary are described in the [API guide](./valpo-api.md) and [OpenAPI document](./openapi.yaml).
 
-- Roda for the host API.
-- Sequel for persistence.
-- SQLite for Valpo metadata.
-- Puma for serving the API.
-- A custom SQLite-backed job runner for v1.
-- Ruby CLI using explicitly registered `dry-cli` command objects.
+## Architecture Rules
 
-Avoid introducing Redis, Sidekiq, Postgres, or a message broker for Valpo's own internals until there is a concrete need.
+1. Each VPS owns its metadata, secrets, jobs, and runtime state.
+2. The dashboard is optional for runtime survival.
+3. Long-running work executes as a job, not in an API request.
+4. Every deployment input becomes a release.
+5. Docker runs dynamic apps and managed services; Caddy owns public routing.
+6. SQLite is the control-plane metadata store.
+7. Generated Docker and Caddy state is projected from Valpo records.
+8. Managed services are the curated path; custom containers are a later escape hatch.
+9. Internal extension seams may evolve, but no public plugin contract exists yet.
+10. Cohesive low-level Docker and build-pipeline classes remain intact when splitting them would only add indirection.
 
-## Runtime Philosophy
+## Runtime Boundaries
 
-Ruby should own orchestration and state transitions. It should not try to become the runtime.
+### API
 
-Use existing host tools for what they already do well:
+`API::App` is a thin Roda transport layer. The JSON parser handles transport parsing; one `dry-validation` contract owns each body or query shape. `API::RequestHelpers` only invokes a contract and maps dry errors into stable API details. Under `API::V1`, each public resource module keeps its small named contracts beside plain hash-rendering functions. Routes enqueue jobs or call record-oriented collaborators, then delegate response construction to those versioned modules.
 
-- Docker runs app and database containers.
-- Caddy handles routing, static file serving, and automatic HTTPS.
-- systemd keeps Valpo API and worker processes alive.
-- SQLite stores local Valpo metadata.
-- Filesystem directories hold immutable releases, uploads, backups, and snapshots.
+Every resource operation is under `/v1`; `GET /` and `GET /health` are unversioned. Terminal routes are exact, and Roda's not-found handler produces JSON for unknown paths and trailing segments.
 
-## Managed Services Philosophy
+### Jobs
 
-Valpo should support arbitrary containers, but curated managed services should be the primary experience for common infrastructure.
+`Jobs::Worker` only polls, locks, invokes, and records completion. `Jobs::HandlerRegistry` is the worker composition root. One handler class exists for each queue operation, and registry coverage is checked against `Jobs::Queue::SUPPORTED_TYPES`.
 
-Phase 2A starts with private Postgres and Redis services.
-
-Examples:
-
-- Postgres
-- Redis
-- MariaDB later
-- named persistent volumes
-- object-storage credentials later
-
-A user should be able to create a database with friendly settings instead of manually defining Docker images, volumes, environment variables, ports, credentials, and connection strings.
-
-Example:
-
-```bash
-valpo service create web --project myapp --type web --port 3000
-valpo service create database --project myapp --type postgres --version 18
-valpo service bind web database --project myapp
-valpo service env web --project myapp
-```
-
-Valpo should provision the container, create credentials, create the volume, attach it to the right Docker network, generate connection configuration, inject the binding into the app, and include the service in backup/export/import workflows.
-
-Advanced users can still run custom containers or manually set environment variables, but that is the escape hatch rather than the default path.
-
-## Extensibility Philosophy
-
-Valpo should keep clean internal extension points from the beginning, but it should not ship a public plugin marketplace in the first versions.
-
-Initial extension seams:
-
-- source adapters
-- build adapters
-- service definitions
-- service provisioners
-- backup targets
-- notification sinks
-- lifecycle subscribers
-
-These should start as internal Ruby interfaces used by built-in features. Once the contracts stabilize, they can become public plugin APIs.
-
-Prefer typed events and structured payloads over arbitrary shell hooks. Plugins should not mutate Docker, Caddy, or Valpo state behind the control plane.
-
-## Source To Release Model
-
-Every deployment path should normalize into the same lifecycle:
-
-```text
-source -> build or fetch -> release artifact -> deploy -> route traffic -> monitor
-```
-
-Current deployment inputs:
-
-```text
-registry image
-GitHub Dockerfile build
-```
-
-GitLab repositories and static uploads are planned inputs, not implemented adapters. All deployment inputs should produce a release so deploy logic remains consistent as those paths are added.
-
-## Project Model
-
-Current domain objects:
-
-```text
-Project
-  id
-  name
-  manifest_digest
-  last_applied_at
-  created_at
-  updated_at
-
-Source
-  id
-  project_id
-  owner_service_id (optional; set for CLI-owned configuration)
-  name
-  provider
-  repository
-  ref
-  auto_deploy
-  status
-
-BuildTarget
-  id
-  project_id
-  source_id
-  owner_service_id (optional; set for CLI-owned configuration)
-  name
-  dockerfile
-  context
-
-Service
-  id
-  project_id
-  name
-  kind: web, worker, postgres, or redis
-  status
-
-AppServiceConfig
-  service_id
-  build_target_id
-  command
-  internal_port
-  healthcheck
-
-ManagedServiceConfig
-  service_id
-  version
-  image
-  plan
-  container_name
-  volume_name
-  internal_host
-  internal_port
-  credentials_json
-
-Release
-  id
-  service_id
-  build_target_id
-  version
-  source_type
-  source_ref
-  artifact_ref
-  image_digest
-  status
-  internal_port
-  healthcheck_path
-  container_name
-  route_target
-  activated_at
-  created_at
-
-Domain
-  id
-  service_id
-  platform_domain_id
-  hostname
-  kind
-  status
-  verification_token
-  verification_error
-  verified_at
-  route_target
-
-PlatformDomain
-  id
-  hostname
-  status
-  active
-  verification_token
-  verification_error
-  verified_at
-
-ServiceDependency
-  id
-  service_id
-  dependency_service_id
-  status
-  env_json
-  created_at
-  updated_at
-
-Job
-  id
-  type
-  status
-  payload_json
-  progress
-  error
-  locked_by
-  locked_at
-  started_at
-  finished_at
-  created_at
-
-JobEvent
-  id
-  job_id
-  stream: stdout, stderr, system
-  message
-  created_at
-```
-
-Projects are grouping boundaries, not runtime containers. Every runtime unit has one `svc_` identity. Shared operations such as status, logs, restart, and deletion operate on that identity; deployment and domains are app capabilities, while versions, credentials, and volumes are managed-service capabilities.
-
-The CLI uses bare service names scoped by `--project` for people and accepts immutable `svc_` IDs without project context for scripts. API identity routes use service IDs.
-
-## Background Jobs
-
-All long-running work should be asynchronous:
-
-- deployments
-- Docker builds
-- image pulls
-- static zip extraction
-- backups
-- restores
-- project export/import
-- managed service provisioning
-- service binding and credential rotation
-- domain certificate checks
-
-The API creates a job and returns a job id. The worker locks and executes queued jobs. The UI and CLI poll or stream job status and events.
-
-Initial job states:
+Implemented job states are:
 
 ```text
 queued
 running
 succeeded
 failed
-canceled
 ```
 
-For v1, a SQLite-backed queue is enough:
+There is no canceled state or cancellation operation. Stale locks can be returned to the queue; a single worker remains the supported deployment/build concurrency model.
 
-- A single worker process polls for queued jobs.
-- Jobs are locked with `locked_by` and `locked_at`.
-- The worker writes structured events.
-- A stuck job can be detected by stale lock timestamps.
-- Limit deployment/build concurrency to one at first.
+### Deployments, Domains, Routing, And Repair
 
-This keeps Valpo dependency-light and makes job state inspectable.
+- `Deployments::Lifecycle` owns deploy, rollback, stop, restart, reconfigure, delete, and app-log behavior.
+- `Deployments::Activator` switches routes, activates releases, and retires prior containers.
+- `Deployments::Repairer` reconciles active and ready app containers.
+- `Domains::Orchestrator` verifies platform/custom domains and activates ready releases.
+- `Caddy::Reconciler` projects verified domain/release state into generated Caddy configuration.
+- `System::Repairer` coordinates managed-service repair, app repair, and Caddy reconciliation.
 
-## Deployment Flows
+A web release may build and pass health checks without a verified hostname. It remains private in `ready`; verifying a generated or custom domain activates it. Worker releases activate without domains. A failed deploy records a failed release and leaves the current active release untouched.
 
-### Docker Registry Deployment
+### Services
+
+- `Services::Registry` maps service kinds to definition objects for web, worker, Postgres, and Redis.
+- `Services::Creator` is the single record-creation path.
+- `Services::ManagedLifecycle` owns managed container operations.
+- `Services::DependencyManager` owns bind and unbind behavior.
+- `Services::Runtime` contains cohesive low-level managed Docker behavior.
+
+Each definition declares its supported options. Managed definitions also declare versions, image, runtime environment, readiness command, credentials, volume path, and binding environment. See [managed services](./valpo-managed-services.md).
+
+### Sources, Builds, And Manifests
+
+GitHub HTTPS fetches use a CLI-managed fine-grained PAT behind `Sources::Fetcher`. Repository/ref/Dockerfile/context preflight resolves an exact commit before source-backed configuration mutates. `Builds::Orchestrator` performs the cohesive checkout-to-image-to-release pipeline.
+
+`Manifests::Planner` computes preview actions without mutation. `Manifests::Reconciler` applies the unchanged `valpo.toml` schema through service creation, managed lifecycle, dependency, and deployment collaborators. Omitted resources are retained.
+
+## Source-To-Release Model
+
+Every deployment normalizes to:
 
 ```text
-1. User submits image reference.
-2. API creates deployment job.
-3. Worker pulls image.
-4. Worker records image digest.
-5. Worker creates release.
-6. Worker starts replacement container.
-7. Worker waits for health check.
-8. Worker updates Caddy route.
-9. Worker marks release active.
-10. Worker stops old container after drain period.
+source or registry image
+        -> build/pull and inspect
+        -> release record
+        -> replacement container
+        -> health check
+        -> ready or active
+        -> route switch
+        -> retire prior container
 ```
 
-This should be the first dynamic-app deployment path because it avoids Git provider complexity.
+Current inputs are registry images and GitHub Dockerfile builds. GitLab, buildpacks, and static uploads are proposed inputs, not implemented adapters.
 
-### GitHub/GitLab Deployment
+## Data Model
+
+Implemented tables:
 
 ```text
-1. User connects repository.
-2. User chooses branch and build settings.
-3. Valpo installs webhook or receives deploy trigger.
-4. Worker clones or fetches the repo.
-5. Worker builds Docker image using Dockerfile.
-6. Worker tags image with project and commit SHA.
-7. Worker creates release from image digest.
-8. Standard container deploy flow runs.
+projects
+sources
+build_targets
+services
+app_service_configs
+managed_service_configs
+service_dependencies
+releases
+platform_domains
+domains
+jobs
+job_events
 ```
 
-Start with Dockerfile builds only. Buildpacks can be added later.
+Important ownership and field conventions:
 
-### Static Zip Deployment
+- `Project` is a grouping boundary with a manifest digest and last-applied timestamp.
+- `Source` and `BuildTarget` belong to a project and may have an `owner_service_id` for CLI-owned configuration.
+- `Service.kind` is `web`, `worker`, `postgres`, or `redis`; app/managed details live in one-to-one configuration tables.
+- `AppServiceConfig` stores `build_target_id`, command JSON, nullable `internal_port`, and nullable `healthcheck_path`.
+- `ManagedServiceConfig` stores version, image, plan, runtime names/address, port, and plaintext credential JSON.
+- `ServiceDependency` links one app service to one managed service and stores generated environment JSON.
+- `Release` stores source/artifact identity, resolved runtime configuration, container/route identity, state, and activation time.
+- `Domain` stores custom or generated hostname verification and projected route state.
+- `PlatformDomain` stores the active or candidate wildcard base and verification state.
+- `Job` stores type, payload, progress, error, lock, start, finish, and creation state; `JobEvent` stores stdout/stderr/system messages.
+
+Typed IDs (`prj_`, `svc_`, and related prefixes) are immutable identities. The CLI accepts service names scoped by project for people and IDs for unambiguous automation.
+
+## Docker And Caddy
+
+The Docker wrapper constructs explicit command arrays and consumes structured inspect output. App and managed containers share the `valpo` network and carry deterministic ownership labels:
 
 ```text
-1. User uploads zip through dashboard or CLI.
-2. API stores upload and creates deployment job.
-3. Worker validates zip contents.
-4. Worker extracts into immutable release directory.
-5. Worker creates release.
-6. Worker updates Caddy file_server route.
-7. Worker marks release active.
+valpo.managed
+valpo.project_id
+valpo.release_id
+valpo.service_id
 ```
 
-Static sites should be served directly by Caddy rather than wrapped in containers.
-
-### Managed Service Provisioning
-
-```text
-1. User chooses a service type and friendly settings.
-2. API creates a service provisioning job.
-3. Worker resolves defaults from the service catalog.
-4. Worker creates volume, network attachment, credentials, and container.
-5. Worker waits for service readiness.
-6. Worker records service metadata and credentials.
-7. Optional binding job injects generated connection settings into the app.
-8. Worker restarts or redeploys the app if needed.
-```
-
-The service catalog should hide low-level Docker details for common resources while preserving an advanced override path.
-
-## Caddy Integration
-
-Caddy should be the default proxy and static file server.
-
-Valpo should store routing intent in SQLite and generate/apply Caddy config from that source of truth.
-
-Platform app domains are runtime database configuration rather than installer input. Valpo verifies the wildcard base with a temporary Caddy HTTPS challenge, creates generated `SERVICE.PROJECT.BASE` hostnames, and verifies each exact hostname before routing application traffic. Custom domains use the same exact-host verification flow.
-
-A web deployment can build and pass its health check without a domain, but its release remains `ready` and private. Verification promotes the latest ready release to `active`. Worker releases activate without domains.
-
-Routing examples:
-
-- Dynamic app: hostname -> container internal network address and port.
-- Static site: hostname -> immutable release directory with Caddy `file_server`.
-
-Avoid storing raw hand-edited Caddy config as the primary model. Store Valpo's intended routes and generate config from that.
-
-## Docker Integration
-
-Initial implementation can use the Docker CLI through a strict wrapper. Favor structured output and explicit error handling.
-
-Examples:
-
-- `docker pull`
-- `docker image inspect`
-- `docker run`
-- `docker stop`
-- `docker rm`
-- `docker logs`
-- `docker build`
-- `docker network create`
-- `docker volume create`
-
-Move to a Docker API client later only if it reduces complexity.
+Valpo stores routing intent in SQLite. `Caddy::Reconciler` renders only verified, running web routes with a valid active target, writes generated configuration, reloads Caddy, and records projected targets. Raw hand-edited Caddy configuration is not the source of truth.
 
 ## Filesystem Layout
 
-Suggested host layout:
+Implemented packaging uses the following durable roots:
 
 ```text
 /var/lib/valpo/
   valpo.db
-  uploads/
-  releases/
-    projects/
-      <project-id>/
-        releases/
-          <release-id>/
-  backups/
-  exports/
-  build-cache/
+  secrets/
+    github-token
+  caddy/
+    valpo.caddy
 
 /etc/valpo/
   valpo.yml
-  secrets.key
 
 /var/log/valpo/
   api.log
   worker.log
 ```
 
-Static releases should be immutable directories. Activation should be a metadata and routing change, not in-place mutation.
+Uploads, immutable static releases, backups, exports, build caches, and a host encryption key are proposed future directories. They must not be documented as implemented until their owning features exist.
 
-## Security Model
+## Security: Implemented And Proposed
 
-The Valpo API should not default to being a casually exposed public endpoint.
+Implemented today:
 
-Recommended access modes:
+- localhost API binding by default;
+- refusal to bind non-locally without a configured bearer token;
+- constant-time bearer comparison;
+- strict JSON/query validation and generic client-facing 500 errors;
+- private Docker networking for managed services;
+- a file-backed GitHub PAT kept out of API payloads, jobs, manifests, sources, builds, and releases;
+- redaction of generated secret environment values unless explicitly revealed.
 
-- Localhost-only API with CLI over SSH tunnel.
-- Private network access through WireGuard or Tailscale.
-- Optional public HTTPS API with strong authentication.
-- Optional mTLS for dashboard-to-server communication.
+Known gaps and proposed behavior:
 
-API tokens should be scoped and revocable.
+- API tokens are host-wide; scoped, revocable tokens are not implemented.
+- Managed credentials are plaintext JSON in SQLite. Host-key-backed encryption at rest and key rotation are near-term security work.
+- mTLS and first-class private-network/dashboard enrollment are not implemented.
+- Audit logs, role-based access control, and secret migration policies are future work.
 
-Secrets should be encrypted at rest using a host-local key from `/etc/valpo/secrets.key`.
+The architecture must distinguish these proposals from shipped guarantees. In particular, Valpo does not currently claim credential encryption at rest.
 
-The dashboard should store server connection metadata, but each server should own its own secrets and runtime state.
+## Future Boundaries
 
-## Dashboard Role
-
-The dashboard aggregates and operates independent servers:
-
-- server inventory
-- project list per server
-- deploy actions
-- logs and job status
-- static-site upload
-- GitHub/GitLab connection flows
-- backup and restore actions
-- export/import flows
-
-It should not be required for existing apps to keep running.
-
-## Migration Model
-
-Migration should be modeled as export/import.
-
-A project export can include:
-
-- project manifest
-- services and image references
-- managed resource manifests
-- service dependencies
-- release metadata
-- domains
-- encrypted env vars
-- database dumps
-- volume snapshots
-- static release directories
-- optional Docker image archive
-
-Target import should validate capabilities before applying:
-
-```text
-Can restore Postgres version?
-Can provision the requested managed service types?
-Can pull or load required image?
-Are required ports available?
-Are domains already assigned?
-Are secrets importable?
-Is there enough disk space?
-```
-
-Avoid default server-to-server communication. Direct transfer can be a later explicit migration mode, but the base model should work through a local file or object storage bridge.
-
-## Operational Requirements
-
-Valpo should make these operations first-class:
-
-- install
-- upgrade
-- backup Valpo metadata
-- restore Valpo metadata
-- inspect jobs
-- cancel jobs
-- restart API/worker
-- regenerate Caddy config
-- verify Docker and Caddy health
-- rotate API tokens
-- provision managed service
-- bind managed service to project
-- rotate service credentials
-- export project
-- import project
-
-## Initial MVP Boundary
-
-The first credible slice:
-
-```text
-install Valpo on one VPS
-create project
-deploy Docker image
-add domain
-serve through Caddy
-view logs
-view releases
-rollback release
-run all long operations as jobs
-```
+The export/import model, backups, static releases, additional source providers, dashboard, and public extension API remain future work. Export/import should validate target capabilities before mutation and should not require server-to-server coordination. Internal source, definition, backup-target, notification, and lifecycle boundaries may become public only after their contracts stabilize.

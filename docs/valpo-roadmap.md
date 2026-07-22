@@ -10,7 +10,7 @@ The first milestone should prove that Valpo can reliably take an artifact, run i
 
 Goal: create the project skeleton and validate the local host model.
 
-Status: implemented as the initial Ruby scaffold. The current repository has the Roda API skeleton, Sequel/SQLite migrations, SQLite-backed job runner, worker, CLI, config loading, Docker/Caddy wrapper boundaries, and systemd/config templates.
+Status: implemented. The repository has the Roda API, Sequel/SQLite migrations, SQLite-backed job runner, worker, CLI, config loading, Docker/Caddy boundaries, and systemd/config templates. A pre-release foundation pass added `/v1`, strict `dry-validation` request contracts, versioned resource renderers, an OpenAPI 3.1 mirror, exact routes, stable errors, cohesive production boundaries, and synchronized documentation.
 
 Deliverables:
 
@@ -109,7 +109,7 @@ Start this phase only after Phase 1B is complete.
 
 Deliverables:
 
-- Built-in service catalog for curated service definitions.
+- Built-in service registry with one definition object per supported type.
 - Service records and lifecycle jobs.
 - Private Docker runtime for service containers.
 - Persistent Docker volumes for stateful services.
@@ -138,6 +138,23 @@ Exit criteria:
 - Services are private by default and do not expose public ports.
 - Services can be deleted with explicit confirmation, removing their containers and volumes before project cleanup.
 
+## Near-Term Foundation And Security
+
+Goal: close the known security and operational gaps before expanding the product surface.
+
+Status: planned.
+
+Deliverables:
+
+- Encrypt managed-service credential JSON at rest with a host-local key.
+- Define key generation, permissions, backup, rotation, and recovery behavior.
+- Define credential migration behavior for future export/import.
+- Replace the single host-wide bearer token with scoped, revocable API credentials.
+- Add a safe token-rotation workflow for CLI and future dashboard clients.
+- Keep dependency, deployment, domain, Caddy, and system repair boundaries covered by characterization tests as internals evolve.
+
+Current gap: generated managed credentials are plaintext in SQLite and protected only by host/filesystem access controls. Do not claim encryption at rest until this phase ships.
+
 ## Phase 3A: GitHub Integration And Dockerfile Deployments
 
 Goal: connect repositories and build/deploy on demand or webhook push.
@@ -158,6 +175,7 @@ Remaining deliverables:
 - Per-server GitHub App manifest setup and installation selection.
 - Webhook endpoint.
 - Replacement of the temporary PAT provider with short-lived GitHub App installation credentials.
+- Removal of the file-backed PAT login flow once the GitHub App path is complete and migration behavior is documented.
 
 Initial constraint:
 
@@ -216,6 +234,7 @@ Deliverables:
 - Optional Docker image archive.
 - Import preflight validation.
 - Import dry run.
+- MariaDB only after its definition, readiness, binding, backup, restore, and export semantics are specified and tested.
 
 Exit criteria:
 
@@ -272,6 +291,7 @@ Potential deliverables:
 - Webhook notification sink.
 - Custom backup targets.
 - Third-party service definitions.
+- Additional curated services such as MariaDB, only with complete lifecycle and data-portability behavior.
 
 ## Features To Delay
 
