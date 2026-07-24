@@ -42,18 +42,4 @@ class ValpoMigratorTest < Minitest::Test
 
     assert_equal "HEAD", db[:sources].where(project_id: project.id, name: "backend").get(:ref)
   end
-
-  def test_legacy_project_as_app_schema_is_rejected_without_data_loss
-    legacy = Sequel.sqlite
-    legacy.create_table(:projects) do
-      String :id, primary_key: true
-      String :type
-    end
-
-    error = assert_raises(Valpo::ValidationError) { Valpo::Migrator.run(db: legacy) }
-    assert_match "retired project-as-app schema", error.message
-    assert legacy.table_exists?(:projects)
-  ensure
-    legacy&.disconnect
-  end
 end

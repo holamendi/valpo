@@ -17,4 +17,4 @@ Valpo's root [README](../README.md) is the user-facing starting point. This fold
 - [valpo-extensibility-and-positioning.md](./valpo-extensibility-and-positioning.md) compares reference projects and defines Valpo's extensibility boundaries.
 - [valpo-roadmap.md](./valpo-roadmap.md) tracks completed phases and planned work from the single-server core to a multi-server dashboard.
 - [valpo-architecture-decisions.md](./valpo-architecture-decisions.md) captures initial high-level decisions in lightweight ADR form.
-- [development.md](./development.md) covers local setup, checks, generated documentation, and pre-release database compatibility.
+- [development.md](./development.md) covers local setup, checks, generated documentation, and the pre-release schema policy.

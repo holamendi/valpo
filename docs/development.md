@@ -77,8 +77,6 @@ r.post true do
 
 Version-specific contracts and response renderers live together under `API::V1` resource modules. When a route, contract, renderer, or response changes, update both [valpo-api.md](./valpo-api.md) and [openapi.yaml](./openapi.yaml), then run `rake api:check`. The check compares OpenAPI operations with route comments and validates local references and representative contract parity.
 
-## Pre-release Database Compatibility
+## Pre-release Schema Policy
 
 Valpo has not been released, so backward compatibility is not a goal and all current schema is kept in the first migration. That migration may be rewritten. If a development database reports a migration version newer than the migrations in the checkout, back it up if necessary, remove it, and run the migrations again. The default development database is `tmp/valpo-development.sqlite3`.
-
-Valpo also detects the retired project-as-app schema and refuses to discard it automatically.

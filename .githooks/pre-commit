@@ -19,3 +19,5 @@ if ! cmp -s "$before" "$after"; then
   printf '%s\n' "standardrb --fix changed files. Review the changes, re-stage them, and commit again." >&2
   exit 1
 fi
+
+bundle exec rake standard
