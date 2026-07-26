@@ -12,7 +12,7 @@ module Valpo
     DEFAULT_HEALTHCHECK_TIMEOUT = 30
     DEFAULT_DEPLOY_DRAIN_DELAY = 0
     DEFAULT_BUILD_TIMEOUT = 1_800
-    DEFAULT_BUILDPACK_BUILDER = "paketobuildpacks/ubuntu-noble-builder@sha256:6576792807752dfc227d0df115c99b0a77d97ddb71b4d6c757e99630c60db019"
+    DEFAULT_BUILDPACK_BUILDER = "paketobuildpacks/builder-jammy-base@sha256:7510725172c8b2f1a7bce82b694e2af9599d5e2d97528c140eaeb81c569c21df"
 
     attr_reader :env,
       :root,

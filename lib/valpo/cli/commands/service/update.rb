@@ -17,7 +17,7 @@ module Valpo
           option :port, desc: "Web container port"
           option :healthcheck_path, desc: "Web health check path beginning with /"
           option :clear_command, type: :boolean, default: false, desc: "Use the image's default command"
-          option :clear_healthcheck, type: :boolean, default: false, desc: "Use a TCP readiness check"
+          option :clear_healthcheck, type: :boolean, default: false, desc: "Use the default HTTP root readiness check"
           option :clear_port, type: :boolean, default: false, desc: "Resolve the web port automatically"
           option :deploy, type: :boolean, default: false, desc: "Deploy after applying the update"
           wait_options

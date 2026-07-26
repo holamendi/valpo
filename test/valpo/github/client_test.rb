@@ -42,7 +42,9 @@ class ValpoGitHubClientTest < Minitest::Test
 
     lookup, token = requester.requests
     assert_equal "/repos/acme/backend/installation", lookup.fetch(1).path
-    assert_match(/\ABearer [^.]+\.[^.]+\.[^.]+\z/, lookup.fetch(2).fetch("Authorization"))
+    authorization = lookup.fetch(2).fetch("Authorization")
+    assert_match(/\ABearer [^.]+\.[^.]+\.[^.]+\z/, authorization)
+    refute_includes authorization, "="
     assert_equal "/app/installations/987/access_tokens", token.fetch(1).path
     assert_equal({"permissions" => {"contents" => "read"}}, JSON.parse(token.fetch(3)))
   end
@@ -50,7 +52,7 @@ class ValpoGitHubClientTest < Minitest::Test
   private
 
   def private_key
-    @private_key ||= OpenSSL::PKey::RSA.generate(1024).to_pem
+    @private_key ||= OpenSSL::PKey::RSA.generate(2048).to_pem
   end
 
   def credentials

@@ -23,9 +23,11 @@ class ValpoCaddyRendererTest < Minitest::Test
     assert_includes output, "verify.example.com {\n  respond /.well-known/valpo-verification/abc123 \"abc123\" 200\n}"
     assert_includes output, <<~CADDY.chomp
       github.apps.example.com {
-        @allowed path /integrations/github /integrations/github/*
-        reverse_proxy @allowed 127.0.0.1:7092
-        respond 404
+        route {
+          @allowed path /integrations/github /integrations/github/*
+          reverse_proxy @allowed 127.0.0.1:7092
+          respond 404
+        }
       }
     CADDY
   end

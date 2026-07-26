@@ -117,7 +117,7 @@ module Valpo
       end
 
       def base64_url(value)
-        [value].pack("m0").tr("+/", "-_").delete_suffix("=")
+        [value].pack("m0").tr("+/", "-_").delete("=")
       end
 
       def escape_segment(value)

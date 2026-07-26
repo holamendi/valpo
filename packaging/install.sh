@@ -228,7 +228,7 @@ production:
   healthcheck_timeout: 30
   deploy_drain_delay: 2
   build_timeout: 1800
-  buildpack_builder: paketobuildpacks/ubuntu-noble-builder@sha256:6576792807752dfc227d0df115c99b0a77d97ddb71b4d6c757e99630c60db019
+  buildpack_builder: paketobuildpacks/builder-jammy-base@sha256:7510725172c8b2f1a7bce82b694e2af9599d5e2d97528c140eaeb81c569c21df
 CONFIG
 
   if [[ -f "$CONFIG_PATH" ]] && ! cmp -s "$tmp" "$CONFIG_PATH"; then

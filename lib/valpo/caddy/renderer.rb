@@ -31,9 +31,11 @@ module Valpo
           path = route.fetch(:path)
           <<~CADDY.chomp
             #{hostname} {
-              @allowed path #{path} #{path}/*
-              reverse_proxy @allowed #{upstream}
-              respond 404
+              route {
+                @allowed path #{path} #{path}/*
+                reverse_proxy @allowed #{upstream}
+                respond 404
+              }
             }
           CADDY
         else

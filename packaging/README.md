@@ -110,7 +110,7 @@ Source services default to build strategy `auto`: Valpo uses a context-root Dock
 ```yaml
 production:
   build_timeout: 1800
-  buildpack_builder: paketobuildpacks/ubuntu-noble-builder@sha256:6576792807752dfc227d0df115c99b0a77d97ddb71b4d6c757e99630c60db019
+  buildpack_builder: paketobuildpacks/builder-jammy-base@sha256:7510725172c8b2f1a7bce82b694e2af9599d5e2d97528c140eaeb81c569c21df
 ```
 
 Build output is available through normal job events. Buildpack caches are stable Docker volumes scoped to a build target and are removed when its owning service or project is deleted. A repository `project.toml` is honored, but the configured builder remains explicit. Runtime service secrets are not passed into builds.
