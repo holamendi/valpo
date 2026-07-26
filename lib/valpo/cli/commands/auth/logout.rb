@@ -15,12 +15,17 @@ module Valpo
             reject_extra_arguments!(args)
             provider = github!(provider)
             store, = credential_store(config)
-            removed = store.delete
-            result = {"authenticated" => false, "provider" => provider, "removed" => removed}
+            app_result = context(api_url:, config:, json:).request(:delete, "/v1/auth/github")
+            removed_pat = store.delete
+            result = app_result.merge(
+              "authenticated" => false,
+              "provider" => provider,
+              "removed" => app_result.fetch("removed") || removed_pat
+            )
             if json
               @out.puts JSON.generate(result)
             else
-              @out.puts removed ? "Logged out of GitHub" : "GitHub authentication was not configured"
+              @out.puts result.fetch("removed") ? "Removed local GitHub authentication" : "GitHub authentication was not configured"
             end
           end
         end

@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "json"
+
 module Valpo
   module Deployments
     class Lifecycle
@@ -16,6 +18,7 @@ module Valpo
         caddy_reconciler: nil,
         activator: nil,
         domain_orchestrator: nil,
+        build_cache_manager: nil,
         sleeper: Kernel
       )
         @config = config
@@ -33,6 +36,7 @@ module Valpo
           verifier: domain_verifier,
           sleeper:
         )
+        @build_cache_manager = build_cache_manager
       end
 
       def deploy_registry_image(service_id:, image:, internal_port:, healthcheck_path:, queue:, job_id:)
@@ -42,6 +46,8 @@ module Valpo
           source_type: "registry",
           source_ref: image,
           build_target_id: nil,
+          build_strategy: nil,
+          build_metadata: {},
           internal_port:,
           healthcheck_path:,
           pull: true,
@@ -50,13 +56,15 @@ module Valpo
         )
       end
 
-      def deploy_built_image(service_id:, image:, source_ref:, build_target_id:, internal_port:, healthcheck_path:, queue:, job_id:)
+      def deploy_built_image(service_id:, image:, source_ref:, build_target_id:, build_strategy:, build_metadata:, internal_port:, healthcheck_path:, queue:, job_id:)
         deploy_image(
           service_id:,
           image:,
           source_type: "git",
           source_ref:,
           build_target_id:,
+          build_strategy:,
+          build_metadata:,
           internal_port:,
           healthcheck_path:,
           pull: false,
@@ -185,6 +193,8 @@ module Valpo
         Valpo::Release.where(service_id: service.id).exclude(container_name: nil).select_map(:container_name).uniq.each do
           runtime.stop_container(it, ignore_missing: true)
         end
+        build_target_ids = Valpo::BuildTarget.where(owner_service_id: service.id).select_map(:id)
+        remove_build_caches(build_target_ids, queue:, job_id:)
         service.destroy
         event(queue, job_id, "Deleted #{service_name}")
         true
@@ -196,6 +206,8 @@ module Valpo
         raise Valpo::ConflictError, "Project still has services" unless Valpo::Service.where(project_id: project.id).empty?
 
         project_name = project.name
+        build_target_ids = Valpo::BuildTarget.where(project_id: project.id).select_map(:id)
+        remove_build_caches(build_target_ids, queue:, job_id:)
         project.destroy
         activator.apply_routes(queue:, job_id:)
         event(queue, job_id, "Deleted #{project_name}")
@@ -212,9 +224,9 @@ module Valpo
 
       private
 
-      attr_reader :config, :docker, :health_checker, :port_resolver, :domain_orchestrator, :activator, :sleeper
+      attr_reader :config, :docker, :health_checker, :port_resolver, :domain_orchestrator, :activator, :build_cache_manager, :sleeper
 
-      def deploy_image(service_id:, image:, source_type:, source_ref:, build_target_id:, internal_port:, healthcheck_path:, pull:, queue:, job_id:)
+      def deploy_image(service_id:, image:, source_type:, source_ref:, build_target_id:, build_strategy:, build_metadata:, internal_port:, healthcheck_path:, pull:, queue:, job_id:)
         runtime = runtime_for(queue:, job_id:)
         service = find_app_service(service_id)
         app_config = Valpo::AppServiceConfig[service.id]
@@ -246,6 +258,8 @@ module Valpo
           source_ref:,
           artifact_ref: digest || image,
           image_digest: digest,
+          build_strategy:,
+          build_metadata_json: JSON.generate(build_metadata),
           internal_port: port,
           healthcheck_path: blank_to_nil(healthcheck_path) || app_config&.healthcheck_path
         )
@@ -307,6 +321,14 @@ module Valpo
 
       def blank_to_nil(value)
         (value.nil? || value.to_s.empty?) ? nil : value
+      end
+
+      def remove_build_caches(build_target_ids, queue:, job_id:)
+        return unless build_cache_manager
+
+        build_target_ids.each do
+          build_cache_manager.remove(build_target_id: it, queue:, job_id:)
+        end
       end
     end
   end

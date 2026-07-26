@@ -27,6 +27,7 @@ packaging/install.sh
 The installer:
 
 - installs runtime packages including Docker, Caddy, curl, build tools, mise, Ruby, Bundler, and gems
+- installs checksum-verified `pack` 0.40.8 on Linux amd64/arm64 for Cloud Native Buildpacks
 - installs source into `/opt/valpo`
 - stores Valpo state under `/var/lib/valpo`
 - writes production config to `/etc/valpo/valpo.yml`
@@ -74,13 +75,51 @@ CLI calls use `VALPO_API_TOKEN` first, then the `api_token` in the loaded config
 
 ## GitHub Source Authentication
 
-Manual private-repository builds use a fine-grained PAT as the temporary Phase 3A credential provider. Store a repository-scoped token with read-only Contents access through the local CLI:
+After the default app domain is verified, create the private GitHub App for this server:
 
 ```bash
 valpo auth login github
 ```
 
-The command shows a prefilled GitHub token-creation link with read-only Contents permission, prompts without echo, validates the PAT with GitHub, and atomically writes `/var/lib/valpo/secrets/github-token` with mode `0600`. The worker resolves the file when each source deployment starts, so no restart is needed. Do not put this token in `valpo.yml` or `valpo.toml`.
+The command prints a one-time URL on `github.<app-domain>`. Open it, name the App, create it from Valpo's manifest, and select the repositories it may access. The wildcard DNS already required for the app domain covers this hostname; no additional DNS record is needed.
+
+Private Apps can only be installed on the account that owns them. For organization repositories, create the App under that organization:
+
+```bash
+valpo auth login github --organization acme
+```
+
+The manifest creates a private App with read-only Contents permission, the `push` event, a signed webhook, and server callback URLs. GitHub returns the generated private key and webhook secret to the callback. Valpo atomically stores them in `/var/lib/valpo/secrets/github-app.json` with mode `0600`, verifies installation redirects against GitHub, and mints short-lived installation tokens for each source fetch.
+
+`auto_deploy = true` sources deploy matching branch pushes. A source using `HEAD` follows pushes to the repository's default branch. Delivery IDs are deduplicated, and a service with an active operation is skipped instead of receiving a second deployment job.
+
+The file-backed PAT remains a temporary migration fallback for existing hosts and smoke tests:
+
+```bash
+op read op://vault/github-pat | valpo auth login github --with-token
+```
+
+Do not put GitHub App credentials, PATs, or installation tokens in `valpo.yml` or `valpo.toml`. `valpo auth logout github` removes local credentials; remove the installation or App separately in GitHub when retiring it.
+
+Because the App callback and webhook URLs contain the default app domain, Valpo will not replace that domain while App credentials are configured. Log out locally, change the domain, run the App setup again, and delete the old App in GitHub.
+
+## Source Build Configuration
+
+Source services default to build strategy `auto`: Valpo uses a context-root Dockerfile when present and otherwise builds with Cloud Native Buildpacks. Packaged installs pin `pack` under `/var/lib/valpo/.local/bin` and pin the Paketo Ubuntu Noble builder. `/etc/valpo/valpo.yml` controls the build deadline and builder:
+
+```yaml
+production:
+  build_timeout: 1800
+  buildpack_builder: paketobuildpacks/ubuntu-noble-builder@sha256:6576792807752dfc227d0df115c99b0a77d97ddb71b4d6c757e99630c60db019
+```
+
+Build output is available through normal job events. Buildpack caches are stable Docker volumes scoped to a build target and are removed when its owning service or project is deleted. A repository `project.toml` is honored, but the configured builder remains explicit. Runtime service secrets are not passed into builds.
+
+On a Linux development host with Docker and `pack`, run the opt-in build/inspect/run smoke test with:
+
+```bash
+VALPO_TEST_BUILDPACKS=1 mise exec -- bundle exec ruby -Itest test/integration/buildpack_smoke_test.rb
+```
 
 ## Templates
 
@@ -118,4 +157,4 @@ Use the source smoke test on a host whose GitHub PAT is already configured:
 packaging/vps-source-smoke-test.sh root@162.55.43.108 apps.valpo.dev
 ```
 
-It installs the current checkout, creates a unique project without a manifest, and deploys `holamendi/smol-roda` while omitting ref, Dockerfile, context, and port. It verifies the resolved commit, port `3000`, injected `PORT`, HTTPS, and release metadata, then removes only the generated project/runtime resources. The script checks the GitHub credential file digest and `auth status github` before and after; it never logs out or deletes the stored PAT. Use `--repository OWNER/REPO` for another repository or `--skip-install` to test the already-installed version.
+It installs the current checkout, creates a unique project without a manifest, and deploys `holamendi/smol-roda` while omitting ref, build strategy, Dockerfile, context, and port. It verifies automatic Dockerfile selection, the resolved commit, port `3000`, injected `PORT`, HTTPS, and release metadata, then removes only the generated project/runtime resources. The script checks the GitHub credential file digest and `auth status github` before and after; it never logs out or deletes the stored PAT. Use `--repository OWNER/REPO` for another repository or `--skip-install` to test the already-installed version.

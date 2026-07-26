@@ -13,6 +13,7 @@ module Valpo
           healthcheck_path: nil,
           source: nil,
           ref: nil,
+          build_strategy: nil,
           dockerfile: nil,
           context: nil,
           deploy: false
@@ -21,9 +22,10 @@ module Valpo
             type:,
             options: {version:, command:, port:, healthcheck_path:}.compact
           )
-          source_options = {ref:, dockerfile:, context:}.compact
+          validate_build_options!(build_strategy:, dockerfile:)
+          source_options = {ref:, build_strategy:, dockerfile:, context:}.compact
           if source.nil? && (!source_options.empty? || deploy)
-            raise UsageError, "--ref, --dockerfile, --context, and --deploy require --source"
+            raise UsageError, "--ref, --build-strategy, --dockerfile, --context, and --deploy require --source"
           end
           if source && !Valpo::Services::Registry.app_type?(type)
             raise UsageError, "--source is only valid for web and worker services"
@@ -40,9 +42,10 @@ module Valpo
           if source
             payload["source"] = source_spec(source).merge("ref" => ref || "HEAD")
             payload["build"] = {
-              "dockerfile" => dockerfile || "Dockerfile",
-              "context" => context || "."
-            }
+              "strategy" => build_strategy,
+              "dockerfile" => dockerfile,
+              "context" => context
+            }.compact
             payload["deploy"] = deploy
           end
           payload
@@ -55,6 +58,15 @@ module Valpo
             Valpo::Services::Registry.validate_options!(type:, options:)
           rescue Valpo::ValidationError => e
             raise UsageError, e.message
+          end
+
+          def validate_build_options!(build_strategy:, dockerfile:)
+            if build_strategy && !Valpo::Builds::STRATEGIES.include?(build_strategy)
+              raise UsageError, "--build-strategy must be auto, dockerfile, or buildpack"
+            end
+            if dockerfile && build_strategy && build_strategy != "dockerfile"
+              raise UsageError, "--dockerfile requires --build-strategy dockerfile"
+            end
           end
 
           def positive_integer(value, name)

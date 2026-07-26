@@ -28,7 +28,8 @@ module Valpo
         run(
           command("-C", destination, "fetch", "--quiet", "--depth=1", "--no-tags", "--", "origin", selected_ref),
           "GitHub fetch failed",
-          authenticated: true
+          authenticated: true,
+          repository:
         )
         run(command("-C", destination, "checkout", "--quiet", "--detach", "FETCH_HEAD"), "Git checkout failed")
         run(command("-C", destination, "rev-parse", "HEAD"), "Git revision lookup failed").fetch(:stdout).strip
@@ -38,18 +39,19 @@ module Valpo
 
       attr_reader :git, :runner, :askpass_path
 
-      def token
-        @token.respond_to?(:call) ? @token.call : @token
+      def token(repository)
+        return @token unless @token.respond_to?(:call)
+
+        (@token.arity == 0) ? @token.call : @token.call(repository)
       end
 
       def command(*arguments)
         [git, "-c", "credential.helper=", *arguments]
       end
 
-      def environment(authenticated:)
+      def environment(authenticated:, repository: nil)
         values = {"GIT_TERMINAL_PROMPT" => "0"}
-        resolved_token = token
-        if authenticated && resolved_token
+        if authenticated && (resolved_token = token(repository))
           values["GIT_ASKPASS"] = askpass_path
           values["GIT_ASKPASS_REQUIRE"] = "force"
           values["VALPO_GIT_ASKPASS_TOKEN"] = resolved_token
@@ -57,8 +59,8 @@ module Valpo
         values
       end
 
-      def run(command, message, authenticated: false)
-        result = runner.capture(environment(authenticated:), command)
+      def run(command, message, authenticated: false, repository: nil)
+        result = runner.capture(environment(authenticated:, repository:), command)
         return result if result.fetch(:success)
 
         detail = result.fetch(:stderr).to_s.strip

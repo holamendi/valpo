@@ -16,6 +16,8 @@ class ValpoMigratorTest < Minitest::Test
     assert_includes db.tables, :releases
     assert_includes db.tables, :domains
     assert_includes db.tables, :platform_domains
+    assert_includes db.tables, :github_app_setups
+    assert_includes db.tables, :github_webhook_deliveries
     assert_includes db.tables, :jobs
     assert_includes db.tables, :job_events
   end

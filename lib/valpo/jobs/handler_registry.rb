@@ -13,11 +13,12 @@ module Valpo
 
       def build
         docker = Valpo::Docker::Client.new
+        build_cache_manager = Valpo::Builds::CacheManager.new(docker:)
         caddy = Valpo::Caddy::Client.new(
           config_path: config.caddy_config_path,
           reload_config_path: config.caddy_reload_config_path
         )
-        caddy_reconciler = Valpo::Caddy::Reconciler.new(caddy:)
+        caddy_reconciler = Valpo::Caddy::Reconciler.new(caddy:, config:)
         activator = Valpo::Deployments::Activator.new(caddy_reconciler:)
         domains = Valpo::Domains::Orchestrator.new(
           caddy_reconciler:,
@@ -31,7 +32,8 @@ module Valpo
           caddy:,
           caddy_reconciler:,
           activator:,
-          domain_orchestrator: domains
+          domain_orchestrator: domains,
+          build_cache_manager:
         )
         dependency_manager = Valpo::Services::DependencyManager.new(
           config:,
@@ -43,15 +45,33 @@ module Valpo
           docker:,
           dependency_manager:
         )
+        github_authentication = Valpo::GitHub::Authentication.new(config:)
         source_fetcher = Valpo::Sources::Fetcher.new(
-          adapters: {"github" => Valpo::Sources::GitHub.new(token: -> { config.github_token })}
+          adapters: {"github" => Valpo::Sources::GitHub.new(token: -> {
+            github_authentication.token_for(it)
+          })}
         )
         preflight = Valpo::Sources::Preflight.new(fetcher: source_fetcher)
+        build_runner = Valpo::Builds::CommandRunner.new
         builds = Valpo::Builds::Orchestrator.new(
-          docker:,
           source_fetcher:,
           deployment_lifecycle: deployment,
-          preflight:
+          preflight:,
+          builders: {
+            "dockerfile" => Valpo::Builds::DockerfileBuilder.new(
+              docker:,
+              runner: build_runner,
+              timeout: config.build_timeout
+            ),
+            "buildpack" => Valpo::Builds::BuildpackBuilder.new(
+              client: Valpo::Builds::BuildpackClient.new,
+              runner: build_runner,
+              cache_manager: build_cache_manager,
+              builder: config.buildpack_builder,
+              timeout: config.build_timeout
+            )
+          },
+          target_lock: Valpo::Builds::TargetLock.new(database_path: config.database_path)
         )
         configurator = Valpo::Sources::ServiceConfigurator.new
         updater = Valpo::Services::AppUpdater.new(

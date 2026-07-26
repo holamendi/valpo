@@ -98,8 +98,9 @@ Implications:
 
 - Store image references and digests in release records.
 - Prefer image digest for reproducibility.
-- Start with Dockerfile builds.
-- Add buildpacks later if needed.
+- Support explicit Dockerfile builds and Cloud Native Buildpacks builds.
+- Default source builds to Dockerfile when one exists in the selected context, then buildpacks.
+- Keep the platform builder pinned and record resolved build metadata on each release.
 
 ## ADR 007: Static Sites Are Served Directly By Caddy
 
@@ -137,7 +138,7 @@ Implications:
 
 Decision:
 
-The host API should default to a private access mode. Public HTTPS API exposure should be optional and strongly authenticated.
+The host control API should default to a private access mode. Public HTTPS control API exposure should be optional and strongly authenticated. Provider callbacks and webhooks may use narrowly routed public prefixes with protocol-specific authentication.
 
 Rationale:
 
@@ -148,6 +149,7 @@ Implications:
 - Prefer SSH tunnel, localhost, WireGuard, Tailscale, or mTLS.
 - Use scoped, revocable tokens.
 - Keep dashboard-to-server authentication explicit.
+- Let Caddy expose only the callback paths a provider requires; protect setup with one-time state and webhooks with signed payload verification.
 
 ## ADR 010: Migration Is Export/Import
 

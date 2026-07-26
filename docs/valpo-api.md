@@ -14,6 +14,12 @@ Authorization: Bearer TOKEN
 
 The API binds to localhost by default. Non-local binding requires an API token. SSH tunnels or a private network remain the preferred access path; the current bearer token is host-wide and is not yet scoped or revocable.
 
+The verified default app domain creates one narrow public exception at `github.<app-domain>/integrations/github`. Caddy proxies only that prefix to the otherwise-local API. The setup form and callback require a one-time state value, installation redirects are checked against the authenticated GitHub App, and the webhook requires GitHub's `X-Hub-Signature-256` HMAC. Other API paths remain private and continue to require the bearer token when configured.
+
+`POST /v1/auth/github` creates the one-hour setup URL used by `valpo auth login github`; its optional `organization` field selects organization ownership instead of the current user's personal account. `GET /v1/auth/github` returns only non-secret App identity, and `DELETE /v1/auth/github` removes the local credential file without deleting the App on GitHub.
+
+The GitHub App callback and webhook URLs contain the default app domain. Valpo therefore blocks app-domain replacement while App credentials are configured. Remove the local authentication, replace the domain, create the new App, and delete the retired App in GitHub.
+
 ## Requests And Validation
 
 Body operations require `Content-Type: application/json` and a JSON object. Roda parses the transport; one `dry-validation` contract per request shape validates the object.
@@ -28,6 +34,8 @@ Body contracts:
 Query contracts reject every undeclared key. Positive integer queries use parameter coercion. Boolean queries accept only the literal serialized values `true` and `false`.
 
 Shape and type failures return `400 invalid_request`. Cross-field or stateful rules remain Ruby domain validation and return `422 validation_failed`; examples include service-type-specific options, source/build relationships, `image`/`ref` exclusivity, deployment readiness, and forced deletion.
+
+Source-backed app requests accept `build.strategy` as `auto`, `dockerfile`, or `buildpack`. It defaults to `auto`; supplying `build.dockerfile` without a strategy selects `dockerfile`, while combining a Dockerfile with `auto` or `buildpack` is rejected. `auto` resolves to Dockerfile only when `<context>/Dockerfile` exists, otherwise it resolves to buildpacks. Release responses expose the resolved strategy under `build`; Dockerfile releases include the path, while buildpack releases may include builder, buildpack, and process metadata. Registry releases return `"build": null`.
 
 Example validation response:
 

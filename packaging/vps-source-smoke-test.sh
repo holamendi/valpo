@@ -6,8 +6,8 @@ usage() {
 Usage: packaging/vps-source-smoke-test.sh USER@HOST DOMAIN_SUFFIX [options]
 
 Installs the current checkout and tests a manifest-free GitHub source deployment
-in a unique project. The test omits ref, Dockerfile, context, and port so it
-exercises remote HEAD and automatic source-build defaults.
+in a unique project. The test omits ref, build strategy, Dockerfile, context,
+and port so it exercises remote HEAD and automatic source-build defaults.
 
 The existing GitHub PAT must already be configured. Its file digest and
 authentication status are checked before and after the test; the script never
@@ -211,7 +211,8 @@ service_id="$(printf '%s\n' "$service_json" | id_from_json)"
 test -n "$service_id"
 printf '%s\n' "$service_json" | grep -q '"repository": "'"$repository"'"'
 printf '%s\n' "$service_json" | grep -q '"ref": "HEAD"'
-printf '%s\n' "$service_json" | grep -q '"dockerfile": "Dockerfile"'
+printf '%s\n' "$service_json" | grep -q '"strategy": "auto"'
+printf '%s\n' "$service_json" | grep -q '"dockerfile": null'
 printf '%s\n' "$service_json" | grep -q '"context": "."'
 printf '%s\n' "$service_json" | grep -q '"port_mode": "automatic"'
 printf '%s\n' "$service_json" | grep -q '"resolved_internal_port": 3000'
@@ -220,6 +221,7 @@ release_json="$(remote "valpo release list '${service}' --project '${project}' -
 printf '%s\n' "$release_json"
 printf '%s\n' "$release_json" | grep -q '"status": "active"'
 printf '%s\n' "$release_json" | grep -Eq '"source_ref": "[0-9a-f]{40}"'
+printf '%s\n' "$release_json" | grep -q '"strategy": "dockerfile"'
 printf '%s\n' "$release_json" | grep -q '"internal_port": 3000'
 
 echo "[source-smoke] adding and verifying HTTPS domain"

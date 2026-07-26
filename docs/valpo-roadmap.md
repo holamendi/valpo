@@ -96,7 +96,7 @@ Exit criteria:
 - A fresh VPS can install Valpo, deploy `nginx:alpine`, add a public HTTPS domain, reboot, and continue serving the app.
 - A test project can be deleted without leaving containers, routes, or domains behind.
 - Long-running CLI workflows can wait for completion and fail with non-zero status on job failure or timeout.
-- The Valpo API is not publicly reachable unless explicit authentication has been configured.
+- The Valpo control API is not publicly reachable unless explicit authentication has been configured; narrowly scoped provider callbacks use protocol-specific authentication.
 - The smoke test can be rerun on the same host without manual cleanup.
 
 ## Phase 2: Managed Services And Unified Project Foundation
@@ -125,7 +125,7 @@ Deliverables:
 - Inject managed environment values only into dependent app services.
 - Restart or redeploy affected apps after binding.
 - Strict `valpo.toml` project manifest with dry-run and add/update-only reconciliation.
-- GitHub source and Docker build-target metadata, initially stored as unconnected configuration.
+- GitHub source and image build-target metadata, initially stored as unconnected configuration.
 - Health checks and readiness polling for service containers.
 - Refuse project deletion while any services remain.
 
@@ -155,32 +155,35 @@ Deliverables:
 
 Current gap: generated managed credentials are plaintext in SQLite and protected only by host/filesystem access controls. Do not claim encryption at rest until this phase ships.
 
-## Phase 3A: GitHub Integration And Dockerfile Deployments
+## Phase 3A: GitHub Integration And Source Deployments
 
 Goal: connect repositories and build/deploy on demand or webhook push.
 
 Bootstrap implemented:
 
 - CLI-managed, file-backed fine-grained PAT authentication for GitHub HTTPS fetches.
+- Per-server GitHub App creation through a one-time manifest flow on `github.<app-domain>`.
+- Private storage of the generated App key and webhook secret, with repository-scoped short-lived installation tokens for source fetches.
+- HMAC-verified, delivery-deduplicated push webhooks that enqueue matching `auto_deploy` source jobs.
 - Manifest-free source service creation and source/build/runtime updates through the public CLI.
 - Mandatory repository/ref/path preflight with exact commit resolution before configuration changes.
 - Service-owned source/build definitions, with detachment from shared manifest definitions on CLI updates.
 - Manual deploy from the configured branch or an explicit branch, tag, or commit SHA.
 - Dockerfile build logs, commit-based image tags, and git-backed releases.
+- Automatic Dockerfile/buildpack selection, explicit build strategies, pinned Paketo builds, per-target caches, timeouts, and release build metadata.
 - Automatic web-port resolution from explicit configuration, image `EXPOSE`, or the source-build port-3000 fallback.
 - Failed fetches leave configuration untouched; failed builds and health checks record failed releases and leave an active release untouched.
 
 Remaining deliverables:
 
-- Per-server GitHub App manifest setup and installation selection.
-- Webhook endpoint.
-- Replacement of the temporary PAT provider with short-lived GitHub App installation credentials.
-- Removal of the file-backed PAT login flow once the GitHub App path is complete and migration behavior is documented.
+- Multi-App credentials for servers that deploy repositories belonging to more than one GitHub account or organization.
+- Host-key-backed encryption and rotation for the GitHub App private key and webhook secret.
+- Removal of the file-backed PAT fallback after existing-host migration behavior and the source smoke test use the GitHub App path.
 
-Initial constraint:
+Current build constraint:
 
-- Support Dockerfile builds only.
-- Defer buildpacks until the Dockerfile path is reliable.
+- Support Dockerfile and Cloud Native Buildpacks builds that produce a local Docker image.
+- Defer custom builders per project, build secrets, Railpack, static output detection, and image rebase.
 
 Exit criteria:
 
@@ -276,7 +279,6 @@ Goal: improve usability and add carefully chosen advanced features.
 
 Potential deliverables:
 
-- Buildpacks.
 - Scheduled jobs.
 - Preview deployments.
 - Object storage backup target.

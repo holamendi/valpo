@@ -16,7 +16,7 @@ class ValpoCLIPayloadBuildersTest < Minitest::Test
 
     assert_equal 3000, payload.fetch("internal_port")
     assert_equal({"provider" => "github", "repository" => "acme/backend", "ref" => "main"}, payload.fetch("source"))
-    assert_equal({"dockerfile" => "Dockerfile", "context" => "."}, payload.fetch("build"))
+    assert_equal({}, payload.fetch("build"))
     assert_equal true, payload.fetch("deploy")
   end
 
@@ -32,6 +32,18 @@ class ValpoCLIPayloadBuildersTest < Minitest::Test
     assert_raises(Valpo::CLI::UsageError) do
       Valpo::CLI::PayloadBuilders::ServiceCreate.call(name: "cache", type: "redis", source: "github:acme/cache")
     end
+  end
+
+  def test_service_create_encodes_explicit_build_strategy
+    payload = Valpo::CLI::PayloadBuilders::ServiceCreate.call(
+      name: "web",
+      type: "web",
+      source: "github:acme/backend",
+      build_strategy: "buildpack",
+      context: "app"
+    )
+
+    assert_equal({"strategy" => "buildpack", "context" => "app"}, payload.fetch("build"))
   end
 
   def test_service_update_encodes_explicit_clears

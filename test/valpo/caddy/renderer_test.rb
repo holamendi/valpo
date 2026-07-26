@@ -3,18 +3,31 @@
 require "test_helper"
 
 class ValpoCaddyRendererTest < Minitest::Test
-  def test_supports_container_static_and_verification_routes
+  def test_supports_container_static_verification_and_restricted_proxy_routes
     renderer = Valpo::Caddy::Renderer.new
 
     output = renderer.render([
       {hostname: "hello.example.com", kind: "container", upstream: "valpo-hello:3000"},
       {hostname: "static.example.com", kind: "static", root: "/var/lib/valpo/releases/static"},
-      {hostname: "verify.example.com", kind: "verification", token: "abc123"}
+      {hostname: "verify.example.com", kind: "verification", token: "abc123"},
+      {
+        hostname: "github.apps.example.com",
+        kind: "restricted_proxy",
+        upstream: "127.0.0.1:7092",
+        path: "/integrations/github"
+      }
     ])
 
     assert_includes output, "hello.example.com {\n  reverse_proxy valpo-hello:3000\n}"
     assert_includes output, "static.example.com {\n  root * /var/lib/valpo/releases/static\n  file_server\n}"
     assert_includes output, "verify.example.com {\n  respond /.well-known/valpo-verification/abc123 \"abc123\" 200\n}"
+    assert_includes output, <<~CADDY.chomp
+      github.apps.example.com {
+        @allowed path /integrations/github /integrations/github/*
+        reverse_proxy @allowed 127.0.0.1:7092
+        respond 404
+      }
+    CADDY
   end
 
   def test_empty_routes_render_valid_generated_file

@@ -44,6 +44,9 @@ module Valpo
       errors.add(:service_id, "must reference a web service") if service && !service.web?
       errors.add(:hostname, "is required") if hostname.nil? || hostname.strip.empty?
       errors.add(:hostname, "must be a valid lowercase hostname") if hostname && !Valpo::Hostname.valid?(hostname)
+      if hostname && Valpo::Domains::Configuration.reserved_hostname?(hostname)
+        errors.add(:hostname, "is reserved for the GitHub integration")
+      end
       errors.add(:kind, "must be one of: #{KINDS.join(", ")}") unless KINDS.include?(kind)
       errors.add(:status, "must be one of: #{STATUSES.join(", ")}") unless STATUSES.include?(status)
       errors.add(:platform_domain_id, "is required for generated domains") if kind == "generated" && platform_domain_id.nil?

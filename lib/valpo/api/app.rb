@@ -45,6 +45,11 @@ module Valpo
 
       route do |r|
         response["Content-Type"] = "application/json"
+        r.on("integrations") do
+          r.hash_branches("/integrations")
+          not_found("Route not found")
+        end
+
         unauthorized = authenticate_request
         next unauthorized if unauthorized
 
@@ -72,6 +77,14 @@ module Valpo
 
       def jobs
         Valpo::Jobs::Queue.new
+      end
+
+      def github_setup
+        Valpo::GitHub::Setup.new
+      end
+
+      def github_webhook
+        Valpo::GitHub::Webhook.new(queue: jobs)
       end
 
       def deployment_lifecycle

@@ -12,8 +12,32 @@ class ValpoSourcesServiceConfiguratorTest < Minitest::Test
     )
 
     assert_equal "HEAD", normalized.dig(:source, "ref")
-    assert_equal "Dockerfile", normalized.dig(:build, "dockerfile")
+    assert_equal "auto", normalized.dig(:build, "strategy")
+    assert_nil normalized.dig(:build, "dockerfile")
     assert_equal ".", normalized.dig(:build, "context")
+  end
+
+  def test_dockerfile_input_selects_dockerfile_strategy
+    normalized = configurator.normalize_create(
+      source: {provider: "github", repository: "acme/backend"},
+      build: {dockerfile: "ops/Dockerfile"}
+    )
+
+    assert_equal(
+      {"strategy" => "dockerfile", "dockerfile" => "ops/Dockerfile", "context" => "."},
+      normalized.fetch(:build)
+    )
+  end
+
+  def test_rejects_dockerfile_with_an_incompatible_strategy
+    error = assert_raises Valpo::ValidationError do
+      configurator.normalize_create(
+        source: {provider: "github", repository: "acme/backend"},
+        build: {strategy: "buildpack", dockerfile: "Dockerfile"}
+      )
+    end
+
+    assert_match "dockerfile is only valid", error.message
   end
 
   def test_create_rolls_back_service_source_and_build_together
@@ -24,7 +48,7 @@ class ValpoSourcesServiceConfiguratorTest < Minitest::Test
         project:,
         service_attributes: {"name" => "web", "type" => "web"},
         source: {"provider" => "github", "repository" => "acme/backend", "ref" => "HEAD"},
-        build: {"dockerfile" => "Dockerfile", "context" => ".."}
+        build: {"strategy" => "dockerfile", "dockerfile" => "Dockerfile", "context" => ".."}
       )
     end
 

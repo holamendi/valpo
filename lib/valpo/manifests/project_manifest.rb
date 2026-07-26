@@ -10,7 +10,7 @@ module Valpo
       ROOT_KEYS = %w[schema project sources builds services].freeze
       PROJECT_KEYS = %w[name].freeze
       SOURCE_KEYS = %w[provider repository ref auto_deploy].freeze
-      BUILD_KEYS = %w[source dockerfile context].freeze
+      BUILD_KEYS = %w[source strategy dockerfile context].freeze
       APP_KEYS = %w[type build command port healthcheck depends_on].freeze
       MANAGED_KEYS = %w[type version].freeze
 
@@ -77,9 +77,18 @@ module Valpo
           validate_name!(name, "build name")
           validate_table!(config, "builds.#{name}")
           validate_keys!(config, BUILD_KEYS, "builds.#{name}")
+          strategy = optional_string(config, "strategy")&.downcase
+          strategy ||= config.key?("dockerfile") ? "dockerfile" : "auto"
+          unless Valpo::Builds::STRATEGIES.include?(strategy)
+            raise Valpo::ValidationError, "Unsupported build strategy: #{strategy}"
+          end
+          if strategy != "dockerfile" && config.key?("dockerfile")
+            raise Valpo::ValidationError, "builds.#{name}.dockerfile is only valid for dockerfile builds"
+          end
           [name, {
             "source" => required_string(config, "source"),
-            "dockerfile" => optional_relative_path(config, "dockerfile") || "Dockerfile",
+            "strategy" => strategy,
+            "dockerfile" => (optional_relative_path(config, "dockerfile") || "Dockerfile" if strategy == "dockerfile"),
             "context" => optional_relative_path(config, "context") || "."
           }]
         end

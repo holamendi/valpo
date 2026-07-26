@@ -178,7 +178,7 @@ class ValpoJobsWorkerTest < Minitest::Test
     {
       service: {name: "web", type: "web", command: [], internal_port: nil, healthcheck_path: nil},
       source: {provider: "github", repository: "acme/backend", ref: "HEAD"},
-      build: {dockerfile: "Dockerfile", context: "."},
+      build: {strategy: "dockerfile", dockerfile: "Dockerfile", context: "."},
       deploy: false
     }
   end
@@ -232,6 +232,7 @@ class ValpoJobsWorkerTest < Minitest::Test
 
       yield Valpo::Sources::Preflight::Result.new(
         checkout: "/tmp/checkout",
+        strategy: "dockerfile",
         dockerfile: "/tmp/checkout/Dockerfile",
         context: "/tmp/checkout",
         commit: "a" * 40,

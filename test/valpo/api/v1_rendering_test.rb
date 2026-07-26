@@ -41,6 +41,7 @@ class ValpoAPIV1ResourceRenderingTest < Minitest::Test
 
     assert_equal "acme/backend", Valpo::API::V1::Projects.render_source(source).fetch(:repository)
     assert_equal "main", Valpo::API::V1::Projects.render_source(source).fetch(:ref)
+    assert_equal "dockerfile", Valpo::API::V1::Projects.render_build_target(build).fetch(:strategy)
     assert_equal "docker/Dockerfile", Valpo::API::V1::Projects.render_build_target(build).fetch(:dockerfile)
     assert_equal source.id, Valpo::API::V1::Projects.render_build_target(build).fetch(:source_id)
   end
@@ -110,6 +111,26 @@ class ValpoAPIV1ResourceRenderingTest < Minitest::Test
     assert_equal platform.id, Valpo::API::V1::Services.render_domain(domain).fetch(:platform_domain_id)
     assert_equal true, Valpo::API::V1::System.render_domain(platform).fetch(:active)
     assert_nil Valpo::API::V1::System.render_domain(nil)
+  end
+
+  def test_release_representation_nests_build_metadata
+    service = create_app_service
+    release = create_release(
+      service:,
+      source_type: "git",
+      build_strategy: "buildpack",
+      build_metadata_json: JSON.generate(
+        "builder" => "example/builder@sha256:abc",
+        "buildpacks" => [{"id" => "paketo-buildpacks/ruby", "version" => "0.1.0"}],
+        "processes" => [{"type" => "web", "default" => true}]
+      )
+    )
+
+    output = Valpo::API::V1::Services.render_release(release)
+
+    assert_equal "buildpack", output.dig(:build, :strategy)
+    assert_equal "example/builder@sha256:abc", output.dig(:build, :builder)
+    assert_equal "paketo-buildpacks/ruby", output.dig(:build, :buildpacks, 0, "id")
   end
 
   def test_job_and_job_event_representations_parse_payloads

@@ -26,6 +26,16 @@ module Valpo
           token = route.fetch(:token)
           path = Valpo::Domains::ReachabilityVerifier.challenge_path(token)
           "#{hostname} {\n  respond #{path} \"#{token}\" 200\n}"
+        when "restricted_proxy"
+          upstream = route.fetch(:upstream)
+          path = route.fetch(:path)
+          <<~CADDY.chomp
+            #{hostname} {
+              @allowed path #{path} #{path}/*
+              reverse_proxy @allowed #{upstream}
+              respond 404
+            }
+          CADDY
         else
           raise Valpo::ValidationError, "Unsupported Caddy route kind: #{kind}"
         end

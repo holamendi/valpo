@@ -15,8 +15,9 @@ module Valpo
           option :healthcheck_path, desc: "Web health check path beginning with /"
           option :source, desc: "Source as PROVIDER:OWNER/REPOSITORY"
           option :ref, desc: "Configured branch, tag, commit, or remote HEAD"
+          option :build_strategy, values: Valpo::Builds::STRATEGIES, desc: "Build strategy: auto, dockerfile, or buildpack"
           option :dockerfile, desc: "Dockerfile path within the repository"
-          option :context, desc: "Docker build context within the repository"
+          option :context, desc: "Build context within the repository"
           option :deploy, type: :boolean, default: false, desc: "Deploy after validating and creating the service"
           wait_options
           example [
@@ -27,7 +28,7 @@ module Valpo
             "cache --project acme --type redis --version 8"
           ]
 
-          def call(name:, wait:, timeout:, api_url:, project: nil, type: nil, version: nil, command: nil, port: nil, healthcheck_path: nil, source: nil, ref: nil, dockerfile: nil, context: nil, deploy: false, config: nil, json: false, args: nil, **)
+          def call(name:, wait:, timeout:, api_url:, project: nil, type: nil, version: nil, command: nil, port: nil, healthcheck_path: nil, source: nil, ref: nil, build_strategy: nil, dockerfile: nil, context: nil, deploy: false, config: nil, json: false, args: nil, **)
             reject_extra_arguments!(args)
             project = required_option!(project, "--project")
             name = service_name(name)
@@ -41,6 +42,7 @@ module Valpo
               healthcheck_path:,
               source:,
               ref:,
+              build_strategy:,
               dockerfile:,
               context:,
               deploy:

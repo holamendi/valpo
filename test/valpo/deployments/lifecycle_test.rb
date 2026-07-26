@@ -64,6 +64,8 @@ class ValpoDeploymentsLifecycleTest < Minitest::Test
         image: "valpo/hello/web:abc",
         source_ref: "a" * 40,
         build_target_id: nil,
+        build_strategy: "buildpack",
+        build_metadata: {"builder" => "example/builder@sha256:abc"},
         internal_port: nil,
         healthcheck_path: nil,
         queue:,
@@ -86,6 +88,29 @@ class ValpoDeploymentsLifecycleTest < Minitest::Test
 
     assert_nil release.route_target
     assert_equal({}, docker.run_requests.first.fetch(:ports))
+    assert_equal %w[bundle exec sidekiq], docker.run_requests.first.fetch(:command_args)
+  end
+
+  def test_buildpack_command_runs_through_the_cnb_launcher
+    worker = create_app_service(name: "worker", kind: "worker", command: %w[bundle exec sidekiq])
+    docker = ValpoTestSupport::FakeDocker.new
+
+    run_job do |queue, job|
+      lifecycle(docker:).deploy_built_image(
+        service_id: worker.id,
+        image: "valpo/hello/worker:abc",
+        source_ref: "a" * 40,
+        build_target_id: nil,
+        build_strategy: "buildpack",
+        build_metadata: {"builder" => "example/builder@sha256:abc"},
+        internal_port: nil,
+        healthcheck_path: nil,
+        queue:,
+        job_id: job.id
+      )
+    end
+
+    assert_equal "/cnb/lifecycle/launcher", docker.run_requests.first.fetch(:entrypoint)
     assert_equal %w[bundle exec sidekiq], docker.run_requests.first.fetch(:command_args)
   end
 
@@ -227,6 +252,8 @@ class ValpoDeploymentsLifecycleTest < Minitest::Test
         image: "valpo/hello/backend:abc123",
         source_ref: "a" * 40,
         build_target_id: nil,
+        build_strategy: "dockerfile",
+        build_metadata: {"dockerfile" => "Dockerfile"},
         internal_port: nil,
         healthcheck_path: nil,
         queue:,
@@ -236,6 +263,8 @@ class ValpoDeploymentsLifecycleTest < Minitest::Test
 
     assert_equal "git", release.source_type
     assert_equal "a" * 40, release.source_ref
+    assert_equal "dockerfile", release.build_strategy
+    assert_equal({"dockerfile" => "Dockerfile"}, release.build_metadata)
     refute docker.executed?(:pull, "valpo/hello/backend:abc123")
   end
 
@@ -297,12 +326,71 @@ class ValpoDeploymentsLifecycleTest < Minitest::Test
     assert docker.executed?(:stop, "active")
   end
 
+  def test_delete_owned_source_service_removes_its_buildpack_caches
+    project = create_project
+    configuration = Valpo::Sources::ServiceConfigurator.new.normalize_create(
+      source: {provider: "github", repository: "acme/backend"},
+      build: {strategy: "buildpack"}
+    )
+    app = Valpo::Sources::ServiceConfigurator.new.create_service!(
+      project:,
+      service_attributes: {"name" => "web", "type" => "web"},
+      source: configuration.fetch(:source),
+      build: configuration.fetch(:build)
+    )
+    target_id = Valpo::AppServiceConfig[app.id].build_target_id
+    docker = ValpoTestSupport::FakeDocker.new
+    cache_manager = Valpo::Builds::CacheManager.new(docker:)
+
+    run_job do |queue, job|
+      lifecycle(docker:, build_cache_manager: cache_manager).delete_app_service(
+        service_id: app.id,
+        force: true,
+        queue:,
+        job_id: job.id
+      )
+    end
+
+    assert docker.executed?(:volume_rm, "valpo-cnb-build-#{target_id}", true)
+    assert docker.executed?(:volume_rm, "valpo-cnb-launch-#{target_id}", true)
+  end
+
   def test_project_delete_refuses_until_services_are_removed
     project = create_project
     create_app_service(project:)
     assert_raises(Valpo::ConflictError) do
       run_job { |queue, job| lifecycle(docker: ValpoTestSupport::FakeDocker.new).delete_project(project_id: project.id, queue:, job_id: job.id) }
     end
+  end
+
+  def test_project_delete_removes_manifest_buildpack_caches
+    project = create_project
+    source = Valpo::Source.create(
+      project_id: project.id,
+      name: "backend",
+      provider: "github",
+      repository: "acme/backend"
+    )
+    target = Valpo::BuildTarget.create(
+      project_id: project.id,
+      source_id: source.id,
+      name: "backend",
+      strategy: "buildpack"
+    )
+    docker = ValpoTestSupport::FakeDocker.new
+    cache_manager = Valpo::Builds::CacheManager.new(docker:)
+
+    run_job do |queue, job|
+      lifecycle(docker:, build_cache_manager: cache_manager).delete_project(
+        project_id: project.id,
+        queue:,
+        job_id: job.id
+      )
+    end
+
+    assert_nil Valpo::Project[project.id]
+    assert docker.executed?(:volume_rm, "valpo-cnb-build-#{target.id}", true)
+    assert docker.executed?(:volume_rm, "valpo-cnb-launch-#{target.id}", true)
   end
 
   def test_repair_restarts_stopped_and_recreates_missing_app_containers
@@ -328,14 +416,20 @@ class ValpoDeploymentsLifecycleTest < Minitest::Test
     yield queue, job
   end
 
-  def lifecycle(docker:, caddy: ValpoTestSupport::FakeCaddy.new, domain_verifier: ValpoTestSupport::FakeDomainVerifier.new)
-    deployment_components(docker:, caddy:, domain_verifier:).first
+  def lifecycle(
+    docker:,
+    caddy: ValpoTestSupport::FakeCaddy.new,
+    domain_verifier: ValpoTestSupport::FakeDomainVerifier.new,
+    build_cache_manager: nil
+  )
+    deployment_components(docker:, caddy:, domain_verifier:, build_cache_manager:).first
   end
 
   def deployment_components(
     docker:,
     caddy: ValpoTestSupport::FakeCaddy.new,
-    domain_verifier: ValpoTestSupport::FakeDomainVerifier.new
+    domain_verifier: ValpoTestSupport::FakeDomainVerifier.new,
+    build_cache_manager: nil
   )
     caddy_reconciler = Valpo::Caddy::Reconciler.new(caddy:)
     activator = Valpo::Deployments::Activator.new(caddy_reconciler:)
@@ -353,7 +447,8 @@ class ValpoDeploymentsLifecycleTest < Minitest::Test
       health_checker: ValpoTestSupport::FakeHealthChecker.new,
       caddy_reconciler:,
       activator:,
-      domain_orchestrator: domains
+      domain_orchestrator: domains,
+      build_cache_manager:
     )
     [lifecycle, domains]
   end

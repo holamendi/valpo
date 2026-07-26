@@ -36,4 +36,22 @@ class ValpoReleaseTest < Minitest::Test
     assert_match "internal_port", error.message
     assert_match "healthcheck_path", error.message
   end
+
+  def test_parses_and_validates_build_metadata
+    service = create_app_service
+    release = create_release(
+      service:,
+      source_type: "git",
+      build_strategy: "buildpack",
+      build_metadata_json: JSON.generate(
+        "builder" => "example/builder@sha256:abc",
+        "processes" => [{"type" => "web", "default" => true}]
+      )
+    )
+
+    assert_equal "example/builder@sha256:abc", release.build_metadata.fetch("builder")
+    assert_raises Sequel::ValidationFailed do
+      create_release(service:, build_strategy: "auto", build_metadata_json: "[]")
+    end
+  end
 end

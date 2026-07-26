@@ -91,7 +91,7 @@ class ValpoCLITest < Minitest::Test
     assert_empty stderr
     payload = client.requests.first.fetch(:payload)
     assert_equal({"provider" => "github", "repository" => "holamendi/smol-roda", "ref" => "HEAD"}, payload.fetch("source"))
-    assert_equal({"dockerfile" => "Dockerfile", "context" => "."}, payload.fetch("build"))
+    assert_equal({}, payload.fetch("build"))
     assert_equal true, payload.fetch("deploy")
     refute payload.key?("internal_port")
   end
@@ -279,14 +279,14 @@ class ValpoCLITest < Minitest::Test
     Valpo::Credentials::FileStore.new(token_path).write("github_pat_secret")
 
     status, stdout, = run_cli(
-      FakeAPIClient.new([]),
+      FakeAPIClient.new("authenticated" => false, "provider" => "github"),
       ["auth", "status", "github", "--config", config_path, "--json"]
     )
     assert_equal 0, status
     assert_equal true, JSON.parse(stdout).fetch("authenticated")
 
     status, stdout, = run_cli(
-      FakeAPIClient.new([]),
+      FakeAPIClient.new("authenticated" => false, "provider" => "github", "removed" => false),
       ["auth", "logout", "github", "--config", config_path, "--json"]
     )
     assert_equal 0, status
@@ -294,23 +294,19 @@ class ValpoCLITest < Minitest::Test
     refute_path_exists token_path
   end
 
-  def test_auth_login_uses_noecho_for_an_interactive_terminal
-    token_path = File.join(VALPO_TEST_DIR, "auth-tty", "github-token")
-    config_path = File.join(VALPO_TEST_DIR, "auth-tty.yml")
-    File.write(config_path, "github_token_path: #{token_path}\n")
-    input = FakeTTY.new("github_pat_secret\n")
+  def test_auth_login_prints_the_one_time_github_app_setup_url
+    setup_url = "https://github.apps.example.com/integrations/github/setup?token=one-time"
+    client = FakeAPIClient.new("setup_url" => setup_url, "expires_at" => "2026-07-26T13:00:00Z")
 
-    status, _stdout, stderr = run_cli(
-      FakeAPIClient.new([]),
-      ["auth", "login", "github", "--config", config_path],
-      input:
-    )
+    status, stdout, stderr = run_cli(client, %w[auth login github --organization acme])
 
     assert_equal 0, status
-    assert input.noecho_called
-    assert_includes stderr, "GitHub PAT:"
-    assert_includes stderr, "contents=read"
-    refute_includes stderr, "github_pat_secret"
+    assert_includes stdout, "create and install the GitHub App"
+    assert_includes stdout, setup_url
+    assert_empty stderr
+    assert_equal :post, client.requests.first.fetch(:method)
+    assert_equal "/v1/auth/github", client.requests.first.fetch(:path)
+    assert_equal({"organization" => "acme"}, client.requests.first.fetch(:payload))
   end
 
   def test_auth_login_does_not_store_a_token_rejected_by_github
@@ -372,7 +368,7 @@ class ValpoCLITest < Minitest::Test
         "port_mode" => "automatic",
         "resolved_internal_port" => 3000,
         "source" => {"provider" => "github", "repository" => "acme/backend", "ref" => "HEAD", "status" => "connected"},
-        "build" => {"dockerfile" => "Dockerfile", "context" => "."}
+        "build" => {"strategy" => "dockerfile", "dockerfile" => "Dockerfile", "context" => "."}
       },
       "dependencies" => [],
       "created_at" => "2026-07-14T00:00:00Z"
@@ -383,6 +379,7 @@ class ValpoCLITest < Minitest::Test
     assert_equal 0, status
     assert_includes stdout, "github:acme/backend"
     assert_includes stdout, "HEAD"
+    assert_match(/build strategy\s+dockerfile/, stdout)
     assert_includes stdout, "Dockerfile"
     assert_match(/port policy\s+automatic/, stdout)
     assert_match(/active port\s+3000/, stdout)
@@ -498,28 +495,6 @@ class ValpoCLITest < Minitest::Test
       raise response if response.is_a?(StandardError)
 
       response
-    end
-  end
-
-  class FakeTTY
-    attr_reader :noecho_called
-
-    def initialize(value)
-      @value = value
-      @noecho_called = false
-    end
-
-    def tty?
-      true
-    end
-
-    def noecho
-      @noecho_called = true
-      yield self
-    end
-
-    def gets
-      @value
     end
   end
 

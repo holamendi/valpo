@@ -21,11 +21,12 @@ module Valpo
         command("build", "--file", dockerfile, "--tag", tag, context)
       end
 
-      def run_command(name:, image:, network:, labels: {}, env: {}, ports: {}, volumes: {}, detach: true, restart_policy: nil, command_args: [])
+      def run_command(name:, image:, network:, labels: {}, env: {}, ports: {}, volumes: {}, detach: true, restart_policy: nil, entrypoint: nil, command_args: [])
         args = ["run"]
         args << "--detach" if detach
         args += ["--name", name, "--network", network]
         args += ["--restart", restart_policy] if restart_policy
+        args += ["--entrypoint", entrypoint] if entrypoint
         labels.sort.each { |key, value| args += ["--label", "#{key}=#{value}"] }
         env.sort.each { |key, value| args += ["--env", "#{key}=#{value}"] }
         ports.sort.each { |host, container| args += ["--publish", "#{host}:#{container}"] }
