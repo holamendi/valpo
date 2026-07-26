@@ -1,8 +1,10 @@
 # frozen_string_literal: true
 
 require "json"
+require "openssl"
 require "rack/test"
 require "test_helper"
+require "uri"
 
 class ValpoAPIAppTest < Minitest::Test
   include Rack::Test::Methods
@@ -94,7 +96,8 @@ class ValpoAPIAppTest < Minitest::Test
     assert_equal 202, last_response.status
     assert_equal "create_source_service", json.fetch("type")
     assert_equal "HEAD", json.dig("payload", "source", "ref")
-    assert_equal "Dockerfile", json.dig("payload", "build", "dockerfile")
+    assert_equal "auto", json.dig("payload", "build", "strategy")
+    assert_nil json.dig("payload", "build", "dockerfile")
     assert_equal true, json.dig("payload", "deploy")
     assert_equal 0, Valpo::Service.where(project_id: project.id).count
     assert_equal 0, Valpo::Source.where(project_id: project.id).count
@@ -282,7 +285,7 @@ class ValpoAPIAppTest < Minitest::Test
       project:,
       service_attributes: {"name" => "web", "type" => "web"},
       source: {"provider" => "github", "repository" => "acme/backend", "ref" => "HEAD"},
-      build: {"dockerfile" => "Dockerfile", "context" => "."}
+      build: {"strategy" => "dockerfile", "dockerfile" => "Dockerfile", "context" => "."}
     )
     create_release(service:, status: "active", internal_port: 3000)
 
@@ -463,6 +466,83 @@ class ValpoAPIAppTest < Minitest::Test
     get "/v1/system/app-domain"
     assert_nil json["active"]
     assert_equal "apps.example.com", json.dig("candidate", "hostname")
+  end
+
+  def test_github_app_setup_uses_a_public_one_time_url_while_control_api_stays_authenticated
+    create_platform_domain
+
+    with_api_token("secret") do
+      post_json "/v1/auth/github", {}
+      assert_equal 401, last_response.status
+
+      header "Authorization", "Bearer secret"
+      post_json "/v1/auth/github", organization: "acme"
+      assert_equal 201, last_response.status
+      setup_uri = URI(json.fetch("setup_url"))
+      assert_equal "github.apps.example.com", setup_uri.host
+
+      header "Authorization", nil
+      get setup_uri.request_uri
+      assert_equal 200, last_response.status
+      assert_equal "text/html", last_response.media_type
+      assert_includes last_response.body, "https://github.com/organizations/acme/settings/apps/new"
+      assert_includes last_response.body, "github.apps.example.com/integrations/github/webhook"
+      assert_equal "no-store", last_response.headers.fetch("Cache-Control")
+      assert_equal "no-referrer", last_response.headers.fetch("Referrer-Policy")
+
+      get "/v1/auth/github"
+      assert_equal 401, last_response.status
+    end
+  end
+
+  def test_github_webhook_rejects_unsigned_requests_without_api_authentication
+    with_api_token("secret") do
+      post "/integrations/github/webhook", "{}", "CONTENT_TYPE" => "application/json"
+
+      assert_equal 401, last_response.status
+      assert_equal "Invalid GitHub webhook signature", json.fetch("message")
+    end
+  end
+
+  def test_github_integration_homepage_is_public_but_does_not_expose_control_state
+    with_api_token("secret") do
+      get "/integrations/github"
+
+      assert_equal 200, last_response.status
+      assert_equal "text/html", last_response.media_type
+      assert_includes last_response.body, "signed webhooks"
+      refute_includes last_response.body, "app_id"
+    end
+  end
+
+  def test_github_webhook_accepts_a_signed_ping_without_api_authentication
+    credentials = Valpo::GitHub::Credentials.new(Valpo.config.github_app_credentials_path)
+    credentials.write(
+      "app_id" => "123",
+      "app_domain" => "apps.example.com",
+      "client_id" => "Iv1.client",
+      "owner" => "octocat",
+      "slug" => "valpo-test",
+      "pem" => OpenSSL::PKey::RSA.generate(1024).to_pem,
+      "webhook_secret" => "hook-secret"
+    )
+    body = JSON.generate("zen" => "Keep it logically awesome.")
+    signature = "sha256=#{OpenSSL::HMAC.hexdigest("SHA256", "hook-secret", body)}"
+
+    with_api_token("secret") do
+      post "/integrations/github/webhook", body, {
+        "CONTENT_TYPE" => "application/json",
+        "HTTP_X_GITHUB_EVENT" => "ping",
+        "HTTP_X_GITHUB_DELIVERY" => "delivery-ping",
+        "HTTP_X_HUB_SIGNATURE_256" => signature
+      }
+
+      assert_equal 202, last_response.status
+      assert_equal false, json.fetch("duplicate")
+      assert_equal [], json.fetch("jobs")
+    end
+  ensure
+    credentials&.delete
   end
 
   def test_running_web_service_keeps_its_last_verified_domain

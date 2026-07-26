@@ -56,6 +56,25 @@ class ValpoSourcesGitHubTest < Minitest::Test
     assert_equal %w[first-token second-token], fetches.map { |environment, _command| environment.fetch("VALPO_GIT_ASKPASS_TOKEN") }
   end
 
+  def test_resolves_repository_scoped_tokens
+    repositories = []
+    runner = FakeRunner.new
+    client = Valpo::Sources::GitHub.new(
+      token: -> {
+        repositories << it
+        "installation-token"
+      },
+      runner:
+    )
+
+    client.checkout(
+      source: Source.new(repository: "acme/backend", ref: "main"),
+      destination: "/tmp/repository-token"
+    )
+
+    assert_equal ["acme/backend"], repositories
+  end
+
   def test_reports_inaccessible_repositories_invalid_credentials_and_missing_refs
     cases = {
       "Repository not found" => nil,

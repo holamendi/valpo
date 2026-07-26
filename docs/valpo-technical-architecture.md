@@ -26,6 +26,7 @@ Current host stack:
 - Ruby 4.0, Roda, Sequel, SQLite, Puma, and Zeitwerk;
 - a custom SQLite-backed job queue and one worker process;
 - Docker Engine through a strict CLI wrapper;
+- Cloud Native Buildpacks through pinned `pack` and Paketo builder versions;
 - Caddy through generated configuration and an explicit reload boundary;
 - systemd units and Ubuntu packaging;
 - a bundled Ruby CLI built with `dry-cli`.
@@ -91,7 +92,11 @@ Each definition declares its supported options. Managed definitions also declare
 
 ### Sources, Builds, And Manifests
 
-GitHub HTTPS fetches use a CLI-managed fine-grained PAT behind `Sources::Fetcher`. Repository/ref/Dockerfile/context preflight resolves an exact commit before source-backed configuration mutates. `Builds::Orchestrator` performs the cohesive checkout-to-image-to-release pipeline.
+GitHub HTTPS fetches prefer short-lived, repository-scoped installation tokens minted by a per-server GitHub App behind `Sources::Fetcher`; the file-backed fine-grained PAT remains a temporary migration fallback. Repository/ref/strategy/context preflight resolves an exact commit and chooses Dockerfile or buildpack execution before source-backed configuration mutates. `Builds::Orchestrator` serializes builds per target and dispatches to a Dockerfile or Cloud Native Buildpacks backend. Both backends stream output, share a build timeout, and produce release build metadata.
+
+The App is created through GitHub's manifest flow. After wildcard app-domain verification, Caddy reserves `github.<app-domain>` and proxies only `/integrations/github` to the local API. One-time setup state protects the manifest callback, the generated private key and webhook secret are stored in a mode-`0600` file, and installation redirects are checked with an App JWT. Signed `push` events are deduplicated by delivery ID and enqueue exact-commit deploy jobs for matching `auto_deploy` sources.
+
+The manifest creates one private App owned by either a personal account or one selected organization. A private App cannot span repository owners, so multi-owner servers require a future multi-App credential model.
 
 `Manifests::Planner` computes preview actions without mutation. `Manifests::Reconciler` applies the unchanged `valpo.toml` schema through service creation, managed lifecycle, dependency, and deployment collaborators. Omitted resources are retained.
 
@@ -110,7 +115,7 @@ source or registry image
         -> retire prior container
 ```
 
-Current inputs are registry images and GitHub Dockerfile builds. GitLab, buildpacks, and static uploads are proposed inputs, not implemented adapters.
+Current inputs are registry images and GitHub source builds. Source build targets support `auto`, `dockerfile`, and `buildpack`; `auto` uses a context-root Dockerfile when present and otherwise selects buildpacks. GitLab and static uploads are proposed inputs, not implemented adapters.
 
 ## Data Model
 
@@ -139,7 +144,7 @@ Important ownership and field conventions:
 - `AppServiceConfig` stores `build_target_id`, command JSON, nullable `internal_port`, and nullable `healthcheck_path`.
 - `ManagedServiceConfig` stores version, image, plan, runtime names/address, port, and plaintext credential JSON.
 - `ServiceDependency` links one app service to one managed service and stores generated environment JSON.
-- `Release` stores source/artifact identity, resolved runtime configuration, container/route identity, state, and activation time.
+- `Release` stores source/artifact identity, resolved build strategy and metadata, runtime configuration, container/route identity, state, and activation time.
 - `Domain` stores custom or generated hostname verification and projected route state.
 - `PlatformDomain` stores the active or candidate wildcard base and verification state.
 - `Job` stores type, payload, progress, error, lock, start, finish, and creation state; `JobEvent` stores stdout/stderr/system messages.
@@ -167,6 +172,7 @@ Implemented packaging uses the following durable roots:
 /var/lib/valpo/
   valpo.db
   secrets/
+    github-app.json
     github-token
   caddy/
     valpo.caddy
@@ -179,7 +185,7 @@ Implemented packaging uses the following durable roots:
   worker.log
 ```
 
-Uploads, immutable static releases, backups, exports, build caches, and a host encryption key are proposed future directories. They must not be documented as implemented until their owning features exist.
+Build-target locks live beside the SQLite database. Buildpack build and launch caches are deterministic Docker volumes rather than host directories. Uploads, immutable static releases, backups, exports, and a host encryption key are proposed future directories. They must not be documented as implemented until their owning features exist.
 
 ## Security: Implemented And Proposed
 
@@ -190,13 +196,16 @@ Implemented today:
 - constant-time bearer comparison;
 - strict JSON/query validation and generic client-facing 500 errors;
 - private Docker networking for managed services;
-- a file-backed GitHub PAT kept out of API payloads, jobs, manifests, sources, builds, and releases;
+- a file-backed GitHub App key and webhook secret used for short-lived installation credentials;
+- HMAC verification and delivery-ID deduplication for the public GitHub webhook;
+- a temporary file-backed GitHub PAT fallback kept out of API payloads, jobs, manifests, sources, builds, and releases;
 - redaction of generated secret environment values unless explicitly revealed.
 
 Known gaps and proposed behavior:
 
 - API tokens are host-wide; scoped, revocable tokens are not implemented.
 - Managed credentials are plaintext JSON in SQLite. Host-key-backed encryption at rest and key rotation are near-term security work.
+- GitHub App credentials are plaintext JSON in a mode-`0600` host file. Host-key-backed encryption and key rotation are not implemented.
 - mTLS and first-class private-network/dashboard enrollment are not implemented.
 - Audit logs, role-based access control, and secret migration policies are future work.
 

@@ -24,6 +24,7 @@ module Valpo
               optional(:ref).filled(:string, format?: NONEMPTY)
             end
             optional(:build).hash do
+              optional(:strategy).filled(:string, included_in?: Valpo::Builds::STRATEGIES)
               optional(:dockerfile).filled(:string, format?: NONEMPTY)
               optional(:context).filled(:string, format?: NONEMPTY)
             end
@@ -82,6 +83,7 @@ module Valpo
               optional(:ref).filled(:string, format?: NONEMPTY)
             end
             optional(:build).hash do
+              optional(:strategy).filled(:string, included_in?: Valpo::Builds::STRATEGIES)
               optional(:dockerfile).filled(:string, format?: NONEMPTY)
               optional(:context).filled(:string, format?: NONEMPTY)
             end
@@ -128,11 +130,13 @@ module Valpo
         end
 
         def render_release(release)
-          Fields.call(
+          output = Fields.call(
             release, :id, :service_id, :build_target_id, :version, :source_type, :source_ref, :artifact_ref,
             :image_digest, :status, :internal_port, :healthcheck_path, :container_name, :route_target,
             :activated_at, :created_at
           )
+          output[:build] = release.build_strategy && render_release_build(release)
+          output
         end
 
         def add_app_configuration(output, service)
@@ -162,7 +166,16 @@ module Valpo
           end
         end
 
-        private_class_method :add_app_configuration, :add_managed_configuration, :dependencies
+        def render_release_build(release)
+          metadata = release.build_metadata || {}
+          {strategy: release.build_strategy}.tap do |output|
+            %w[dockerfile builder buildpacks processes].each do
+              output[it.to_sym] = metadata[it] if metadata.key?(it)
+            end
+          end
+        end
+
+        private_class_method :add_app_configuration, :add_managed_configuration, :dependencies, :render_release_build
       end
     end
   end

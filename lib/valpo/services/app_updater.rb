@@ -26,6 +26,7 @@ module Valpo
             provider: source.fetch("provider"),
             repository: source.fetch("repository"),
             ref: source.fetch("ref"),
+            strategy: build.fetch("strategy"),
             dockerfile: build.fetch("dockerfile"),
             context: build.fetch("context")
           ) do
@@ -101,7 +102,7 @@ module Valpo
           service_status: service.status,
           app: app.values.slice(:build_target_id, :command_json, :internal_port, :healthcheck_path),
           source: source&.values&.slice(:id, :provider, :repository, :ref, :status),
-          build: build&.values&.slice(:id, :source_id, :dockerfile, :context)
+          build: build&.values&.slice(:id, :source_id, :strategy, :dockerfile, :context)
         }
       end
 

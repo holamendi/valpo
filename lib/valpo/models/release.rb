@@ -1,12 +1,14 @@
 # frozen_string_literal: true
 
 require "sequel/model"
+require "json"
 require "time"
 
 module Valpo
   class Release < Sequel::Model(:releases)
     STATUSES = %w[pending ready active inactive failed].freeze
     SOURCE_TYPES = %w[registry git].freeze
+    BUILD_STRATEGIES = Valpo::Builds::RESOLVED_STRATEGIES
 
     many_to_one :service
     many_to_one :build_target
@@ -32,6 +34,7 @@ module Valpo
     def before_validation
       self.status ||= "pending"
       self.version ||= self.class.next_version(service_id) if service_id
+      self.build_metadata_json ||= "{}"
       super
     end
 
@@ -47,6 +50,10 @@ module Valpo
       errors.add(:version, "is required") if version.nil?
       errors.add(:source_type, "must be one of: #{SOURCE_TYPES.join(", ")}") unless SOURCE_TYPES.include?(source_type)
       errors.add(:status, "must be one of: #{STATUSES.join(", ")}") unless STATUSES.include?(status)
+      if build_strategy && !BUILD_STRATEGIES.include?(build_strategy)
+        errors.add(:build_strategy, "must be one of: #{BUILD_STRATEGIES.join(", ")}")
+      end
+      errors.add(:build_metadata_json, "must be a JSON object") unless build_metadata.is_a?(Hash)
       errors.add(:internal_port, "must be greater than 0") if internal_port && internal_port <= 0
       errors.add(:healthcheck_path, "must start with /") if healthcheck_path && !healthcheck_path.start_with?("/")
     end
@@ -67,6 +74,12 @@ module Valpo
 
     def fail!
       update(status: "failed")
+    end
+
+    def build_metadata
+      JSON.parse(build_metadata_json || "{}")
+    rescue JSON::ParserError
+      nil
     end
   end
 end

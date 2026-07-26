@@ -96,10 +96,11 @@ valpo service create web --project acme \
   --deploy
 ```
 
-`--ref` defaults to remote `HEAD`, `--dockerfile` defaults to `Dockerfile`, and `--context` defaults to `.`. The repository, ref, Dockerfile, and context are validated before any service configuration is created. Use `service update` to persist source, build, command, health-check, or port changes; `--deploy` validates, applies, and deploys the update as one operation.
+`--ref` defaults to remote `HEAD`, `--build-strategy` defaults to `auto`, and `--context` defaults to `.`. Auto builds use `<context>/Dockerfile` when present and otherwise use Cloud Native Buildpacks. Use `--build-strategy dockerfile` or `--dockerfile PATH` to require a Dockerfile, and `--build-strategy buildpack` to ignore one. The repository, ref, context, and selected build inputs are validated before any service configuration is created. No image is built unless deployment is requested. Use `service update` to persist source, build, command, health-check, or port changes; `--deploy` validates, applies, and deploys the update as one operation.
 
 ```bash
 valpo service update web --project acme --ref release --deploy
+valpo service update web --project acme --build-strategy buildpack --deploy
 valpo service update web --project acme --clear-command --clear-healthcheck --clear-port
 ```
 
@@ -120,9 +121,9 @@ Registry-image deployment remains available as an explicit alternative:
 valpo service deploy web --project acme --image ghcr.io/acme/web:latest
 ```
 
-`--image` and `--ref` are mutually exclusive. Source builds run in the worker and stream Git fetch, Docker build, health-check, and release events through the normal job output.
+`--image` and `--ref` are mutually exclusive. Source builds run in the worker and stream Git fetch, Dockerfile or buildpack output, health-check, and release events through the normal job output. Buildpack workers require an explicit service command.
 
-Authenticate GitHub locally with a non-echoing prompt:
+Connect GitHub with a private, per-server GitHub App:
 
 ```bash
 valpo auth login github
@@ -130,13 +131,23 @@ valpo auth status github
 valpo auth logout github
 ```
 
-Interactive login links to GitHub's prefilled fine-grained-token form with read-only Contents permission, then validates the PAT with GitHub before storing it. This proves the token is recognized and identifies its account; repository selection is still verified by the Git fetch during deployment.
+`auth login` requires a verified default app domain and prints a one-time HTTPS setup URL. Open it, name the private GitHub App, create it from Valpo's manifest, and choose the repositories it may access. Valpo reserves `github.<app-domain>` for the manifest callback and signed push webhook. The App requests read-only Contents permission and the `push` event.
 
-`auth login` writes the configured private credential file directly after validation; it does not send the PAT to the Valpo API or put it in a job. For secret-manager automation, pipe one line with `--with-token`. There is intentionally no token-value option because command arguments can leak through shell history and process listings.
+A private GitHub App can only be installed on its owning account. Use `--organization ORG` when the repositories belong to an organization; omit it for repositories owned by your personal account.
+
+```bash
+valpo auth login github --organization acme
+```
+
+GitHub returns the App ID, private key, and webhook secret directly to the server callback. Packaged hosts store them in `/var/lib/valpo/secrets/github-app.json` with mode `0600`. Source fetches mint short-lived installation tokens for the requested repository; private keys, webhook secrets, and installation tokens never enter manifests, API payloads, jobs, Git remotes, logs, or process arguments.
+
+The fine-grained PAT path remains as a temporary migration fallback. Pipe one token line explicitly with `--with-token`; there is intentionally no token-value option because command arguments can leak through shell history and process listings.
 
 ```bash
 op read op://vault/github-pat | valpo auth login github --with-token
 ```
+
+`auth logout github` removes local credentials only. It does not uninstall or delete the GitHub App on GitHub.
 
 ## Output
 

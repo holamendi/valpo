@@ -68,6 +68,20 @@ class ValpoAPIV1ResourceContractsTest < Minitest::Test
     refute contract(:update_service).call(build: {}).success?
   end
 
+  def test_build_strategy_accepts_only_public_values
+    assert contract(:create_service).call(
+      name: "web",
+      type: "web",
+      source: {provider: "github", repository: "acme/web"},
+      build: {strategy: "buildpack"}
+    ).success?
+    refute contract(:create_service).call(
+      name: "web",
+      type: "web",
+      build: {strategy: "railpack"}
+    ).success?
+  end
+
   def test_query_contracts_coerce_integers_but_accept_only_literal_booleans
     tail = contract(:tail_query).call("tail" => "20")
     assert tail.success?

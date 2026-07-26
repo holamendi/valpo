@@ -5,12 +5,15 @@ require "time"
 
 module Valpo
   class BuildTarget < Sequel::Model(:build_targets)
+    STRATEGIES = Valpo::Builds::STRATEGIES
+
     many_to_one :project
     many_to_one :source
     many_to_one :owner_service, class: "Valpo::Service", key: :owner_service_id
 
     def before_validation
-      self.dockerfile ||= "Dockerfile"
+      self.strategy ||= dockerfile ? "dockerfile" : "auto"
+      self.dockerfile ||= "Dockerfile" if strategy == "dockerfile"
       self.context ||= "."
       super
     end
@@ -37,13 +40,19 @@ module Valpo
       source = Valpo::Source[source_id] if source_id
       errors.add(:source_id, "must belong to the same project") if source && source.project_id != project_id
       errors.add(:name, "must use lowercase letters, numbers, and dashes") unless name&.match?(Valpo::Project::NAME_PATTERN)
-      errors.add(:dockerfile, "must be relative") if absolute_path?(dockerfile)
-      errors.add(:context, "must be relative") if absolute_path?(context)
+      errors.add(:strategy, "must be one of: #{STRATEGIES.join(", ")}") unless STRATEGIES.include?(strategy)
+      if strategy == "dockerfile"
+        errors.add(:dockerfile, "is required for dockerfile builds") if dockerfile.nil? || dockerfile.empty?
+      elsif dockerfile
+        errors.add(:dockerfile, "is only valid for dockerfile builds")
+      end
+      errors.add(:dockerfile, "must be relative") if dockerfile && invalid_relative_path?(dockerfile)
+      errors.add(:context, "must be relative") if invalid_relative_path?(context)
     end
 
     private
 
-    def absolute_path?(value)
+    def invalid_relative_path?(value)
       return true if value.nil? || value.empty?
 
       path = Pathname.new(value)

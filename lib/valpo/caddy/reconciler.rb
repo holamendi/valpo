@@ -3,8 +3,9 @@
 module Valpo
   module Caddy
     class Reconciler
-      def initialize(caddy:)
+      def initialize(caddy:, config: Valpo.config || Valpo::Config.load)
         @caddy = caddy
+        @config = config
       end
 
       def apply(queue: nil, job_id: nil, override_release: nil, exclude_service_id: nil, extra_routes: [])
@@ -12,6 +13,7 @@ module Valpo
           override_release:,
           exclude_service_id:
         )
+        routes.concat(system_routes)
         routes.concat(extra_routes)
         event(queue, job_id, "system", "Applying Caddy config")
         caddy.write_config(routes)
@@ -24,7 +26,25 @@ module Valpo
 
       private
 
-      attr_reader :caddy
+      attr_reader :caddy, :config
+
+      def system_routes
+        platform_domain = Valpo::Domains::Configuration.active
+        return [] unless platform_domain
+
+        [{
+          hostname: Valpo::GitHub::Setup.hostname(platform_domain.hostname),
+          kind: "restricted_proxy",
+          upstream: api_upstream,
+          path: Valpo::GitHub::Setup::INTEGRATION_PREFIX
+        }]
+      end
+
+      def api_upstream
+        host = config.api_host.to_s
+        host = "[#{host}]" if host.include?(":") && !host.start_with?("[")
+        "#{host}:#{config.api_port}"
+      end
 
       def routes_and_targets(override_release:, exclude_service_id:)
         routes = []

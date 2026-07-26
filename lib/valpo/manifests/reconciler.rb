@@ -53,7 +53,8 @@ module Valpo
           build = Valpo::BuildTarget.where(project_id: project.id, name:).first
           attributes = {
             source_id: sources.fetch(config.fetch("source")).id,
-            dockerfile: config.fetch("dockerfile"), context: config.fetch("context"), owner_service_id: nil
+            strategy: config.fetch("strategy"), dockerfile: config.fetch("dockerfile"),
+            context: config.fetch("context"), owner_service_id: nil
           }
           if build
             build.update(attributes)

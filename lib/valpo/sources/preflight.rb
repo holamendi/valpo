@@ -7,13 +7,13 @@ module Valpo
     class Preflight
       COMMIT_PATTERN = /\A[0-9a-f]{40,64}\z/i
       Candidate = Data.define(:provider, :repository, :ref)
-      Result = Data.define(:checkout, :dockerfile, :context, :commit, :ref)
+      Result = Data.define(:checkout, :strategy, :dockerfile, :context, :commit, :ref)
 
       def initialize(fetcher:)
         @fetcher = fetcher
       end
 
-      def with_checkout(provider:, repository:, ref: "HEAD", dockerfile: "Dockerfile", context: ".")
+      def with_checkout(provider:, repository:, ref: "HEAD", strategy: "auto", dockerfile: nil, context: ".")
         selected_ref = blank_to_default(ref, "HEAD")
         source = Candidate.new(provider:, repository:, ref: selected_ref)
 
@@ -24,10 +24,19 @@ module Valpo
             raise Valpo::ValidationError, "Git revision lookup returned an invalid commit SHA"
           end
 
+          context_value = blank_to_default(context, ".")
+          checked_context = checked_path(checkout, context_value, type: :directory)
+          resolved_strategy, checked_dockerfile = resolve_strategy(
+            checkout:,
+            strategy:,
+            dockerfile:,
+            context: context_value
+          )
           result = Result.new(
             checkout:,
-            dockerfile: checked_path(checkout, blank_to_default(dockerfile, "Dockerfile"), type: :file),
-            context: checked_path(checkout, blank_to_default(context, "."), type: :directory),
+            strategy: resolved_strategy,
+            dockerfile: checked_dockerfile,
+            context: checked_context,
             commit: commit.downcase,
             ref: selected_ref
           )
@@ -38,6 +47,23 @@ module Valpo
       private
 
       attr_reader :fetcher
+
+      def resolve_strategy(checkout:, strategy:, dockerfile:, context:)
+        case strategy
+        when "dockerfile"
+          ["dockerfile", checked_path(checkout, blank_to_default(dockerfile, "Dockerfile"), type: :file)]
+        when "buildpack"
+          ["buildpack", nil]
+        when "auto"
+          candidate = File.join(context, "Dockerfile")
+          unresolved = File.join(checkout, candidate)
+          return ["buildpack", nil] unless File.exist?(unresolved) || File.symlink?(unresolved)
+
+          ["dockerfile", checked_path(checkout, candidate, type: :file)]
+        else
+          raise Valpo::ValidationError, "Unsupported build strategy: #{strategy}"
+        end
+      end
 
       def checked_path(checkout, relative_path, type:)
         root = File.realpath(checkout)

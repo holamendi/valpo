@@ -15,12 +15,16 @@ module Valpo
             reject_extra_arguments!(args)
             provider = github!(provider)
             store, path = credential_store(config)
-            configured = !store.read.nil?
-            result = {"authenticated" => configured, "provider" => provider, "path" => path}
+            app_result = context(api_url:, config:, json:).request(:get, "/v1/auth/github")
+            result = if app_result.fetch("authenticated") || !store.read
+              app_result
+            else
+              {"authenticated" => true, "provider" => provider, "mode" => "pat", "path" => path}
+            end
             if json
               @out.puts JSON.generate(result)
             else
-              @out.puts configured ? "GitHub authentication is configured" : "GitHub authentication is not configured"
+              @out.puts result.fetch("authenticated") ? "GitHub authentication is configured" : "GitHub authentication is not configured"
             end
           end
         end

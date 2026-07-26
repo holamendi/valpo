@@ -7,6 +7,7 @@ module Valpo
         def self.call(
           source: nil,
           ref: nil,
+          build_strategy: nil,
           dockerfile: nil,
           context: nil,
           command: nil,
@@ -22,12 +23,18 @@ module Valpo
             raise UsageError, "--healthcheck-path and --clear-healthcheck cannot be used together"
           end
           raise UsageError, "--port and --clear-port cannot be used together" if port && clear_port
+          if build_strategy && !Valpo::Builds::STRATEGIES.include?(build_strategy)
+            raise UsageError, "--build-strategy must be auto, dockerfile, or buildpack"
+          end
+          if dockerfile && build_strategy && build_strategy != "dockerfile"
+            raise UsageError, "--dockerfile requires --build-strategy dockerfile"
+          end
 
           payload = {}
           source_changes = source ? source_spec(source) : {}
           source_changes["ref"] = ref if ref
           payload["source"] = source_changes unless source_changes.empty?
-          build_changes = {"dockerfile" => dockerfile, "context" => context}.compact
+          build_changes = {"strategy" => build_strategy, "dockerfile" => dockerfile, "context" => context}.compact
           payload["build"] = build_changes unless build_changes.empty?
           payload["command"] = clear_command ? [] : command if command || clear_command
           payload["internal_port"] = clear_port ? nil : positive_integer(port) if port || clear_port

@@ -9,7 +9,7 @@ module Valpo
 
       def normalize_create(source:, build:)
         validate_keys!(source, %w[provider repository ref], "source")
-        validate_keys!(build || {}, %w[dockerfile context], "build")
+        validate_keys!(build || {}, %w[strategy dockerfile context], "build")
         {
           source: normalize_source(source, fallback: nil),
           build: normalize_build(build, fallback: nil)
@@ -18,7 +18,7 @@ module Valpo
 
       def desired_for(service:, source_changes:, build_changes:)
         validate_keys!(source_changes || {}, %w[provider repository ref], "source")
-        validate_keys!(build_changes || {}, %w[dockerfile context], "build")
+        validate_keys!(build_changes || {}, %w[strategy dockerfile context], "build")
         current_build = Valpo::AppServiceConfig[service.id]&.build_target
         current_source = current_build&.source
         {
@@ -52,6 +52,7 @@ module Valpo
             owner_service_id: service.id,
             source_id: source_record.id,
             name: available_name(Valpo::BuildTarget, project.id, service.name),
+            strategy: build.fetch("strategy"),
             dockerfile: build.fetch("dockerfile"),
             context: build.fetch("context")
           )
@@ -87,6 +88,7 @@ module Valpo
           if build_record
             build_record.update(
               source_id: source_record.id,
+              strategy: build.fetch("strategy"),
               dockerfile: build.fetch("dockerfile"),
               context: build.fetch("context")
             )
@@ -96,6 +98,7 @@ module Valpo
               owner_service_id: service.id,
               source_id: source_record.id,
               name: available_name(Valpo::BuildTarget, service.project_id, service.name),
+              strategy: build.fetch("strategy"),
               dockerfile: build.fetch("dockerfile"),
               context: build.fetch("context")
             )
@@ -126,10 +129,42 @@ module Valpo
       end
 
       def normalize_build(input, fallback:)
-        values = fallback ? fallback.merge(stringify_keys(input || {})) : stringify_keys(input || {})
+        changes = stringify_keys(input || {})
+        strategy_explicit = changes.key?("strategy")
+        if strategy_explicit && changes.key?("dockerfile") && changes.fetch("strategy") != "dockerfile"
+          raise Valpo::ValidationError, "dockerfile is only valid when build strategy is dockerfile"
+        end
+
+        strategy = if strategy_explicit
+          required(changes, "strategy").downcase
+        elsif changes.key?("dockerfile")
+          "dockerfile"
+        else
+          fallback&.fetch("strategy", nil) || "auto"
+        end
+        unless Valpo::Builds::STRATEGIES.include?(strategy)
+          raise Valpo::ValidationError, "Unsupported build strategy: #{strategy}"
+        end
+
+        context = if changes.key?("context")
+          required(changes, "context")
+        else
+          fallback&.fetch("context", nil) || DEFAULT_CONTEXT
+        end
+        dockerfile = if strategy == "dockerfile"
+          if changes.key?("dockerfile")
+            required(changes, "dockerfile")
+          elsif fallback&.fetch("strategy", nil) == "dockerfile"
+            fallback["dockerfile"]
+          else
+            DEFAULT_DOCKERFILE
+          end
+        end
+
         {
-          "dockerfile" => optional(values, "dockerfile") || DEFAULT_DOCKERFILE,
-          "context" => optional(values, "context") || DEFAULT_CONTEXT
+          "strategy" => strategy,
+          "dockerfile" => dockerfile,
+          "context" => context
         }
       end
 
@@ -138,7 +173,7 @@ module Valpo
       end
 
       def build_attributes(build)
-        {"dockerfile" => build.dockerfile, "context" => build.context}
+        {"strategy" => build.strategy, "dockerfile" => build.dockerfile, "context" => build.context}
       end
 
       def stringify_keys(value)

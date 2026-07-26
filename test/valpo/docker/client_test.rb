@@ -29,16 +29,19 @@ class ValpoDockerClientTest < Minitest::Test
       env: {"RACK_ENV" => "production"},
       ports: {8080 => 3000},
       volumes: {"valpo-data" => "/data"},
-      restart_policy: "unless-stopped"
+      restart_policy: "unless-stopped",
+      entrypoint: "/cnb/lifecycle/launcher",
+      command_args: ["bin/server"]
     )
 
     assert_equal [
       "docker", "run", "--detach", "--name", "valpo-hello", "--network", "valpo",
       "--restart", "unless-stopped",
+      "--entrypoint", "/cnb/lifecycle/launcher",
       "--label", "valpo.project_id=p1", "--label", "valpo.release_id=r1",
       "--env", "RACK_ENV=production", "--publish", "8080:3000",
       "--volume", "valpo-data:/data",
-      "ghcr.io/example/hello:latest"
+      "ghcr.io/example/hello:latest", "bin/server"
     ], command
   end
 end

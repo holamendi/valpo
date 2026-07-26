@@ -47,7 +47,7 @@ Valpo should eventually support:
 - Deploy from Docker registry image.
 - Deploy from GitHub repository.
 - Deploy from GitLab repository.
-- Build from Dockerfile.
+- Build from a Dockerfile or Cloud Native Buildpacks.
 - Host static sites from uploaded zip folders with a drag-and-drop dashboard flow.
 - Manage domains and TLS.
 - Manage environment variables and secrets.

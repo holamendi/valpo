@@ -10,10 +10,11 @@ class ValpoBuildsOrchestratorTest < Minitest::Test
   def test_builds_configured_source_and_deploys_the_commit
     service, source, build_target = configured_service
     fetcher = FakeFetcher.new
-    docker = FakeDocker.new
+    dockerfile_builder = FakeBuilder.new(strategy: "dockerfile")
     deployment = FakeDeployment.new
+    lock = FakeLock.new
 
-    release = orchestrator(fetcher:, docker:, deployment:).deploy_source(
+    release = orchestrator(fetcher:, deployment:, dockerfile_builder:, lock:).deploy_source(
       service_id: service.id,
       ref: "release",
       internal_port: nil,
@@ -28,7 +29,35 @@ class ValpoBuildsOrchestratorTest < Minitest::Test
     assert_equal build_target.id, deployment.arguments.fetch(:build_target_id)
     assert_equal COMMIT, deployment.arguments.fetch(:source_ref)
     assert_equal "valpo/hello/backend:#{COMMIT[0, 12]}", deployment.arguments.fetch(:image)
-    assert_equal :build, docker.commands.first.first
+    assert_equal "dockerfile", deployment.arguments.fetch(:build_strategy)
+    assert_equal({"dockerfile" => "Dockerfile"}, deployment.arguments.fetch(:build_metadata))
+    assert_equal build_target.id, dockerfile_builder.arguments.fetch(:build_target).id
+    assert_equal [build_target.id], lock.ids
+  end
+
+  def test_auto_uses_buildpack_builder_without_a_dockerfile
+    service, _, build_target = configured_service(strategy: "auto", dockerfile: nil)
+    dockerfile_builder = FakeBuilder.new(strategy: "dockerfile")
+    buildpack_builder = FakeBuilder.new(strategy: "buildpack")
+    deployment = FakeDeployment.new
+
+    orchestrator(
+      fetcher: FakeFetcher.new(dockerfile: false),
+      deployment:,
+      dockerfile_builder:,
+      buildpack_builder:
+    ).deploy_source(
+      service_id: service.id,
+      ref: nil,
+      internal_port: nil,
+      healthcheck_path: nil,
+      queue: FakeQueue.new,
+      job_id: "job_test"
+    )
+
+    assert_nil dockerfile_builder.arguments
+    assert_equal build_target.id, buildpack_builder.arguments.fetch(:build_target).id
+    assert_equal "buildpack", deployment.arguments.fetch(:build_strategy)
   end
 
   def test_failed_build_does_not_touch_the_active_release
@@ -36,9 +65,15 @@ class ValpoBuildsOrchestratorTest < Minitest::Test
     service.update(status: "running")
     active = create_release(service:, status: "active")
     deployment = FakeDeployment.new
+    buildpack_builder = FakeBuilder.new(strategy: "buildpack")
 
     error = assert_raises Valpo::ValidationError do
-      orchestrator(fetcher: FakeFetcher.new, docker: FakeDocker.new(success: false), deployment:).deploy_source(
+      orchestrator(
+        fetcher: FakeFetcher.new,
+        dockerfile_builder: FakeBuilder.new(strategy: "dockerfile", error: Valpo::ValidationError.new("Docker build failed")),
+        buildpack_builder:,
+        deployment:
+      ).deploy_source(
         service_id: service.id,
         ref: nil,
         internal_port: nil,
@@ -55,6 +90,9 @@ class ValpoBuildsOrchestratorTest < Minitest::Test
     failed = Valpo::Release.where(service_id: service.id, status: "failed").first
     assert failed
     assert_equal COMMIT, failed.source_ref
+    assert_equal "dockerfile", failed.build_strategy
+    assert_equal({"dockerfile" => "Dockerfile"}, failed.build_metadata)
+    assert_nil buildpack_builder.arguments
     assert_nil deployment.arguments
   end
 
@@ -62,7 +100,11 @@ class ValpoBuildsOrchestratorTest < Minitest::Test
     service, = configured_service
 
     assert_raises Valpo::ValidationError do
-      orchestrator(fetcher: FakeFetcher.new, docker: FakeDocker.new(success: false), deployment: FakeDeployment.new).deploy_source(
+      orchestrator(
+        fetcher: FakeFetcher.new,
+        dockerfile_builder: FakeBuilder.new(strategy: "dockerfile", error: Valpo::ValidationError.new("Docker build failed")),
+        deployment: FakeDeployment.new
+      ).deploy_source(
         service_id: service.id,
         ref: nil,
         internal_port: nil,
@@ -82,7 +124,7 @@ class ValpoBuildsOrchestratorTest < Minitest::Test
 
   private
 
-  def configured_service
+  def configured_service(strategy: "dockerfile", dockerfile: "Dockerfile")
     project = create_project
     source = Valpo::Source.create(
       project_id: project.id,
@@ -95,7 +137,8 @@ class ValpoBuildsOrchestratorTest < Minitest::Test
       project_id: project.id,
       source_id: source.id,
       name: "backend",
-      dockerfile: "Dockerfile",
+      strategy:,
+      dockerfile:,
       context: "."
     )
     service = create_app_service(project:)
@@ -103,39 +146,69 @@ class ValpoBuildsOrchestratorTest < Minitest::Test
     [service, source, build_target]
   end
 
-  def orchestrator(fetcher:, docker:, deployment:)
+  def orchestrator(
+    fetcher:,
+    deployment:,
+    dockerfile_builder: FakeBuilder.new(strategy: "dockerfile"),
+    buildpack_builder: FakeBuilder.new(strategy: "buildpack"),
+    lock: FakeLock.new
+  )
     Valpo::Builds::Orchestrator.new(
-      docker:,
       source_fetcher: fetcher,
-      deployment_lifecycle: deployment
+      deployment_lifecycle: deployment,
+      builders: {"dockerfile" => dockerfile_builder, "buildpack" => buildpack_builder},
+      target_lock: lock
     )
   end
 
   class FakeFetcher
     attr_reader :ref
 
+    def initialize(dockerfile: true)
+      @dockerfile = dockerfile
+    end
+
     def checkout(destination:, ref:, **)
       @ref = ref
-      File.write(File.join(destination, "Dockerfile"), "FROM scratch\n")
+      File.write(File.join(destination, "Dockerfile"), "FROM scratch\n") if @dockerfile
       COMMIT
     end
   end
 
-  class FakeDocker
-    attr_reader :commands
+  class FakeBuilder
+    attr_reader :arguments
 
-    def initialize(success: true)
-      @success = success
-      @commands = []
+    def initialize(strategy:, error: nil)
+      @strategy = strategy
+      @error = error
     end
 
-    def build_command(dockerfile:, tag:, context:)
-      [:build, dockerfile, tag, context]
+    def initial_metadata(checkout:)
+      if @strategy == "dockerfile"
+        {"dockerfile" => File.basename(checkout.dockerfile)}
+      else
+        {"builder" => "example/builder@sha256:abc", "buildpacks" => [], "processes" => []}
+      end
     end
 
-    def execute(command)
-      commands << command
-      {stdout: "build output\n", stderr: (@success ? "" : "build failed\n"), status: (@success ? 0 : 1), success: @success}
+    def build(image:, **arguments)
+      @arguments = arguments
+      raise @error if @error
+
+      Valpo::Builds::Result.new(image:, strategy: @strategy, metadata: initial_metadata(checkout: arguments.fetch(:checkout)))
+    end
+  end
+
+  class FakeLock
+    attr_reader :ids
+
+    def initialize
+      @ids = []
+    end
+
+    def synchronize(id)
+      ids << id
+      yield
     end
   end
 

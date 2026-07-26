@@ -49,6 +49,56 @@ paths:
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '500': {$ref: '#/components/responses/InternalError'}
+  /v1/auth/github:
+    get:
+      operationId: getGitHubAuthentication
+      summary: Show GitHub App authentication status
+      responses:
+        '200':
+          description: GitHub authentication status
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/GitHubAuthentication'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '500': {$ref: '#/components/responses/InternalError'}
+    post:
+      operationId: createGitHubAppSetup
+      summary: Create a one-time GitHub App setup URL
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                organization:
+                  type: string
+                  pattern: '\S'
+      responses:
+        '201':
+          description: One-time GitHub App setup URL
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/GitHubAppSetup'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '500': {$ref: '#/components/responses/InternalError'}
+    delete:
+      operationId: deleteGitHubAuthentication
+      summary: Remove the local GitHub App credentials
+      responses:
+        '200':
+          description: Removed local authentication state
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/GitHubAuthenticationRemoval'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '500': {$ref: '#/components/responses/InternalError'}
   /v1/projects:
     get:
       operationId: listProjects
@@ -720,6 +770,33 @@ components:
       properties:
         manifest: {$ref: '#/components/schemas/NonEmptyString'}
         dry_run: {type: boolean}
+    GitHubAuthentication:
+      type: object
+      additionalProperties: false
+      required: [authenticated, provider]
+      properties:
+        authenticated: {type: boolean}
+        provider: {type: string, const: github}
+        app_id: {type: string}
+        app_domain: {type: string}
+        client_id: {type: string}
+        owner: {type: string}
+        slug: {type: string}
+    GitHubAppSetup:
+      type: object
+      additionalProperties: false
+      required: [expires_at, setup_url]
+      properties:
+        expires_at: {type: string, format: date-time}
+        setup_url: {type: string, format: uri}
+    GitHubAuthenticationRemoval:
+      type: object
+      additionalProperties: false
+      required: [authenticated, provider, removed]
+      properties:
+        authenticated: {type: boolean, const: false}
+        provider: {type: string, const: github}
+        removed: {type: boolean}
     SourceInput:
       type: object
       additionalProperties: false
@@ -740,6 +817,7 @@ components:
       type: object
       additionalProperties: false
       properties:
+        strategy: {type: string, enum: [auto, dockerfile, buildpack]}
         dockerfile: {$ref: '#/components/schemas/NonEmptyString'}
         context: {$ref: '#/components/schemas/NonEmptyString'}
     BuildChanges:
@@ -747,6 +825,7 @@ components:
       minProperties: 1
       additionalProperties: false
       properties:
+        strategy: {type: string, enum: [auto, dockerfile, buildpack]}
         dockerfile: {$ref: '#/components/schemas/NonEmptyString'}
         context: {$ref: '#/components/schemas/NonEmptyString'}
     Command:
@@ -845,13 +924,14 @@ components:
     BuildTarget:
       type: object
       additionalProperties: false
-      required: [id, project_id, source_id, name, dockerfile, context, created_at, updated_at]
+      required: [id, project_id, source_id, name, strategy, dockerfile, context, created_at, updated_at]
       properties:
         id: {type: string}
         project_id: {type: string}
         source_id: {type: string}
         name: {type: string}
-        dockerfile: {type: string}
+        strategy: {type: string, enum: [auto, dockerfile, buildpack]}
+        dockerfile: {type: [string, 'null']}
         context: {type: string}
         created_at: {$ref: '#/components/schemas/Timestamp'}
         updated_at: {$ref: '#/components/schemas/Timestamp'}
@@ -915,7 +995,7 @@ components:
     Release:
       type: object
       additionalProperties: false
-      required: [id, service_id, build_target_id, version, source_type, source_ref, artifact_ref, image_digest, status, internal_port, healthcheck_path, container_name, route_target, activated_at, created_at]
+      required: [id, service_id, build_target_id, version, source_type, source_ref, artifact_ref, image_digest, build, status, internal_port, healthcheck_path, container_name, route_target, activated_at, created_at]
       properties:
         id: {type: string}
         service_id: {type: string}
@@ -925,6 +1005,10 @@ components:
         source_ref: {type: string}
         artifact_ref: {type: [string, 'null']}
         image_digest: {type: [string, 'null']}
+        build:
+          anyOf:
+            - {$ref: '#/components/schemas/ReleaseBuild'}
+            - {type: 'null'}
         status: {type: string}
         internal_port: {anyOf: [{$ref: '#/components/schemas/Port'}, {type: 'null'}]}
         healthcheck_path: {type: [string, 'null']}
@@ -932,6 +1016,32 @@ components:
         route_target: {type: [string, 'null']}
         activated_at: {$ref: '#/components/schemas/Timestamp'}
         created_at: {$ref: '#/components/schemas/Timestamp'}
+    ReleaseBuild:
+      type: object
+      additionalProperties: false
+      required: [strategy]
+      properties:
+        strategy: {type: string, enum: [dockerfile, buildpack]}
+        dockerfile: {type: string}
+        builder: {type: string}
+        buildpacks:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, version]
+            properties:
+              id: {type: string}
+              version: {type: string}
+        processes:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [type, default]
+            properties:
+              type: {type: string}
+              default: {type: boolean}
     Domain:
       type: object
       additionalProperties: false

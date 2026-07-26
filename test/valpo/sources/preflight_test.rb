@@ -20,8 +20,35 @@ class ValpoSourcesPreflightTest < Minitest::Test
 
     assert_equal "HEAD", fetcher.ref
     assert_equal COMMIT, result.commit
+    assert_equal "dockerfile", result.strategy
     assert_equal "Dockerfile", File.basename(result.dockerfile)
     assert context_directory
+  end
+
+  def test_auto_uses_buildpacks_when_the_context_has_no_dockerfile
+    fetcher = FakeFetcher.new(dockerfile: false)
+    result = nil
+
+    Valpo::Sources::Preflight.new(fetcher:).with_checkout(
+      provider: "github",
+      repository: "acme/backend"
+    ) { result = it }
+
+    assert_equal "buildpack", result.strategy
+    assert_nil result.dockerfile
+  end
+
+  def test_explicit_buildpack_ignores_a_repository_dockerfile
+    result = nil
+
+    Valpo::Sources::Preflight.new(fetcher: FakeFetcher.new).with_checkout(
+      provider: "github",
+      repository: "acme/backend",
+      strategy: "buildpack"
+    ) { result = it }
+
+    assert_equal "buildpack", result.strategy
+    assert_nil result.dockerfile
   end
 
   def test_rejects_missing_and_escaping_build_paths
@@ -30,6 +57,7 @@ class ValpoSourcesPreflightTest < Minitest::Test
       preflight.with_checkout(
         provider: "github",
         repository: "acme/backend",
+        strategy: "dockerfile",
         dockerfile: "missing"
       ) { flunk "checkout should not be yielded" }
     end
@@ -58,13 +86,14 @@ class ValpoSourcesPreflightTest < Minitest::Test
   class FakeFetcher
     attr_reader :ref
 
-    def initialize(commit: COMMIT)
+    def initialize(commit: COMMIT, dockerfile: true)
       @commit = commit
+      @dockerfile = dockerfile
     end
 
     def checkout(destination:, ref:, **)
       @ref = ref
-      File.write(File.join(destination, "Dockerfile"), "FROM scratch\n")
+      File.write(File.join(destination, "Dockerfile"), "FROM scratch\n") if @dockerfile
       @commit
     end
   end

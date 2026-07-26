@@ -13,6 +13,7 @@ module Valpo
       release: "rel",
       domain: "dom",
       platform_domain: "pdm",
+      github_app_setup: "gas",
       job: "job",
       job_event: "evt"
     }.freeze

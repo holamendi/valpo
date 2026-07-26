@@ -36,7 +36,7 @@ end
 
 module ValpoTestDatabase
   TABLE_DELETE_ORDER = %i[
-    job_events jobs service_dependencies domains releases app_service_configs managed_service_configs
+    job_events jobs github_webhook_deliveries github_app_setups service_dependencies domains releases app_service_configs managed_service_configs
     services build_targets sources projects platform_domains
   ].freeze
 

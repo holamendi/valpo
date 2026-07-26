@@ -9,7 +9,7 @@ class ValpoServicesAppUpdaterTest < Minitest::Test
     service, manifest_source, = configured_service
     configuration = {
       "source" => {"provider" => "github", "repository" => "acme/new-backend", "ref" => "release"},
-      "build" => {"dockerfile" => "ops/Dockerfile", "context" => "."}
+      "build" => {"strategy" => "dockerfile", "dockerfile" => "ops/Dockerfile", "context" => "."}
     }
 
     updater.update(
@@ -37,7 +37,7 @@ class ValpoServicesAppUpdaterTest < Minitest::Test
         service_id: service.id,
         configuration: {
           "source" => {"provider" => "github", "repository" => "acme/backend", "ref" => "missing"},
-          "build" => {"dockerfile" => "Dockerfile", "context" => "."}
+          "build" => {"strategy" => "dockerfile", "dockerfile" => "Dockerfile", "context" => "."}
         },
         runtime_changes: {},
         deploy: false,
@@ -96,7 +96,7 @@ class ValpoServicesAppUpdaterTest < Minitest::Test
       project:,
       service_attributes: {"name" => "web", "type" => "web", "internal_port" => 3000},
       source: {"provider" => "github", "repository" => "acme/backend", "ref" => "main"},
-      build: {"dockerfile" => "Dockerfile", "context" => "."}
+      build: {"strategy" => "dockerfile", "dockerfile" => "Dockerfile", "context" => "."}
     )
     service.update(status: "running")
     active = create_release(service:, status: "active", container_name: "active", internal_port: 3000)
@@ -107,7 +107,7 @@ class ValpoServicesAppUpdaterTest < Minitest::Test
         service_id: service.id,
         configuration: {
           "source" => {"provider" => "github", "repository" => "acme/new-backend", "ref" => "release"},
-          "build" => {"dockerfile" => "ops/Dockerfile", "context" => "app"}
+          "build" => {"strategy" => "dockerfile", "dockerfile" => "ops/Dockerfile", "context" => "app"}
         },
         runtime_changes: {"internal_port" => 9292},
         deploy: true,
@@ -132,7 +132,7 @@ class ValpoServicesAppUpdaterTest < Minitest::Test
       project:,
       service_attributes: {"name" => "web", "type" => "web"},
       source: {"provider" => "github", "repository" => "acme/backend", "ref" => "HEAD"},
-      build: {"dockerfile" => "Dockerfile", "context" => "."}
+      build: {"strategy" => "dockerfile", "dockerfile" => "Dockerfile", "context" => "."}
     )
 
     service.destroy
@@ -192,6 +192,7 @@ class ValpoServicesAppUpdaterTest < Minitest::Test
 
       yield Valpo::Sources::Preflight::Result.new(
         checkout: "/tmp/checkout",
+        strategy: "dockerfile",
         dockerfile: "/tmp/checkout/Dockerfile",
         context: "/tmp/checkout",
         commit: "a" * 40,

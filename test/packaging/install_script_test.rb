@@ -114,6 +114,21 @@ class ValpoPackagingInstallScriptTest < Minitest::Test
     assert_includes script, "PATH=\"${STATE_DIR}/.local/bin:${PATH}\""
   end
 
+  def test_installer_pins_pack_with_architecture_checksums
+    script = File.read(INSTALL_SCRIPT)
+    config = File.read(EXAMPLE_CONFIG)
+
+    assert_includes script, 'PACK_VERSION="0.40.8"'
+    assert_includes script, 'PACK_PATH="${STATE_DIR}/.local/bin/pack"'
+    assert_includes script, 'PACK_AMD64_SHA256="3b8cfd4287ea6c648ccff9c17cbfa61ae615839071a5de804f3b84316ed99a93"'
+    assert_includes script, 'PACK_ARM64_SHA256="51b1b8ba93f3cff0e25fdc4c099daddd962ea2c691ccd13bd607f0a452c42039"'
+    assert_includes script, "sha256sum --check --status"
+    assert_includes script, "install_pack"
+    assert_includes File.read(WORKER_SERVICE), "Environment=PATH=/var/lib/valpo/.local/bin:"
+    assert_includes config, "build_timeout: 1800"
+    assert_includes config, Valpo::Config::DEFAULT_BUILDPACK_BUILDER
+  end
+
   def test_installer_uses_locked_bundler_without_rewriting_source
     script = File.read(INSTALL_SCRIPT)
 

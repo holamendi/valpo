@@ -22,11 +22,23 @@ module Valpo
         if normalized.length > MAX_APP_DOMAIN_LENGTH
           raise Valpo::ValidationError, "App domain must be at most #{MAX_APP_DOMAIN_LENGTH} characters"
         end
+        reserved = Valpo::GitHub::Setup.hostname(normalized)
+        if Valpo::Domain.where(hostname: reserved).count.positive?
+          raise Valpo::ConflictError, "Custom domain #{reserved} is reserved for the GitHub integration"
+        end
 
         current = active
         if current&.hostname == normalized
           unverified = Valpo::Domain.where(platform_domain_id: current.id).exclude(status: "verified").count.positive?
           return [current, unverified]
+        end
+        configured_domain = github_credentials.public_values&.fetch("app_domain")
+        if configured_domain && configured_domain != normalized
+          raise Valpo::ConflictError,
+            "Remove local GitHub authentication before changing the app domain, then create a new GitHub App"
+        end
+        if current && Valpo::GitHub::Setup.pending?
+          raise Valpo::ConflictError, "Complete or let the GitHub App setup expire before changing the app domain"
         end
 
         record = Valpo::PlatformDomain.where(hostname: normalized).first
@@ -77,6 +89,17 @@ module Valpo
       def retire_stale_generated!(service, keep:)
         Valpo::Domain.where(service_id: service.id, kind: "generated").exclude(id: keep.id).destroy
       end
+
+      def reserved_hostname?(hostname)
+        platform_domain = active
+        platform_domain && hostname == Valpo::GitHub::Setup.hostname(platform_domain.hostname)
+      end
+
+      def github_credentials
+        config = Valpo.config || Valpo::Config.load
+        Valpo::GitHub::Credentials.new(config.github_app_credentials_path)
+      end
+      private_class_method :github_credentials
     end
   end
 end

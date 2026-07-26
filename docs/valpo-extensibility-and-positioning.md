@@ -63,7 +63,7 @@ Dokploy represents a Compose- and infrastructure-oriented self-hosted deployment
 
 What to borrow:
 
-- Docker image, Git, and Dockerfile deploy paths.
+- Docker image and Git deploy paths, with Dockerfile and buildpack builds.
 - Managed database creation and backups.
 - Templates as a later onboarding feature.
 - API and CLI access.

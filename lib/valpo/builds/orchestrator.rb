@@ -1,11 +1,14 @@
 # frozen_string_literal: true
 
+require "json"
+
 module Valpo
   module Builds
     class Orchestrator
-      def initialize(docker:, source_fetcher:, deployment_lifecycle:, preflight: nil)
-        @docker = docker
+      def initialize(source_fetcher:, deployment_lifecycle:, builders:, target_lock:, preflight: nil)
         @deployment_lifecycle = deployment_lifecycle
+        @builders = builders
+        @target_lock = target_lock
         @preflight = preflight || Valpo::Sources::Preflight.new(fetcher: source_fetcher)
       end
 
@@ -23,6 +26,7 @@ module Valpo
           provider: source.provider,
           repository: source.repository,
           ref: selected_ref,
+          strategy: build_target.strategy,
           dockerfile: build_target.dockerfile,
           context: build_target.context
         ) do
@@ -47,21 +51,32 @@ module Valpo
       def deploy_checkout(service_id:, build_target:, checkout:, internal_port:, healthcheck_path:, queue:, job_id:)
         service = find_app_service(service_id)
         image = image_tag(service.project, build_target, checkout.commit)
-        event(queue, job_id, "system", "Building #{image}")
+        event(queue, job_id, "system", "Building #{image} with #{checkout.strategy}")
         build_succeeded = false
-        execute_build(
-          dockerfile: checkout.dockerfile,
-          context: checkout.context,
-          image:,
-          queue:,
-          job_id:
-        )
+        build_metadata = {}
+        builder = builders.fetch(checkout.strategy) do
+          raise Valpo::ValidationError, "Unsupported resolved build strategy: #{checkout.strategy}"
+        end
+        build_metadata = builder.initial_metadata(checkout:)
+        result = target_lock.synchronize(build_target.id) do
+          builder.build(
+            checkout:,
+            build_target:,
+            image:,
+            service:,
+            queue:,
+            job_id:
+          )
+        end
+        build_metadata = result.metadata
         build_succeeded = true
         deployment_lifecycle.deploy_built_image(
           service_id: service.id,
-          image:,
+          image: result.image,
           source_ref: checkout.commit,
           build_target_id: build_target.id,
+          build_strategy: result.strategy,
+          build_metadata: result.metadata,
           internal_port:,
           healthcheck_path:,
           queue:,
@@ -74,6 +89,8 @@ module Valpo
             build_target:,
             checkout:,
             image:,
+            build_strategy: checkout.strategy,
+            build_metadata:,
             internal_port:,
             healthcheck_path:
           )
@@ -83,7 +100,7 @@ module Valpo
 
       private
 
-      attr_reader :docker, :deployment_lifecycle, :preflight
+      attr_reader :deployment_lifecycle, :preflight, :builders, :target_lock
 
       def find_app_service(service_id)
         service = Valpo::Service[service_id]
@@ -97,18 +114,7 @@ module Valpo
         "valpo/#{project.name}/#{build_target.name}:#{commit[0, 12]}"
       end
 
-      def execute_build(dockerfile:, context:, image:, queue:, job_id:)
-        result = docker.execute(docker.build_command(dockerfile:, tag: image, context:))
-        emit_result(result, queue:, job_id:)
-        return if result.fetch(:success)
-
-        detail = result.fetch(:stderr).to_s.strip
-        detail = result.fetch(:stdout).to_s.strip if detail.empty?
-        detail = "exit #{result.fetch(:status)}" if detail.empty?
-        raise Valpo::ValidationError, "Docker build failed: #{detail}"
-      end
-
-      def record_failed_build(service:, build_target:, checkout:, image:, internal_port:, healthcheck_path:)
+      def record_failed_build(service:, build_target:, checkout:, image:, build_strategy:, build_metadata:, internal_port:, healthcheck_path:)
         app_config = Valpo::AppServiceConfig[service.id]
         old_active = Valpo::Release.active_for_service(service.id)
         Valpo::Release.create(
@@ -117,18 +123,13 @@ module Valpo
           source_type: "git",
           source_ref: checkout.commit,
           artifact_ref: image,
+          build_strategy:,
+          build_metadata_json: JSON.generate(build_metadata),
           status: "failed",
           internal_port: internal_port || app_config&.internal_port,
           healthcheck_path: blank_to_nil(healthcheck_path) || app_config&.healthcheck_path
         )
         service.update(status: old_active ? "running" : "failed")
-      end
-
-      def emit_result(result, queue:, job_id:)
-        stdout = result.fetch(:stdout).to_s.strip
-        stderr = result.fetch(:stderr).to_s.strip
-        event(queue, job_id, "stdout", stdout) unless stdout.empty?
-        event(queue, job_id, "stderr", stderr) unless stderr.empty?
       end
 
       def event(queue, job_id, stream, message)

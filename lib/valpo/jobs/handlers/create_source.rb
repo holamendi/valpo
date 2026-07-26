@@ -23,6 +23,7 @@ module Valpo
             provider: source.fetch("provider"),
             repository: source.fetch("repository"),
             ref: source.fetch("ref"),
+            strategy: build.fetch("strategy"),
             dockerfile: build.fetch("dockerfile"),
             context: build.fetch("context")
           ) do

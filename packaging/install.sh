@@ -3,6 +3,9 @@ set -euo pipefail
 umask 077
 
 RUBY_VERSION="${VALPO_RUBY_VERSION:-4.0.5}"
+PACK_VERSION="0.40.8"
+PACK_AMD64_SHA256="3b8cfd4287ea6c648ccff9c17cbfa61ae615839071a5de804f3b84316ed99a93"
+PACK_ARM64_SHA256="51b1b8ba93f3cff0e25fdc4c099daddd962ea2c691ccd13bd607f0a452c42039"
 VALPO_USER="${VALPO_USER:-valpo}"
 VALPO_GROUP="${VALPO_GROUP:-valpo}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -12,6 +15,7 @@ CONFIG_PATH="/etc/valpo/valpo.yml"
 STATE_DIR="/var/lib/valpo"
 LOG_DIR="/var/log/valpo"
 CLI_PATH="/usr/local/bin/valpo"
+PACK_PATH="${STATE_DIR}/.local/bin/pack"
 SKIP_DEPS="${VALPO_INSTALL_SKIP_DEPS:-0}"
 NO_START="${VALPO_INSTALL_NO_START:-0}"
 
@@ -151,6 +155,39 @@ install_ruby() {
   run_as_valpo_shell "'${MISE_BIN}' x ruby@${RUBY_VERSION} -- ruby -v"
 }
 
+install_pack() {
+  [[ "$SKIP_DEPS" -eq 0 ]] || return 0
+
+  local architecture
+  local asset
+  local checksum
+  architecture="$(dpkg --print-architecture)"
+  case "$architecture" in
+    amd64)
+      asset="pack-v${PACK_VERSION}-linux.tgz"
+      checksum="$PACK_AMD64_SHA256"
+      ;;
+    arm64)
+      asset="pack-v${PACK_VERSION}-linux-arm64.tgz"
+      checksum="$PACK_ARM64_SHA256"
+      ;;
+    *)
+      log "Skipping pack installation on unsupported architecture ${architecture}; Dockerfile builds remain available"
+      return 0
+      ;;
+  esac
+
+  local temporary
+  temporary="$(mktemp -d)"
+  log "Installing pack ${PACK_VERSION} for ${architecture}"
+  curl -fsSL "https://github.com/buildpacks/pack/releases/download/v${PACK_VERSION}/${asset}" -o "${temporary}/${asset}"
+  printf '%s  %s\n' "$checksum" "${temporary}/${asset}" | sha256sum --check --status ||
+    fail "pack ${PACK_VERSION} checksum verification failed"
+  tar -xzf "${temporary}/${asset}" -C "$temporary" pack
+  install -o "$VALPO_USER" -g "$VALPO_GROUP" -m 0755 "${temporary}/pack" "$PACK_PATH"
+  rm -rf "$temporary"
+}
+
 copy_source() {
   command -v rsync >/dev/null 2>&1 || fail "rsync is required to copy source"
   log "Copying source from ${SOURCE_DIR} to ${PREFIX}"
@@ -181,6 +218,7 @@ production:
   # Required before binding api_host to a non-local address.
   # api_token: change-me
   github_token_path: ${STATE_DIR}/secrets/github-token
+  github_app_credentials_path: ${STATE_DIR}/secrets/github-app.json
   caddy_config_path: ${CADDY_GENERATED_PATH}
   caddy_reload_config_path: ${CADDY_RELOAD_CONFIG_PATH}
   docker_network: valpo
@@ -189,6 +227,8 @@ production:
   app_port_end: 29999
   healthcheck_timeout: 30
   deploy_drain_delay: 2
+  build_timeout: 1800
+  buildpack_builder: paketobuildpacks/builder-jammy-base@sha256:7510725172c8b2f1a7bce82b694e2af9599d5e2d97528c140eaeb81c569c21df
 CONFIG
 
   if [[ -f "$CONFIG_PATH" ]] && ! cmp -s "$tmp" "$CONFIG_PATH"; then
@@ -340,6 +380,7 @@ main() {
   ensure_user_and_dirs
   install_mise
   install_ruby
+  install_pack
   copy_source
   write_valpo_config
   ensure_generated_caddy_file

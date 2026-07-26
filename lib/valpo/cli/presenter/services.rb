@@ -33,6 +33,7 @@ module Valpo
             fields["source"] = "#{source["provider"]}:#{source["repository"]}" if source
             fields["ref"] = source["ref"] if source
             fields["source status"] = source["status"] if source
+            fields["build strategy"] = build["strategy"] if build
             fields["dockerfile"] = build["dockerfile"] if build
             fields["context"] = build["context"] if build
             fields["port policy"] = value.dig("app", "port_mode")

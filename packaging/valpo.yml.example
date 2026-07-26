@@ -6,6 +6,7 @@ production:
   # Required before binding api_host to a non-local address.
   # api_token: change-me
   github_token_path: /var/lib/valpo/secrets/github-token
+  github_app_credentials_path: /var/lib/valpo/secrets/github-app.json
   caddy_config_path: /var/lib/valpo/caddy/valpo.caddy
   caddy_reload_config_path: /etc/caddy/Caddyfile
   docker_network: valpo
@@ -14,3 +15,5 @@ production:
   app_port_end: 29999
   healthcheck_timeout: 30
   deploy_drain_delay: 2
+  build_timeout: 1800
+  buildpack_builder: paketobuildpacks/builder-jammy-base@sha256:7510725172c8b2f1a7bce82b694e2af9599d5e2d97528c140eaeb81c569c21df

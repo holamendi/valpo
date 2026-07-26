@@ -50,7 +50,8 @@ Sequel.migration do
       foreign_key :source_id, :sources, type: String, size: 40, null: false, on_delete: :cascade
       foreign_key :owner_service_id, :services, type: String, size: 40, on_delete: :cascade
       String :name, null: false
-      String :dockerfile, null: false, default: "Dockerfile"
+      String :strategy, null: false, default: "auto"
+      String :dockerfile
       String :context, null: false, default: "."
       DateTime :created_at, null: false
       DateTime :updated_at, null: false
@@ -103,6 +104,8 @@ Sequel.migration do
       String :source_ref
       String :artifact_ref
       String :image_digest
+      String :build_strategy
+      String :build_metadata_json, text: true, null: false, default: "{}"
       String :status, null: false, default: "pending"
       Integer :internal_port
       String :healthcheck_path
@@ -148,6 +151,30 @@ Sequel.migration do
       index :hostname, unique: true
       index :service_id
       index :platform_domain_id
+    end
+
+    create_table(:github_app_setups) do
+      String :id, size: 40, primary_key: true
+      String :state_digest, size: 64, null: false
+      String :app_domain, null: false
+      String :organization
+      String :status, null: false, default: "pending"
+      DateTime :expires_at, null: false
+      DateTime :created_at, null: false
+      DateTime :updated_at, null: false
+
+      index :state_digest, unique: true
+      index [:status, :expires_at]
+    end
+
+    create_table(:github_webhook_deliveries) do
+      String :id, primary_key: true
+      String :event, null: false
+      String :payload_digest, size: 64, null: false
+      Integer :jobs_count, null: false, default: 0
+      DateTime :created_at, null: false
+
+      index :created_at
     end
 
     create_table(:jobs) do

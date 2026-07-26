@@ -25,6 +25,25 @@ class ValpoConfigTest < Minitest::Test
     config = Valpo::Config.load(path: file.path, env: "test")
 
     assert_equal "secret-token", config.api_token
+    assert_equal 1_800, config.build_timeout
+    assert_equal Valpo::Config::DEFAULT_BUILDPACK_BUILDER, config.buildpack_builder
+  ensure
+    file&.unlink
+  end
+
+  def test_loads_buildpack_settings
+    file = Tempfile.new("valpo-build-config")
+    file.write(<<~YAML)
+      test:
+        build_timeout: 900
+        buildpack_builder: example/builder@sha256:abc
+    YAML
+    file.close
+
+    config = Valpo::Config.load(path: file.path, env: "test")
+
+    assert_equal 900, config.build_timeout
+    assert_equal "example/builder@sha256:abc", config.buildpack_builder
   ensure
     file&.unlink
   end
@@ -51,5 +70,24 @@ class ValpoConfigTest < Minitest::Test
     assert_equal "first-token", config.github_token
     Valpo::Credentials::FileStore.new(path).write("second-token")
     assert_equal "second-token", config.github_token
+  end
+
+  def test_places_github_app_credentials_beside_the_database_by_default
+    config = Valpo::Config.new(
+      env: "test",
+      root: Valpo.root,
+      database_path: File.join(VALPO_TEST_DIR, "state", "config.sqlite3"),
+      api_host: "127.0.0.1",
+      api_port: 7092,
+      caddy_config_path: File.join(VALPO_TEST_DIR, "Caddyfile.github-app"),
+      docker_network: "valpo",
+      worker_poll_interval: 1,
+      app_port_start: 20_000,
+      app_port_end: 20_100,
+      healthcheck_timeout: 1,
+      deploy_drain_delay: 0
+    )
+
+    assert_equal File.join(VALPO_TEST_DIR, "state", "secrets", "github-app.json"), config.github_app_credentials_path
   end
 end

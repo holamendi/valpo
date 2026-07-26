@@ -22,7 +22,13 @@ module Valpo
         File.join(__dir__, "valpo", "version.rb"),
         File.join(__dir__, "valpo", "api", "routes")
       )
-      loader.inflector.inflect("api" => "API", "cli" => "CLI", "github" => "GitHub")
+      loader.inflector.inflect(
+        "api" => "API",
+        "cli" => "CLI",
+        "github" => "GitHub",
+        "github_app_setup" => "GitHubAppSetup",
+        "github_webhook_delivery" => "GitHubWebhookDelivery"
+      )
       loader.setup
       loader
     end

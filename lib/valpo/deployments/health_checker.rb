@@ -1,13 +1,16 @@
 # frozen_string_literal: true
 
 require "net/http"
-require "socket"
 require "time"
 
 module Valpo
   module Deployments
     class HealthChecker
       RETRY_INTERVAL = 0.25
+
+      def initialize(http: Net::HTTP)
+        @http = http
+      end
 
       def wait(route_target:, path:, timeout:)
         deadline = Time.now + timeout
@@ -31,20 +34,18 @@ module Valpo
 
       private
 
+      attr_reader :http
+
       def healthy?(route_target:, path:)
         host, port = route_target.split(":", 2)
         port = Integer(port)
 
-        if path && !path.empty?
-          response = Net::HTTP.start(host, port, open_timeout: 1, read_timeout: 1) do
-            it.get(path)
-          end
-          response.code.to_i.between?(200, 399)
-        else
-          socket = TCPSocket.new(host, port)
-          socket.close
-          true
+        response = http.start(host, port, open_timeout: 1, read_timeout: 1) do
+          it.get(path || "/")
         end
+        return true if path.nil? || path.empty?
+
+        response.code.to_i.between?(200, 399)
       end
     end
   end

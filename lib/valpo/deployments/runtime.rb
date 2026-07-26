@@ -58,6 +58,8 @@ module Valpo
         event("system", ["Starting #{container_name}", ("on #{route_target}" if route_target)].compact.join(" "))
         environment = Valpo::Services::Environment.raw_for_service(service.id)
         environment = environment.merge("PORT" => release.internal_port.to_s) if service.web?
+        command = app_config&.command || []
+        entrypoint = "/cnb/lifecycle/launcher" if release.build_strategy == "buildpack" && !command.empty?
         result = docker.execute(docker.run_command(
           name: container_name,
           image:,
@@ -71,7 +73,8 @@ module Valpo
           env: environment,
           ports: host_port ? {"127.0.0.1:#{host_port}" => release.internal_port} : {},
           restart_policy: "unless-stopped",
-          command_args: app_config&.command || []
+          entrypoint:,
+          command_args: command
         ))
         emit_command_output(result)
         raise_command_error("Docker run failed", result) unless result.fetch(:success)
