@@ -116,7 +116,7 @@ class ValpoManifestReconcilerTest < Minitest::Test
 
   def apply(reconciler, manifest)
     queue = Valpo::Jobs::Queue.new
-    job = queue.enqueue("test")
+    job = queue.enqueue("system_check")
     reconciler.apply(manifest, queue:, job_id: job.id)
   end
 

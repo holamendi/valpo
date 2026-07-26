@@ -100,6 +100,8 @@ token_digest_before=""
 cleanup_started=0
 
 remote() {
+  # Smoke-test commands are intentionally assembled on the client.
+  # shellcheck disable=SC2029
   ssh "$ssh_target" "$1"
 }
 

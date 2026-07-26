@@ -5,6 +5,7 @@ require "uri"
 module Valpo
   module CLI
     class JobWaiter
+      EVENT_PAGE_LIMIT = 500
       POLL_INTERVAL = 1
 
       def initialize(client:, err:, clock: nil, sleeper: nil)
@@ -17,17 +18,17 @@ module Valpo
       def wait(id, timeout: DEFAULT_TIMEOUT)
         timeout = positive_timeout(timeout)
         deadline = clock.call + timeout
-        seen_event_ids = {}
+        event_cursor = nil
 
         loop do
-          emit_events(id, seen_event_ids)
+          event_cursor = emit_events(id, event_cursor)
           job = client.request(:get, "/v1/jobs/#{segment(id)}")
           case job.fetch("status")
           when "succeeded"
-            emit_events(id, seen_event_ids)
+            emit_events(id, event_cursor)
             return job
           when "failed"
-            emit_events(id, seen_event_ids)
+            emit_events(id, event_cursor)
             detail = job["error"].to_s
             raise OperationalError, ["Job #{id} failed", detail].reject(&:empty?).join(": ")
           end
@@ -45,14 +46,19 @@ module Valpo
 
       attr_reader :client, :err, :clock, :sleeper
 
-      def emit_events(id, seen)
-        client.request(:get, "/v1/jobs/#{segment(id)}/events").each do
-          event_id = it.fetch("id")
-          next if seen[event_id]
+      def emit_events(id, cursor)
+        loop do
+          query = {"limit" => EVENT_PAGE_LIMIT}
+          query["after"] = cursor if cursor
+          events = client.request(:get, "/v1/jobs/#{segment(id)}/events", query:)
+          return cursor if events.empty?
 
-          seen[event_id] = true
-          stream = it.fetch("stream", "system")
-          err.puts "[#{stream}] #{it.fetch("message")}" unless stream == "system" && it.fetch("message").to_s.empty?
+          events.each do
+            stream = it.fetch("stream", "system")
+            err.puts "[#{stream}] #{it.fetch("message")}" unless stream == "system" && it.fetch("message").to_s.empty?
+          end
+          cursor = events.last.fetch("id")
+          return cursor if events.length < EVENT_PAGE_LIMIT
         end
       end
 

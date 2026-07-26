@@ -6,6 +6,8 @@ Valpo is a modern, lightweight, VPS-hosted application platform for indie hacker
 
 The goal is not to build a Kubernetes replacement or a large multi-node platform. The goal is to make vertical scaling on one VPS pleasant, safe, inspectable, and easy to operate.
 
+Current pre-release scope is intentionally smaller than the product direction below: registry and GitHub deployments, web/worker applications, and Postgres/Redis managed services run on one server with one worker. Static hosting, resource plans, export/import, public plugin APIs, multi-server operation, and multi-worker execution are not implemented.
+
 ## Product Positioning
 
 Valpo turns each VPS into a self-sufficient app platform, then provides a dashboard and CLI to operate one or many Valpo servers.

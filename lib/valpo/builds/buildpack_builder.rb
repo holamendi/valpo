@@ -19,6 +19,7 @@ module Valpo
           raise Valpo::ValidationError, "Buildpack worker services require an explicit command"
         end
 
+        cache_manager.prepare(build_target_id: build_target.id, queue:, job_id:)
         result = runner.run(
           client.build_command(
             image:,

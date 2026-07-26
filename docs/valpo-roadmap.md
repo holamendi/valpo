@@ -55,7 +55,7 @@ Deliverables:
 - Roll back to previous release.
 - Stream or retrieve deployment logs.
 - Retrieve app logs.
-- Stop/restart project.
+- Stop/restart individual services.
 - Installer creates an operator-friendly `valpo` CLI command on `PATH`.
 
 Example target flow:
@@ -116,7 +116,7 @@ Deliverables:
 - Postgres managed service.
 - Redis managed service.
 - Supported version catalog: Postgres `16`, `17`, `18`; Redis `7`, `8`.
-- Friendly plans and defaults.
+- Curated defaults.
 - Generate service credentials and connection URLs.
 - Shared service identity with typed UUIDv7 IDs.
 - App-service kinds `web` and `worker`, plus managed `postgres` and `redis` kinds.

@@ -1,4 +1,7 @@
-# Valpo production config template for Ubuntu 26.04 LTS.
+# Valpo production config for the fixed Ubuntu 26.04 LTS host layout.
+# The installer copies this file only when /etc/valpo/valpo.yml is absent,
+# then preserves operator edits and enforces root:valpo mode 0640.
+# Direct commands must set VALPO_ENV=production to select this mapping.
 production:
   database_path: /var/lib/valpo/valpo.db
   api_host: 127.0.0.1

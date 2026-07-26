@@ -4,6 +4,8 @@ This document captures early decisions. They are intentionally lightweight and c
 
 ## ADR 001: Each Server Is Self-Sufficient
 
+Status: Accepted and implemented.
+
 Decision:
 
 Each Valpo server owns its local runtime state, metadata, resources, releases, jobs, and operational history.
@@ -21,6 +23,8 @@ Implications:
 
 ## ADR 002: Dashboard Is An Operator, Not The Brain
 
+Status: Proposed; dashboard implementation is deferred.
+
 Decision:
 
 The dashboard manages multiple independent servers by calling each server's API. It does not become the global source of truth for running apps.
@@ -37,6 +41,8 @@ Implications:
 
 ## ADR 003: Use Ruby, Roda, Sequel, And SQLite For The Host Agent
 
+Status: Accepted and implemented.
+
 Decision:
 
 Use Ruby for the host API and worker. Use Roda for the API, Sequel for database access, and SQLite for local metadata.
@@ -52,6 +58,8 @@ Implications:
 - Use migrations for all local schema changes.
 
 ## ADR 004: Use SQLite-Backed Jobs For V1
+
+Status: Accepted and implemented for current operations.
 
 Decision:
 
@@ -70,9 +78,11 @@ Implications:
 
 ## ADR 005: Normalize Deployment Inputs Into Releases
 
+Status: Accepted for registry and GitHub deployments; other inputs remain proposed.
+
 Decision:
 
-Docker registry images, GitHub repos, GitLab repos, and static zip uploads should all produce immutable releases.
+Every implemented deployment input produces a release. Docker registry images and GitHub repositories are implemented; any later provider or static-upload path must reuse the release lifecycle rather than create a parallel deployment model.
 
 Rationale:
 
@@ -85,6 +95,8 @@ Implications:
 - Git providers should not create a separate deploy architecture.
 
 ## ADR 006: Docker Images Are The Runtime Artifact For Dynamic Apps
+
+Status: Accepted and implemented for registry, Dockerfile, and buildpack deployments.
 
 Decision:
 
@@ -104,6 +116,8 @@ Implications:
 
 ## ADR 007: Static Sites Are Served Directly By Caddy
 
+Status: Proposed; static sites and uploads are not implemented.
+
 Decision:
 
 Static zip uploads should extract into immutable release directories and be served by Caddy's static file server.
@@ -120,9 +134,11 @@ Implications:
 
 ## ADR 008: Use Caddy As The Default Proxy
 
+Status: Accepted and implemented for dynamic web applications and integration routes.
+
 Decision:
 
-Use Caddy for HTTP routing, automatic HTTPS, and static file serving.
+Use Caddy for HTTP routing and automatic HTTPS. If static sites are implemented later, evaluate Caddy's file server in that feature rather than treating it as current behavior.
 
 Rationale:
 
@@ -132,9 +148,11 @@ Implications:
 
 - Valpo stores routing intent and applies generated Caddy config.
 - Dynamic apps route to container ports.
-- Static apps route to release directories.
+- Static file routing remains a proposal owned by ADR 007.
 
 ## ADR 009: API Should Be Private By Default
+
+Status: Accepted; private binding and a host-wide bearer token are implemented, while scoped credentials remain deferred.
 
 Decision:
 
@@ -153,6 +171,8 @@ Implications:
 
 ## ADR 010: Migration Is Export/Import
 
+Status: Proposed; export, import, and project migration are not implemented.
+
 Decision:
 
 Project migration should be modeled as export/import of a portable bundle.
@@ -170,9 +190,11 @@ Implications:
 
 ## ADR 011: Managed Services Are The Happy Path
 
+Status: Accepted for Postgres and Redis; additional services and data-portability behavior are deferred.
+
 Decision:
 
-Valpo should provide curated managed services for common infrastructure such as Postgres, MariaDB, Redis, and volumes. Arbitrary containers remain supported as an advanced escape hatch.
+Valpo provides curated Postgres and Redis services as the current happy path. Add another service only when its complete lifecycle is required and understood; arbitrary custom service containers remain deferred.
 
 Rationale:
 
@@ -188,6 +210,8 @@ Implications:
 - Keep custom containers separate from curated managed services.
 
 ## ADR 012: Preserve Extension Seams Without Shipping A Plugin Platform First
+
+Status: Proposed constraint; no public plugin, lifecycle-event, backup-target, or notification contract exists.
 
 Decision:
 
@@ -206,6 +230,8 @@ Implications:
 - Treat templates as declarative manifests, not arbitrary code.
 
 ## ADR 013: Use A Resource-First CLI With Synchronous Defaults
+
+Status: Accepted and implemented.
 
 Decision:
 

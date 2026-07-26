@@ -31,10 +31,17 @@ module Valpo
           raise Valpo::ConflictError, "App service already has managed env keys: #{conflicts.sort.join(", ")}"
         end
 
-        dependency = upsert_dependency(app:, managed:, env:)
+        existing = Valpo::ServiceDependency.where(
+          service_id: app.id, dependency_service_id: managed.id
+        ).first
+        previous = existing&.values&.slice(:status, :env_json)
+        dependency = upsert_dependency(app:, managed:, env:, existing:)
         event(queue, job_id, "system", "Bound #{managed.name} to #{app.name}")
         restart_app_if_running(app, queue:, job_id:)
-        dependency.refresh
+        dependency
+      rescue
+        restore_dependency(dependency, previous)
+        raise
       end
 
       def unbind_service(service_id:, dependency_service_id:, queue:, job_id:)
@@ -66,16 +73,19 @@ module Valpo
 
       attr_reader :config, :docker, :sleeper
 
-      def upsert_dependency(app:, managed:, env:)
-        existing = Valpo::ServiceDependency.where(
-          service_id: app.id, dependency_service_id: managed.id
-        ).first
+      def upsert_dependency(app:, managed:, env:, existing:)
         attributes = {status: "active", env_json: JSON.generate(env)}
         return existing.update(attributes) if existing
 
         Valpo::ServiceDependency.create(
           attributes.merge(service_id: app.id, dependency_service_id: managed.id)
         )
+      end
+
+      def restore_dependency(dependency, previous)
+        return unless dependency&.pk && Valpo::ServiceDependency[dependency.id]
+
+        previous ? dependency.update(previous) : dependency.destroy
       end
 
       def find_app_service(service_id)

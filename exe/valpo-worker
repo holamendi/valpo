@@ -21,4 +21,11 @@ config = Valpo::Config.load(path: options[:config])
 Valpo::Boot.run(config:, migrate: options[:migrate])
 
 worker = Valpo::Jobs::Worker.new(config:, poll_interval: config.worker_poll_interval)
-worker.run(once: options[:once])
+Signal.trap("TERM") { worker.stop }
+Signal.trap("INT") { worker.stop }
+begin
+  worker.run(once: options[:once])
+rescue Valpo::ConflictError => e
+  warn "valpo-worker: #{e.message}"
+  exit 1
+end

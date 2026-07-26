@@ -99,7 +99,7 @@ class ValpoCLITest < Minitest::Test
   def test_create_source_service_waits_and_emits_service_and_job_as_one_document
     queued = {"id" => job_id, "status" => "queued"}
     succeeded = {"id" => job_id, "status" => "succeeded", "progress" => 100}
-    service = {"id" => service_id, "project" => "acme", "name" => "web", "kind" => "web", "status" => "created", "app" => {}, "dependencies" => []}
+    service = {"id" => service_id, "project" => "acme", "name" => "web", "type" => "web", "status" => "created", "app" => {}, "dependencies" => []}
     client = FakeAPIClient.new([queued, [], queued, [], succeeded, [], service])
 
     status, stdout, stderr = run_cli(
@@ -168,7 +168,7 @@ class ValpoCLITest < Minitest::Test
   end
 
   def test_typed_service_id_skips_resolution
-    client = FakeAPIClient.new("id" => service_id, "project" => "acme", "name" => "web", "kind" => "web", "status" => "created", "app" => {}, "dependencies" => [])
+    client = FakeAPIClient.new("id" => service_id, "project" => "acme", "name" => "web", "type" => "web", "status" => "created", "app" => {}, "dependencies" => [])
     status, = run_cli(client, ["service", "show", service_id, "--json"])
     assert_equal 0, status
     assert_equal ["/v1/services/#{service_id}"], client.requests.map { it.fetch(:path) }
@@ -213,9 +213,9 @@ class ValpoCLITest < Minitest::Test
       queued,
       [event],
       queued,
-      [event, finished_event],
+      [finished_event],
       {"id" => job_id, "status" => "succeeded", "progress" => 100},
-      [event, finished_event]
+      []
     ])
     status, stdout, stderr = run_cli(client, %w[service deploy web --project acme --image nginx:alpine --json])
 
@@ -224,6 +224,12 @@ class ValpoCLITest < Minitest::Test
     assert_equal 1, stderr.scan("Deploy started").length
     assert_equal 1, stderr.scan("healthy").length
     assert_equal 3, client.requests.count { it.fetch(:path).end_with?("/events") }
+    event_queries = client.requests.filter_map { it.fetch(:query) if it.fetch(:path).end_with?("/events") }
+    assert_equal [
+      {"limit" => 500},
+      {"limit" => 500, "after" => event_id},
+      {"limit" => 500, "after" => finished_event.fetch("id")}
+    ], event_queries
   end
 
   def test_source_deploy_sends_ref_without_requiring_an_image
@@ -359,7 +365,7 @@ class ValpoCLITest < Minitest::Test
       "id" => service_id,
       "project" => "acme",
       "name" => "web",
-      "kind" => "web",
+      "type" => "web",
       "status" => "running",
       "app" => {
         "command" => [],

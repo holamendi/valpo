@@ -76,9 +76,7 @@ module Valpo
       end
 
       def validate_ref!(ref)
-        return if ref.match?(REF_PATTERN)
-
-        raise Valpo::ValidationError, "GitHub ref must be a branch, tag, or commit SHA without whitespace"
+        Valpo::Sources::Validation.github_ref(ref)
       end
     end
   end

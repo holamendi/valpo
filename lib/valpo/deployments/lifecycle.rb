@@ -97,6 +97,8 @@ module Valpo
         )
       rescue
         runtime&.cleanup_container(new_container)
+        target&.refresh
+        service&.refresh
         target&.update(container_name: previous_container, route_target: previous_route_target)
         service&.update(status: current ? "running" : "failed")
         raise
@@ -137,13 +139,16 @@ module Valpo
             release:,
             runtime:,
             queue:,
-            job_id:
+            job_id:,
+            on_failure: -> { release.update(container_name: old_container, route_target: previous_route_target) }
           )
         end
-        runtime.stop_container(old_container, ignore_missing: true) if old_container && old_container != new_container
+        retire_container_safely(old_container, runtime, queue:, job_id:) if old_container && old_container != new_container
         release.refresh
       rescue
         runtime&.cleanup_container(new_container)
+        release&.refresh
+        service&.refresh
         release&.update(container_name: old_container, route_target: previous_route_target)
         status = if release.nil?
           "failed"
@@ -272,7 +277,7 @@ module Valpo
         if service.web? && !domain_orchestrator.verified?(service)
           release.ready!
           service.update(status: old_active ? "running" : "ready")
-          activator.retire_release(old_ready, runtime)
+          retire_release_safely(old_ready, runtime, queue:, job_id:)
           event(queue, job_id, "Release is ready but remains private until a domain is verified")
         else
           activator.activate(
@@ -286,8 +291,11 @@ module Valpo
         end
         release.refresh
       rescue
+        release&.refresh
+        service&.refresh
         release&.fail!
-        runtime&.cleanup_container(container_name)
+        cleaned = runtime&.cleanup_container(container_name)
+        release&.update(container_name: nil, route_target: nil) if cleaned
         service&.update(status: old_active ? "running" : "failed")
         raise
       end
@@ -315,8 +323,8 @@ module Valpo
         Runtime.new(config:, docker:, queue:, job_id:, sleeper:)
       end
 
-      def event(queue, job_id, message)
-        queue.event(job_id, "system", message)
+      def event(queue, job_id, message, stream: "system")
+        queue.event(job_id, stream, message)
       end
 
       def blank_to_nil(value)
@@ -329,6 +337,18 @@ module Valpo
         build_target_ids.each do
           build_cache_manager.remove(build_target_id: it, queue:, job_id:)
         end
+      end
+
+      def retire_container_safely(container_name, runtime, queue:, job_id:)
+        runtime.stop_container(container_name, ignore_missing: true)
+      rescue => e
+        event(queue, job_id, "Could not retire container #{container_name}: #{e.message}", stream: "stderr")
+      end
+
+      def retire_release_safely(release, runtime, queue:, job_id:)
+        activator.retire_release(release, runtime)
+      rescue => e
+        event(queue, job_id, "Could not retire release #{release.version}: #{e.message}", stream: "stderr")
       end
     end
   end

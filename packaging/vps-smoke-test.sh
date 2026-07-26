@@ -97,6 +97,8 @@ web_service_id=""
 cleanup_started=0
 
 remote() {
+  # Smoke-test commands are intentionally assembled on the client.
+  # shellcheck disable=SC2029
   ssh "$ssh_target" "$1"
 }
 
@@ -295,8 +297,16 @@ remote "valpo service show '${postgres_service}' --project '${project}'"
 remote "valpo service show '${redis_service}' --project '${project}'"
 remote "valpo service logs '${postgres_service}' --project '${project}' --tail 50"
 remote "valpo service logs '${redis_service}' --project '${project}' --tail 50"
-remote "valpo service env '${web_service}' --project '${project}'"
-remote "valpo service env '${web_service}' --project '${project}' --reveal | grep -E 'DATABASE_URL|REDIS_URL'"
+environment_output="$(remote "valpo service env '${web_service}' --project '${project}'")"
+printf '%s\n' "$environment_output"
+for secret_name in DATABASE_URL PGPASSWORD REDIS_URL REDIS_PASSWORD; do
+  printf '%s\n' "$environment_output" | grep -F "$secret_name" | grep -F '********' >/dev/null
+done
+if printf '%s\n' "$environment_output" | grep -Eq 'postgres(ql)?://|redis://'; then
+  echo "Managed credential value leaked into smoke-test output" >&2
+  exit 1
+fi
+remote "redacted_output=\$(valpo service env '${web_service}' --project '${project}'); revealed_output=\$(valpo service env '${web_service}' --project '${project}' --reveal); for secret_name in DATABASE_URL PGPASSWORD REDIS_URL REDIS_PASSWORD; do secret_value=\$(printf '%s\n' \"\$revealed_output\" | awk -v name=\"\$secret_name\" '\$1 == name { print \$2; exit }'); test -n \"\$secret_value\"; if printf '%s\n' \"\$redacted_output\" | grep -F -- \"\$secret_value\" >/dev/null; then printf 'Credential value leaked for %s\n' \"\$secret_name\" >&2; exit 1; fi; done"
 remote "container=\$(docker ps --filter 'label=valpo.service_id=${web_service_id}' --format '{{.Names}}' | head -n 1); test -n \"\$container\"; docker inspect \"\$container\" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E 'DATABASE_URL=|REDIS_URL=' >/dev/null"
 
 echo "[smoke] verifying automatic domain"

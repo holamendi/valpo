@@ -4,8 +4,40 @@ require "test_helper"
 require "yaml"
 
 class ValpoAPIOpenAPITest < Minitest::Test
+  include ValpoTestDatabase
+
   HTTP_METHODS = %w[get post put patch delete].freeze
   SPEC_PATH = File.join(Valpo.root, "docs", "openapi.yaml")
+  BODY_CONTRACTS = {
+    Valpo::API::V1::GitHub::CreateSetupContract => "CreateGitHubAppSetupRequest",
+    Valpo::API::V1::Projects::ApplyContract => "ApplyProjectRequest",
+    Valpo::API::V1::Projects::CreateContract => "CreateProjectRequest",
+    Valpo::API::V1::Services::BindDependencyContract => "BindDependencyRequest",
+    Valpo::API::V1::Services::CreateContract => "CreateServiceRequest",
+    Valpo::API::V1::Services::CreateDomainContract => "CreateDomainRequest",
+    Valpo::API::V1::Services::DeployContract => "DeployServiceRequest",
+    Valpo::API::V1::Services::UpdateContract => "UpdateServiceRequest",
+    Valpo::API::V1::System::ConfigureAppDomainContract => "ConfigureAppDomainRequest"
+  }.freeze
+  QUERY_CONTRACTS = {
+    Valpo::API::V1::GitHub::SetupQueryContract => "showGitHubAppManifest",
+    Valpo::API::V1::GitHub::CallbackQueryContract => "completeGitHubAppSetup",
+    Valpo::API::V1::GitHub::InstallationQueryContract => "confirmGitHubAppInstallation",
+    Valpo::API::V1::Jobs::EventListQueryContract => "listJobEvents",
+    Valpo::API::V1::Jobs::ListQueryContract => "listJobs",
+    Valpo::API::V1::Projects::LogsQueryContract => "getProjectLogs",
+    Valpo::API::V1::Services::DeleteQueryContract => "deleteService",
+    Valpo::API::V1::Services::EnvironmentQueryContract => "getServiceEnvironment",
+    Valpo::API::V1::Services::ListQueryContract => "listServices",
+    Valpo::API::V1::Services::TailQueryContract => "getServiceLogs"
+  }.freeze
+  CONTRACT_NAMESPACES = [
+    Valpo::API::V1::GitHub,
+    Valpo::API::V1::Jobs,
+    Valpo::API::V1::Projects,
+    Valpo::API::V1::Services,
+    Valpo::API::V1::System
+  ].freeze
 
   def test_openapi_version_and_operation_ids
     assert_equal "3.1.0", spec.fetch("openapi")
@@ -56,20 +88,49 @@ class ValpoAPIOpenAPITest < Minitest::Test
     end
   end
 
-  def test_create_service_schema_mirrors_contract_keys_and_strict_nested_shapes
-    schema = spec.dig("components", "schemas", "CreateServiceRequest")
-    contract = Valpo::API::V1::Services::CreateContract.new
-    contract_keys = contract.schema.key_map.map(&:name)
-    assert_equal contract_keys.sort, schema.fetch("properties").keys.sort
-    assert_equal %w[name type], schema.fetch("required")
-    assert_equal false, schema.fetch("additionalProperties")
-    refute_includes schema.fetch("properties"), "port"
+  def test_request_contract_matrix_covers_every_concrete_contract
+    mapped = BODY_CONTRACTS.keys + QUERY_CONTRACTS.keys + [Valpo::API::V1::Contract::EmptyQuery]
+    assert_equal request_contract_classes.map(&:name).sort, mapped.map(&:name).sort
+    assert_equal [], Valpo::API::V1::Contract::EmptyQuery.new.schema.key_map.to_a
+  end
 
-    source_key = contract.schema.key_map.find { it.name == "source" }
-    source_schema = spec.dig("components", "schemas", "SourceInput")
-    assert_equal source_key.members.map(&:name).sort, source_schema.fetch("properties").keys.sort
-    assert_equal false, source_schema.fetch("additionalProperties")
-    assert_equal 65_535, spec.dig("components", "schemas", "Port", "maximum")
+  def test_body_contract_keys_required_fields_and_nested_shapes_match_openapi
+    BODY_CONTRACTS.each do |contract_class, schema_name|
+      contract = contract_class.new
+      schema = component_schema(schema_name)
+
+      assert_contract_key_map(contract, contract.schema.key_map, schema, schema_name:)
+    end
+  end
+
+  def test_query_contract_keys_and_required_fields_match_openapi
+    QUERY_CONTRACTS.each do |contract_class, operation_id|
+      contract = contract_class.new
+      parameters = query_parameters(operation_id)
+      context = "#{contract_class.name} / #{operation_id}"
+
+      assert_equal contract.schema.key_map.map(&:name).sort, parameters.map { it.fetch("name") }.sort, context
+      assert_equal required_contract_keys(contract).sort,
+        parameters.select { it.fetch("required", false) }.map { it.fetch("name") }.sort,
+        context
+    end
+  end
+
+  def test_representative_renderer_keys_strictly_match_response_schemas
+    representative_renderings.each do |schema_name, outputs|
+      schema = component_schema(schema_name)
+      properties = schema.fetch("properties").keys.sort
+      required = schema.fetch("required", []).sort
+      emitted = outputs.flat_map(&:keys).map(&:to_s).uniq.sort
+
+      assert_equal false, schema.fetch("additionalProperties"), schema_name
+      assert_equal properties, emitted, schema_name
+      outputs.each do
+        keys = it.keys.map(&:to_s)
+        assert_empty required - keys, "#{schema_name} renderer omitted required keys"
+        assert_empty keys - properties, "#{schema_name} renderer emitted undocumented keys"
+      end
+    end
   end
 
   private
@@ -85,6 +146,153 @@ class ValpoAPIOpenAPITest < Minitest::Test
         ["#{it.upcase} #{path}", operation] if operation
       end
     end
+  end
+
+  def operation(operation_id)
+    spec.fetch("paths").each_value do |path_item|
+      HTTP_METHODS.each do
+        candidate = path_item[it]
+        return [path_item, candidate] if candidate&.fetch("operationId") == operation_id
+      end
+    end
+    flunk "OpenAPI operation not found: #{operation_id}"
+  end
+
+  def query_parameters(operation_id)
+    path_item, operation = operation(operation_id)
+    Array(path_item["parameters"]).concat(Array(operation["parameters"])).map { resolve_value(it) }
+      .select { it.fetch("in") == "query" }
+  end
+
+  def request_contract_classes
+    CONTRACT_NAMESPACES.flat_map do |namespace|
+      namespace.constants(false).filter_map do
+        value = namespace.const_get(it)
+        value if value.is_a?(Class) && value < Valpo::API::V1::Contract
+      end
+    end + [Valpo::API::V1::Contract::EmptyQuery]
+  end
+
+  def assert_contract_key_map(contract, key_map, schema, schema_name:, prefix: [])
+    context = "#{contract.class.name} / #{schema_name}"
+    context += " / #{prefix.join(".")}" unless prefix.empty?
+    assert_equal false, schema.fetch("additionalProperties"), context
+    assert_equal key_map.map(&:name).sort, schema.fetch("properties").keys.sort, context
+    assert_equal required_contract_keys(contract, prefix:).sort, schema.fetch("required", []).sort, context
+
+    key_map.each do
+      next unless it.respond_to?(:members)
+
+      nested_schema = resolve_value(schema.fetch("properties").fetch(it.name))
+      assert_contract_key_map(
+        contract,
+        it.members,
+        nested_schema,
+        schema_name:,
+        prefix: prefix + [it.name]
+      )
+    end
+  end
+
+  def required_contract_keys(contract, prefix: [])
+    input = prefix.reverse_each.reduce({}) { |value, key| {key.to_sym => value} }
+    depth = prefix.length + 1
+    contract.call(input).errors.map(&:path)
+      .select { it.length == depth && it.first(prefix.length).map(&:to_s) == prefix }
+      .map { it.last.to_s }
+  end
+
+  def component_schema(name)
+    spec.dig("components", "schemas").fetch(name)
+  end
+
+  def resolve_value(value)
+    reference = value["$ref"]
+    return value unless reference
+
+    reference.delete_prefix("#/").split("/").reduce(spec) do |resolved, component|
+      resolved.fetch(component.gsub("~1", "/").gsub("~0", "~"))
+    end
+  end
+
+  def representative_renderings
+    project = create_project
+    source = Valpo::Source.create(
+      project_id: project.id,
+      name: "backend",
+      provider: "github",
+      repository: "acme/backend",
+      ref: "main"
+    )
+    build = Valpo::BuildTarget.create(
+      project_id: project.id,
+      source_id: source.id,
+      name: "backend",
+      dockerfile: "Dockerfile",
+      context: "."
+    )
+    app = create_app_service(project:)
+    Valpo::AppServiceConfig[app.id].update(build_target_id: build.id)
+    managed = create_managed_service(project:)
+    dependency = Valpo::ServiceDependency.create(
+      service_id: app.id,
+      dependency_service_id: managed.id,
+      status: "active",
+      env_json: JSON.generate("DATABASE_URL" => "postgres://secret")
+    )
+    release = create_release(
+      service: app,
+      build_strategy: "buildpack",
+      build_metadata_json: JSON.generate(
+        "dockerfile" => "Dockerfile",
+        "builder" => "example/builder@sha256:abc",
+        "buildpacks" => [],
+        "processes" => []
+      )
+    )
+    platform_domain = create_platform_domain
+    domain = create_domain(service: app, platform_domain_id: platform_domain.id)
+    job = Valpo::Jobs::Queue.new.enqueue("system_check", source: "openapi-test")
+    event = Valpo::Jobs::Queue.new.events(job.id).first
+    app_output = Valpo::API::V1::Services.render(app)
+    managed_output = Valpo::API::V1::Services.render(managed)
+    release_output = Valpo::API::V1::Services.render_release(release)
+    project_output = Valpo::API::V1::Projects.render(project)
+    environment_entry = Valpo::Services::Environment.entries_for_service(app.id, reveal: false).fetch(0)
+    successful_log = {
+      service_id: app.id,
+      service_name: app.name,
+      type: app.kind,
+      stdout: "ready\n",
+      stderr: ""
+    }
+    failed_log = {
+      service_id: managed.id,
+      service_name: managed.name,
+      type: managed.kind,
+      error: "container unavailable"
+    }
+
+    {
+      "Project" => [project_output],
+      "Source" => [Valpo::API::V1::Projects.render_source(source)],
+      "BuildTarget" => [Valpo::API::V1::Projects.render_build_target(build)],
+      "Service" => [app_output, managed_output],
+      "AppConfiguration" => [app_output.fetch(:app)],
+      "ManagedConfiguration" => [managed_output.fetch(:managed)],
+      "ServiceDependency" => [Valpo::API::V1::Services.render_dependency(dependency)],
+      "Release" => [release_output],
+      "ReleaseBuild" => [release_output.fetch(:build)],
+      "Domain" => [Valpo::API::V1::Services.render_domain(domain)],
+      "PlatformDomain" => [Valpo::API::V1::System.render_domain(platform_domain)],
+      "Job" => [Valpo::API::V1::Jobs.render(job)],
+      "JobEvent" => [Valpo::API::V1::Jobs.render_event(event)],
+      "ServiceLogs" => [{stdout: "ready\n", stderr: "", service: app_output}],
+      "ProjectLogEntry" => [successful_log, failed_log],
+      "ProjectLogs" => [{project: project_output, logs: [successful_log, failed_log]}],
+      "EnvironmentEntry" => [environment_entry],
+      "ServiceEnvironment" => [{service: app_output, env: [environment_entry]}]
+    }
   end
 
   def route_comments

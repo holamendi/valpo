@@ -39,16 +39,20 @@ module Valpo
           {"password" => SecureRandom.urlsafe_base64(32)}
         end
 
-        def container_environment(_credentials)
-          {}
+        def container_environment(credentials)
+          password = credentials.fetch("password")
+          {
+            "REDIS_PASSWORD" => password,
+            "REDISCLI_AUTH" => password
+          }
         end
 
-        def command(credentials)
-          ["redis-server", "--appendonly", "yes", "--requirepass", credentials.fetch("password")]
+        def command(_credentials)
+          ["sh", "-c", 'exec redis-server --appendonly yes --requirepass "$REDIS_PASSWORD"']
         end
 
-        def readiness_command(credentials)
-          ["redis-cli", "-a", credentials.fetch("password"), "PING"]
+        def readiness_command(_credentials)
+          ["redis-cli", "PING"]
         end
 
         def binding_environment(config)

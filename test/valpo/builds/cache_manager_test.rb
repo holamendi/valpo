@@ -25,6 +25,21 @@ class ValpoBuildsCacheManagerTest < Minitest::Test
     )
   end
 
+  def test_prepares_owned_build_and_launch_cache_volumes
+    docker = FakeDocker.new
+    manager = Valpo::Builds::CacheManager.new(docker:)
+
+    manager.prepare(build_target_id: "target_123", queue: FakeQueue.new, job_id: "job_test")
+
+    assert_equal(
+      [
+        [:volume_create, "valpo-cnb-build-target_123", {"valpo.owned" => "true"}],
+        [:volume_create, "valpo-cnb-launch-target_123", {"valpo.owned" => "true"}]
+      ],
+      docker.commands
+    )
+  end
+
   class FakeDocker
     attr_reader :commands
 
@@ -34,6 +49,10 @@ class ValpoBuildsCacheManagerTest < Minitest::Test
 
     def volume_rm_command(name, force:)
       [:volume_rm, name, force]
+    end
+
+    def volume_create_command(name, labels:)
+      [:volume_create, name, labels]
     end
 
     def execute(command)

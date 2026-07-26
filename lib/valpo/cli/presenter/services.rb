@@ -10,7 +10,7 @@ module Valpo
           table(value, [
             ["PROJECT", -> { it["project"] }],
             ["SERVICE", -> { it["name"] }],
-            ["TYPE", -> { it["kind"] }],
+            ["TYPE", -> { it["type"] }],
             ["STATUS", -> { it["status"] }],
             ["VERSION/PORT", method(:service_version_or_port)]
           ], empty: "No services found.")
@@ -23,7 +23,7 @@ module Valpo
             "id" => value["id"],
             "project" => value["project"],
             "name" => value["name"],
-            "type" => value["kind"],
+            "type" => value["type"],
             "status" => value["status"]
           }
           if value["app"]

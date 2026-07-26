@@ -7,6 +7,7 @@ module Valpo
   module Deployments
     class Runtime
       MANAGED_LABEL = "valpo.managed"
+      OWNED_LABEL = "valpo.owned"
       PROJECT_LABEL = "valpo.project_id"
       RELEASE_LABEL = "valpo.release_id"
       SERVICE_LABEL = "valpo.service_id"
@@ -42,10 +43,6 @@ module Valpo
         raise Valpo::ValidationError, "Docker image inspect returned invalid JSON: #{e.message}"
       end
 
-      def inspect_image_digest(image)
-        inspect_image_metadata(image).digest
-      end
-
       def start_release_container(release)
         ensure_network
         host_port = allocate_port if release.internal_port
@@ -60,12 +57,13 @@ module Valpo
         environment = environment.merge("PORT" => release.internal_port.to_s) if service.web?
         command = app_config&.command || []
         entrypoint = "/cnb/lifecycle/launcher" if release.build_strategy == "buildpack" && !command.empty?
-        result = docker.execute(docker.run_command(
+        result = docker.run_container(
           name: container_name,
           image:,
           network: config.docker_network,
           labels: {
             MANAGED_LABEL => "true",
+            OWNED_LABEL => "true",
             PROJECT_LABEL => service.project_id,
             RELEASE_LABEL => release.id,
             SERVICE_LABEL => service.id
@@ -75,7 +73,7 @@ module Valpo
           restart_policy: "unless-stopped",
           entrypoint:,
           command_args: command
-        ))
+        )
         emit_command_output(result)
         raise_command_error("Docker run failed", result) unless result.fetch(:success)
 
@@ -123,8 +121,10 @@ module Valpo
 
       def cleanup_container(container_name)
         stop_container(container_name, ignore_missing: true) if container_name
+        true
       rescue => e
         event("stderr", "Cleanup failed for #{container_name}: #{e.message}")
+        false
       end
 
       def app_logs(container_name:, tail: nil)
@@ -139,12 +139,25 @@ module Valpo
       attr_reader :config, :docker, :queue, :job_id, :sleeper
 
       def ensure_network
-        result = docker.execute(docker.network_create_command(config.docker_network))
+        result = docker.execute(docker.network_create_command(config.docker_network, labels: {OWNED_LABEL => "true"}))
         return if result.fetch(:success)
-        return if result.fetch(:stderr).include?("already exists")
+        if result.fetch(:stderr).include?("already exists")
+          return if owned_network?
 
+          raise Valpo::ValidationError,
+            "Docker network #{config.docker_network} exists without #{OWNED_LABEL}=true"
+        end
         emit_command_output(result)
         raise_command_error("Docker network create failed", result)
+      end
+
+      def owned_network?
+        result = docker.execute(docker.network_inspect_command(config.docker_network))
+        return false unless result.fetch(:success)
+
+        JSON.parse(result.fetch(:stdout)).first&.dig("Labels", OWNED_LABEL) == "true"
+      rescue JSON::ParserError
+        false
       end
 
       def execute_docker(command, failure_message:)

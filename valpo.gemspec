@@ -5,8 +5,8 @@ require_relative "lib/valpo/version"
 Gem::Specification.new do
   it.name = "valpo"
   it.version = Valpo::VERSION
-  it.summary = "A lightweight VPS application platform control plane."
-  it.description = "Valpo is an early-stage, single-server application platform scaffold."
+  it.summary = "Internal dependency manifest for the Valpo control plane."
+  it.description = "Valpo is an early-stage, single-server application platform distributed from its source checkout."
   it.authors = ["Valpo contributors"]
   it.license = "MIT"
   it.homepage = "https://github.com/holamendi/valpo"
@@ -26,8 +26,6 @@ Gem::Specification.new do
     "README.md",
     "LICENSE"
   ]
-  it.bindir = "exe"
-  it.executables = ["valpo", "valpo-api", "valpo-worker"]
   it.require_paths = ["lib"]
 
   it.add_dependency "json", ">= 2.7", "< 3"

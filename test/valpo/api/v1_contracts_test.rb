@@ -6,6 +6,8 @@ class ValpoAPIV1ResourceContractsTest < Minitest::Test
   CONTRACTS = {
     create_service: Valpo::API::V1::Services::CreateContract,
     environment_query: Valpo::API::V1::Services::EnvironmentQueryContract,
+    event_list_query: Valpo::API::V1::Jobs::EventListQueryContract,
+    job_list_query: Valpo::API::V1::Jobs::ListQueryContract,
     tail_query: Valpo::API::V1::Services::TailQueryContract,
     update_service: Valpo::API::V1::Services::UpdateContract
   }.freeze
@@ -93,6 +95,17 @@ class ValpoAPIV1ResourceContractsTest < Minitest::Test
     assert contract(:environment_query).call("reveal" => "false").success?
     refute contract(:environment_query).call("reveal" => "1").success?
     refute contract(:environment_query).call("unknown" => "true").success?
+
+    job_list = contract(:job_list_query).call("limit" => "500")
+    assert job_list.success?
+    assert_equal 500, job_list[:limit]
+    refute contract(:job_list_query).call("limit" => "501").success?
+    refute contract(:job_list_query).call("limit" => "0").success?
+
+    events = contract(:event_list_query).call("after" => "evt_123", "limit" => "200")
+    assert events.success?
+    assert_equal "evt_123", events[:after]
+    refute contract(:event_list_query).call("after" => "").success?
   end
 
   private

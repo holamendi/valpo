@@ -5,7 +5,8 @@ usage() {
   cat <<'USAGE'
 Usage: packaging/uninstall.sh
 
-Removes Valpo-owned services, containers, volumes, images, state, and host files.
+Removes Valpo services, label-owned containers, volumes, networks, state, and
+host files. Docker images and unlabeled Docker resources are retained.
 Shared host packages such as Docker and Caddy are retained.
 
 Options:
@@ -44,10 +45,9 @@ fi
 
 if command -v docker >/dev/null 2>&1; then
   log "Removing Valpo Docker resources"
-  docker ps -aq --filter label=valpo.managed=true | xargs -r docker rm -f
-  docker volume ls -q | grep '^valpo-' | xargs -r docker volume rm -f || true
-  docker network rm valpo >/dev/null 2>&1 || true
-  docker image ls --filter 'reference=valpo/*' -q | sort -u | xargs -r docker image rm -f
+  docker ps -aq --filter label=valpo.owned=true | xargs -r docker rm -f
+  docker volume ls -q --filter label=valpo.owned=true | xargs -r docker volume rm -f
+  docker network ls -q --filter label=valpo.owned=true | xargs -r docker network rm
 fi
 
 if [[ -f /etc/caddy/Caddyfile ]]; then

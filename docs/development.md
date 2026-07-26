@@ -27,6 +27,8 @@ Install the repository-managed Git hooks with:
 mise exec -- bundle exec rake hooks:install
 ```
 
+The pre-commit hook is check-only: it runs the test suite, Ruby style checks, generated CLI/OpenAPI checks, and documentation-link checks without rewriting the working tree. GitHub Actions runs the same checks on the single supported Ubuntu 26.04 environment, plus Bash syntax validation and ShellCheck for every tracked shell script.
+
 Run or automatically fix Ruby style with:
 
 ```bash
@@ -64,6 +66,8 @@ API, worker, CLI, models, and shared runtime code live in one Ruby gem-style rep
 
 Test-local fakes and tiny private test value objects may remain in their owning test. Cohesive Docker/runtime and build-pipeline classes should not be split merely to satisfy a size metric.
 
+The gemspec is used for dependency resolution and gem-style repository structure. RubyGems installation is not a supported distribution path; packaged hosts are installed from a source checkout through `packaging/install.sh`.
+
 ## API Maintenance
 
 Resource routes are intentionally incompatible with the old unversioned paths and live under `/v1`. Request bodies use Roda JSON parsing plus `dry-validation` JSON contracts; query shapes have separate contracts. Do not add ad-hoc optional-type helpers or `typecast_params`.
@@ -79,4 +83,13 @@ Version-specific contracts and response renderers live together under `API::V1` 
 
 ## Pre-release Schema Policy
 
-Valpo has not been released, so backward compatibility is not a goal and all current schema is kept in the first migration. That migration may be rewritten. If a development database reports a migration version newer than the migrations in the checkout, back it up if necessary, remove it, and run the migrations again. The default development database is `tmp/valpo-development.sqlite3`.
+Valpo has not been released, so backward compatibility is not a goal and all current schema is kept in the first migration. That migration may be rewritten. Sequel tracks its version number, not the file contents: rerunning migration `001` does not apply later edits to a database that already records version `1`.
+
+After any change to `db/migrations/001_bootstrap.rb`, remove the disposable development database and rerun migrations:
+
+```bash
+rm -f tmp/valpo-development.sqlite3 tmp/valpo-development.sqlite3-wal tmp/valpo-development.sqlite3-shm
+mise exec -- bundle exec rake db:migrate
+```
+
+Back up any local state you care about first. The packaged installer compares the installed and incoming bootstrap-migration SHA-256 digests before making changes and refuses an in-place development update when they differ. The clean-reinstall procedure and its destructive scope are documented in [packaging/README.md](../packaging/README.md).

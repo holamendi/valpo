@@ -5,13 +5,20 @@ require "test_helper"
 class ValpoJobsQueueTest < Minitest::Test
   include ValpoTestDatabase
 
-  def test_running_job_is_not_locked_twice_and_stale_locks_requeue
+  def test_running_job_is_not_locked_twice_and_is_abandoned_on_startup
     queue = Valpo::Jobs::Queue.new
     job = queue.enqueue("system_check")
     assert_equal job.id, queue.lock_next("worker-1").id
     assert_nil queue.lock_next("worker-2")
-    assert_equal 1, queue.release_stale_locks(older_than: 0)
-    assert_equal job.id, queue.lock_next("worker-2").id
+
+    assert_equal 1, queue.abandon_running_jobs
+    abandoned = queue.find(job.id)
+    assert_equal "failed", abandoned.status
+    assert_equal Valpo::Jobs::Queue::ABANDONED_ERROR, abandoned.error
+    assert_nil abandoned.locked_by
+    assert abandoned.finished_at
+    assert_equal Valpo::Jobs::Queue::ABANDONED_EVENT, queue.events(job.id).last.message
+    assert_nil queue.lock_next("worker-2")
   end
 
   def test_completion_requires_lock_owner
@@ -83,5 +90,56 @@ class ValpoJobsQueueTest < Minitest::Test
     queue.enqueue_manifest_operation(project_name: "acme", manifest:)
     project = create_project(name: "acme")
     assert_equal "apply_project_manifest", queue.active_project_job(project.id).type
+  end
+
+  def test_enqueue_rejects_unsupported_job_types
+    queue = Valpo::Jobs::Queue.new
+    project = create_project
+    service = create_app_service(project:)
+    called = false
+
+    error = assert_raises Valpo::ValidationError do
+      queue.enqueue_service_operation(
+        "missing_handler",
+        service_id: service.id,
+        payload: {project_id: project.id}
+      ) { called = true }
+    end
+
+    assert_equal "Unsupported job type: missing_handler", error.message
+    refute called
+    assert_equal 0, Valpo::Job.count
+  end
+
+  def test_list_and_events_are_bounded_and_stably_cursor_ordered
+    queue = Valpo::Jobs::Queue.new
+    105.times { queue.enqueue("system_check") }
+
+    assert_equal 100, queue.list.length
+    assert_equal 3, queue.list(limit: 3).length
+
+    job = queue.list(limit: 1).first
+    timestamp = Time.utc(2099, 7, 26, 12)
+    %w[evt_c evt_a evt_b].each do
+      db[:job_events].insert(id: it, job_id: job.id, stream: "system", message: it, created_at: timestamp)
+    end
+    events = queue.events(job.id)
+    cursor_index = events.index { it.id == "evt_a" }
+
+    assert_equal %w[evt_a evt_b evt_c], events.slice(cursor_index, 3).map(&:id)
+    assert_equal %w[evt_b evt_c], queue.events(job.id, after: "evt_a").map(&:id)
+  end
+
+  def test_event_cursor_must_belong_to_the_requested_job
+    queue = Valpo::Jobs::Queue.new
+    first = queue.enqueue("system_check")
+    second = queue.enqueue("system_check")
+    cursor = queue.events(first.id).first
+
+    error = assert_raises Valpo::ValidationError do
+      queue.events(second.id, after: cursor.id)
+    end
+
+    assert_equal "Event cursor does not belong to job", error.message
   end
 end

@@ -20,6 +20,8 @@ The verified default app domain creates one narrow public exception at `github.<
 
 The GitHub App callback and webhook URLs contain the default app domain. Valpo therefore blocks app-domain replacement while App credentials are configured. Remove the local authentication, replace the domain, create the new App, and delete the retired App in GitHub.
 
+The public GitHub landing, setup, callback, installation, and webhook operations are documented in OpenAPI with `security: []`; they use one-time state, App installation validation, or webhook HMAC rather than the control-plane bearer token. Webhook bodies are limited to 25 MiB before HMAC validation, including requests without a trustworthy declared length.
+
 ## Requests And Validation
 
 Body operations require `Content-Type: application/json` and a JSON object. Roda parses the transport; one `dry-validation` contract per request shape validates the object.
@@ -36,6 +38,16 @@ Query contracts reject every undeclared key. Positive integer queries use parame
 Shape and type failures return `400 invalid_request`. Cross-field or stateful rules remain Ruby domain validation and return `422 validation_failed`; examples include service-type-specific options, source/build relationships, `image`/`ref` exclusivity, deployment readiness, and forced deletion.
 
 Source-backed app requests accept `build.strategy` as `auto`, `dockerfile`, or `buildpack`. It defaults to `auto`; supplying `build.dockerfile` without a strategy selects `dockerfile`, while combining a Dockerfile with `auto` or `buildpack` is rejected. `auto` resolves to Dockerfile only when `<context>/Dockerfile` exists, otherwise it resolves to buildpacks. Release responses expose the resolved strategy under `build`; Dockerfile releases include the path, while buildpack releases may include builder, buildpack, and process metadata. Registry releases return `"build": null`.
+
+Service records retain `kind` internally, but every public service and project-log response exposes that field as `type`. Managed-service responses have no `plan` field. Environment entries include `name`, `value`, `redacted`, `service_id`, `service_name`, `service_type`, and `dependency_id`.
+
+## Bounded Lists And Logs
+
+- `GET /v1/jobs` accepts `limit`; the default is `100` and the maximum is `500`.
+- `GET /v1/jobs/{id}/events` accepts `after` and `limit`; the default is `200` and the maximum is `500`. `after` is an event ID from the same job, and events are ordered by creation time and ID.
+- Service and project log endpoints accept `tail`; the default is `200` and the maximum is `10,000`.
+
+Clients waiting on a job must drain every event page before advancing the cursor. Valpo does not automatically expire jobs, webhook deliveries, logs, or images.
 
 Example validation response:
 
@@ -65,6 +77,7 @@ Error envelopes are flat and stable:
 | `401` | `unauthorized` | Missing or invalid bearer token |
 | `404` | `not_found` | Unknown resource, path, or trailing segment |
 | `409` | `conflict` | Valid operation conflicts with current state |
+| `413` | `payload_too_large` | Request body exceeds the supported limit |
 | `422` | `validation_failed` | Valid request shape fails a semantic rule |
 | `500` | `internal_error` | Unexpected failure; the client receives a generic message and the server logs the exception |
 

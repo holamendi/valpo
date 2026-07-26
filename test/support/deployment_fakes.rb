@@ -6,10 +6,12 @@ module ValpoTestSupport
   class FakeDocker
     attr_reader :commands, :run_requests
 
-    def initialize(fail_on: nil, container_states: {}, exposed_ports: [])
+    def initialize(fail_on: nil, container_states: {}, exposed_ports: [], network_exists: false, network_owned: true)
       @fail_on = fail_on
       @container_states = container_states
       @exposed_ports = exposed_ports
+      @network_exists = network_exists
+      @network_owned = network_owned
       @commands = []
       @run_requests = []
     end
@@ -38,8 +40,16 @@ module ValpoTestSupport
       [:run, name]
     end
 
-    def network_create_command(name)
+    def run_container(env: {}, **options)
+      execute(run_command(**options, env:))
+    end
+
+    def network_create_command(name, labels: {})
       [:network_create, name]
+    end
+
+    def network_inspect_command(name)
+      [:network_inspect, name]
     end
 
     def container_inspect_command(name)
@@ -70,7 +80,7 @@ module ValpoTestSupport
       [:exec, name, *command_args]
     end
 
-    def volume_create_command(name)
+    def volume_create_command(name, labels: {})
       [:volume_create, name]
     end
 
@@ -85,6 +95,7 @@ module ValpoTestSupport
     def execute(command)
       commands << command
       return failure("#{command.first} failed") if command.first == @fail_on
+      return failure("network already exists") if command.first == :network_create && @network_exists
 
       case command.first
       when :inspect
@@ -98,6 +109,9 @@ module ValpoTestSupport
         return failure("No such object: #{command.fetch(1)}") if container_state == :missing
 
         success(JSON.generate([{"State" => {"Running" => container_state == true}}]))
+      when :network_inspect
+        labels = @network_owned ? {"valpo.owned" => "true"} : {}
+        success(JSON.generate([{"Labels" => labels}]))
       when :logs
         success("app log\n")
       when :exec
@@ -121,7 +135,17 @@ module ValpoTestSupport
   class FakeCaddy
     attr_reader :routes
 
+    def initialize(fail_reload: false, fail_reloads: 0)
+      @reload_failures = fail_reload ? Float::INFINITY : fail_reloads
+    end
+
     def write_config(routes)
+      previous = @routes
+      @routes = routes
+      previous
+    end
+
+    def restore_config(routes)
       @routes = routes
     end
 
@@ -130,6 +154,11 @@ module ValpoTestSupport
     end
 
     def execute(_command)
+      if @reload_failures.positive?
+        @reload_failures -= 1
+        return {stdout: "", stderr: "reload failed", status: 1, success: false}
+      end
+
       {stdout: "reloaded\n", stderr: "", status: 0, success: true}
     end
   end

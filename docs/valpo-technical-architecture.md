@@ -67,7 +67,7 @@ succeeded
 failed
 ```
 
-There is no canceled state or cancellation operation. Stale locks can be returned to the queue; a single worker remains the supported deployment/build concurrency model.
+There is no canceled state, cancellation operation, lease, or automatic replay. At startup, the worker marks jobs left in `running` as failed with a manual-retry event. A non-blocking file lock beside the SQLite database enforces exactly one worker for that database; multi-worker execution is not implemented.
 
 ### Deployments, Domains, Routing, And Repair
 
@@ -132,6 +132,8 @@ service_dependencies
 releases
 platform_domains
 domains
+github_app_setups
+github_webhook_deliveries
 jobs
 job_events
 ```
@@ -142,11 +144,12 @@ Important ownership and field conventions:
 - `Source` and `BuildTarget` belong to a project and may have an `owner_service_id` for CLI-owned configuration.
 - `Service.kind` is `web`, `worker`, `postgres`, or `redis`; app/managed details live in one-to-one configuration tables.
 - `AppServiceConfig` stores `build_target_id`, command JSON, nullable `internal_port`, and nullable `healthcheck_path`.
-- `ManagedServiceConfig` stores version, image, plan, runtime names/address, port, and plaintext credential JSON.
+- `ManagedServiceConfig` stores version, image, runtime names/address, port, and plaintext credential JSON.
 - `ServiceDependency` links one app service to one managed service and stores generated environment JSON.
 - `Release` stores source/artifact identity, resolved build strategy and metadata, runtime configuration, container/route identity, state, and activation time.
 - `Domain` stores custom or generated hostname verification and projected route state.
 - `PlatformDomain` stores the active or candidate wildcard base and verification state.
+- `GitHubAppSetup` stores expiring one-time setup state; `GitHubWebhookDelivery` stores delivery IDs and payload digests for replay protection.
 - `Job` stores type, payload, progress, error, lock, start, finish, and creation state; `JobEvent` stores stdout/stderr/system messages.
 
 Typed IDs (`prj_`, `svc_`, and related prefixes) are immutable identities. The CLI accepts service names scoped by project for people and IDs for unambiguous automation.
@@ -157,6 +160,7 @@ The Docker wrapper constructs explicit command arrays and consumes structured in
 
 ```text
 valpo.managed
+valpo.owned
 valpo.project_id
 valpo.release_id
 valpo.service_id
@@ -179,11 +183,9 @@ Implemented packaging uses the following durable roots:
 
 /etc/valpo/
   valpo.yml
-
-/var/log/valpo/
-  api.log
-  worker.log
 ```
+
+The API, worker, and migration service log to the systemd journal. The packaging creates `/var/log/valpo` through `LogsDirectory`, but no current process writes `api.log` or `worker.log` files there.
 
 Build-target locks live beside the SQLite database. Buildpack build and launch caches are deterministic Docker volumes rather than host directories. Uploads, immutable static releases, backups, exports, and a host encryption key are proposed future directories. They must not be documented as implemented until their owning features exist.
 

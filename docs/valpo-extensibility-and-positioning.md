@@ -120,125 +120,21 @@ A complete observability platform.
 
 It should run on a small VPS if the user wants that, but the product should not be shaped around the "$5 VPS runs everything" meme. The real target is a single machine sized appropriately for the workload.
 
-## Extensibility Strategy
+## Deferred Extensibility Constraints
 
-Extensibility should be designed in layers.
+Status: not implemented. Valpo has no public plugin API, plugin package format, lifecycle-event contract, backup-target interface, notification sink, or template system.
 
-### Layer 1: Internal Extension Interfaces
+The current code should remain concrete until a second real implementation creates pressure for an interface. Existing source fetching, build strategies, and managed-service definitions may use small internal composition boundaries, but those boundaries are not promises to third parties and should be changed freely while the product is pre-release.
 
-Build internal interfaces first, before public plugins:
+If a concrete extension requirement arrives, preserve only these constraints:
 
-```text
-SourceAdapter
-BuildAdapter
-ServiceDefinition
-ServiceProvisioner
-BackupTarget
-NotificationSink
-LifecycleSubscriber
-```
+- long-running actions remain visible jobs with inspectable output and failures;
+- resources and state transitions remain visible through Valpo's model and API;
+- extensions do not mutate Docker, Caddy, or SQLite behind Valpo's ownership boundaries;
+- secrets are provided only through an explicit, narrowly scoped contract;
+- declarative project templates, if needed, build on the existing validated manifest rather than execute arbitrary code.
 
-These should be Ruby interfaces used by built-in features. Once they stabilize, they can become public plugin contracts.
-
-### Layer 2: Typed Lifecycle Events
-
-Expose structured lifecycle events instead of arbitrary shell hooks:
-
-```text
-project.created
-deployment.started
-deployment.succeeded
-deployment.failed
-release.activated
-domain.attached
-resource.provisioned
-resource.bound
-backup.completed
-import.completed
-```
-
-Each event should have:
-
-- a versioned payload
-- stable identifiers
-- timeout behavior
-- retry behavior
-- clear permission scope
-- job/event log visibility
-
-### Layer 3: Plugin Packages
-
-Public plugins can come later. Possible packaging options:
-
-- Ruby gems loaded by Valpo.
-- Local plugin directories with a manifest.
-- Subprocess plugins that communicate over JSON.
-
-The safest long-term shape is probably a manifest plus subprocess protocol. It keeps plugins language-agnostic and allows Valpo to control permissions, timeouts, inputs, and outputs.
-
-Example manifest:
-
-```toml
-[plugin]
-name = "valpo-postmark"
-version = "0.1.0"
-api_version = "2026-06"
-description = "Send deployment notifications through Postmark"
-
-[[hooks]]
-event = "deployment.succeeded"
-command = "bin/deployment-succeeded"
-timeout_seconds = 10
-```
-
-Do not build this in v1. Design the internal boundaries so it remains possible.
-
-## First Extension Points To Preserve
-
-The earliest code should leave room for:
-
-- new deployment sources such as GitHub, GitLab, registry, static upload, and later S3 artifact
-- new managed service definitions such as Postgres, MariaDB, Redis, and later Meilisearch
-- new backup targets such as local disk, S3, R2, Backblaze B2
-- notification sinks such as webhook, Slack, email
-- templates that create projects and services from a manifest
-- deployment lifecycle subscribers
-
-Avoid designing every extension point immediately. Keep the core abstractions small and explicit.
-
-## Plugin Guardrails
-
-Valpo should not allow plugins to silently bypass the core state model.
-
-Guardrails:
-
-- Plugin actions must be represented as jobs when they are long-running.
-- Plugin-created resources must be visible in the API and dashboard.
-- Plugin output must be structured.
-- Plugin failures must be visible in job logs.
-- Plugins should declare required capabilities.
-- Plugins should not receive secrets unless explicitly granted.
-- Plugins should not mutate Caddy or Docker outside Valpo's wrappers.
-- Plugins should use Valpo APIs for state changes.
-
-## Template Strategy
-
-Templates are related to extensibility but should be simpler.
-
-A template should describe a project shape:
-
-```text
-app service
-managed services
-environment variables
-domains
-volumes
-post-deploy notes
-```
-
-Templates should not be arbitrary code by default. They should be declarative manifests that Valpo validates before applying.
-
-This gives Valpo one-click onboarding without becoming an app store too early.
+Do not add adapters, event taxonomies, subprocess protocols, packaging formats, permission systems, or marketplaces in anticipation of future providers. Introduce the smallest boundary demanded by the next implemented source, service, backup, or notification feature, then reassess it after two real uses.
 
 ## Product Direction
 

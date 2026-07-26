@@ -15,6 +15,18 @@ module Valpo
         "valpo-cnb-launch-#{build_target_id}"
       end
 
+      def prepare(build_target_id:, queue:, job_id:)
+        [build_cache(build_target_id), launch_cache(build_target_id)].each do
+          result = docker.execute(docker.volume_create_command(it, labels: {"valpo.owned" => "true"}))
+          next if result.fetch(:success)
+
+          emit(result, queue:, job_id:)
+          detail = result.fetch(:stderr).to_s.strip
+          detail = result.fetch(:stdout).to_s.strip if detail.empty?
+          raise Valpo::ValidationError, "Could not create build cache #{it}: #{detail}"
+        end
+      end
+
       def remove(build_target_id:, queue:, job_id:)
         [build_cache(build_target_id), launch_cache(build_target_id)].each do
           result = docker.execute(docker.volume_rm_command(it, force: true))

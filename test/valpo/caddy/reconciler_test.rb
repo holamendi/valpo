@@ -18,4 +18,19 @@ class ValpoCaddyReconcilerTest < Minitest::Test
       path: "/integrations/github"
     }
   end
+
+  def test_failed_reload_restores_the_previous_config
+    previous = [
+      {hostname: "old.example.com", kind: "container", upstream: "127.0.0.1:20000"}
+    ]
+    caddy = ValpoTestSupport::FakeCaddy.new(fail_reload: true)
+    caddy.write_config(previous)
+
+    error = assert_raises Valpo::ValidationError do
+      Valpo::Caddy::Reconciler.new(caddy:, config: VALPO_TEST_CONFIG).apply
+    end
+
+    assert_match "Caddy reload failed", error.message
+    assert_equal previous, caddy.routes
+  end
 end

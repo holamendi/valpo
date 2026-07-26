@@ -16,10 +16,15 @@ module Valpo
         routes.concat(system_routes)
         routes.concat(extra_routes)
         event(queue, job_id, "system", "Applying Caddy config")
-        caddy.write_config(routes)
-        result = caddy.execute(caddy.reload_command)
-        emit_output(queue, job_id, result)
-        raise_command_error(result) unless result.fetch(:success)
+        snapshot = caddy.write_config(routes)
+        begin
+          result = caddy.execute(caddy.reload_command)
+          emit_output(queue, job_id, result)
+          raise_command_error(result) unless result.fetch(:success)
+        rescue
+          restore_config(snapshot, queue:, job_id:)
+          raise
+        end
         targets.each { |domain_id, target| Valpo::Domain.where(id: domain_id).update(route_target: target) }
         true
       end
@@ -78,6 +83,12 @@ module Valpo
 
       def event(queue, job_id, stream, message)
         queue&.event(job_id, stream, message) if job_id
+      end
+
+      def restore_config(snapshot, queue:, job_id:)
+        caddy.restore_config(snapshot)
+      rescue => e
+        event(queue, job_id, "stderr", "Could not restore Caddy config file: #{e.message}")
       end
 
       def raise_command_error(result)

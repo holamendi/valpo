@@ -21,10 +21,6 @@ module Valpo
     one_to_one :owned_source, class: "Valpo::Source", key: :owner_service_id
     one_to_one :owned_build_target, class: "Valpo::BuildTarget", key: :owner_service_id
 
-    def self.find_by_id(id)
-      where(id:).first
-    end
-
     def app?
       APP_KINDS.include?(kind)
     end
@@ -35,10 +31,6 @@ module Valpo
 
     def web?
       kind == "web"
-    end
-
-    def type
-      kind
     end
 
     def before_create

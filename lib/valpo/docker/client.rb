@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "open3"
+require "tempfile"
 
 module Valpo
   module Docker
@@ -21,14 +22,24 @@ module Valpo
         command("build", "--file", dockerfile, "--tag", tag, context)
       end
 
-      def run_command(name:, image:, network:, labels: {}, env: {}, ports: {}, volumes: {}, detach: true, restart_policy: nil, entrypoint: nil, command_args: [])
+      def run_container(env: {}, **options)
+        Tempfile.create(["valpo-env", ".list"]) do |file|
+          file.chmod(0o600)
+          normalized_environment(env).each { |key, value| file.puts("#{key}=#{value}") }
+          file.flush
+          file.fsync
+          execute(run_command(**options, env_file: file.path))
+        end
+      end
+
+      def run_command(name:, image:, network:, labels: {}, env_file: nil, ports: {}, volumes: {}, detach: true, restart_policy: nil, entrypoint: nil, command_args: [])
         args = ["run"]
         args << "--detach" if detach
         args += ["--name", name, "--network", network]
         args += ["--restart", restart_policy] if restart_policy
         args += ["--entrypoint", entrypoint] if entrypoint
         labels.sort.each { |key, value| args += ["--label", "#{key}=#{value}"] }
-        env.sort.each { |key, value| args += ["--env", "#{key}=#{value}"] }
+        args += ["--env-file", env_file] if env_file
         ports.sort.each { |host, container| args += ["--publish", "#{host}:#{container}"] }
         volumes.sort.each { |source, target| args += ["--volume", "#{source}:#{target}"] }
         args << image
@@ -71,16 +82,20 @@ module Valpo
         command("exec", name, *command_args)
       end
 
-      def network_create_command(name)
-        command("network", "create", name)
+      def network_create_command(name, labels: {})
+        args = ["network", "create"]
+        labels.sort.each { |key, value| args += ["--label", "#{key}=#{value}"] }
+        command(*args, name)
       end
 
       def network_inspect_command(name)
         command("network", "inspect", name)
       end
 
-      def volume_create_command(name)
-        command("volume", "create", name)
+      def volume_create_command(name, labels: {})
+        args = ["volume", "create"]
+        labels.sort.each { |key, value| args += ["--label", "#{key}=#{value}"] }
+        command(*args, name)
       end
 
       def volume_rm_command(name, force: false)
@@ -98,6 +113,21 @@ module Valpo
       private
 
       attr_reader :binary
+
+      def normalized_environment(environment)
+        environment.sort_by { |key, _value| key.to_s }.to_h do |key, value|
+          key = key.to_s
+          value = value.to_s
+          if key.empty? || key.include?("=") || key.match?(/[\0\r\n]/)
+            raise Valpo::ValidationError, "Docker environment keys must be non-empty and must not contain =, NUL, or newlines"
+          end
+          if value.match?(/[\0\r\n]/)
+            raise Valpo::ValidationError, "Docker environment values must not contain NUL or newlines"
+          end
+
+          [key, value]
+        end
+      end
 
       def command(*args)
         [binary, *args]

@@ -112,7 +112,7 @@ class ValpoBuildsBuildpackBuilderTest < Minitest::Test
     Valpo::Builds::BuildpackBuilder.new(
       client:,
       runner:,
-      cache_manager: Valpo::Builds::CacheManager.new(docker: nil),
+      cache_manager: Valpo::Builds::CacheManager.new(docker: ValpoTestSupport::FakeDocker.new),
       builder: "example/builder@sha256:abc",
       timeout: 60
     )

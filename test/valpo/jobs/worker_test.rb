@@ -1,22 +1,65 @@
 # frozen_string_literal: true
 
 require "test_helper"
-
-Valpo::Jobs::Worker.name
+require "stringio"
 
 class ValpoJobsWorkerTest < Minitest::Test
   include ValpoTestDatabase
 
-  def test_system_check_succeeds_and_unknown_job_fails
+  def test_default_worker_id_includes_the_process_id
+    worker_id = Valpo::Jobs::Worker.new.send(:default_worker_id)
+
+    assert_includes worker_id, "-#{Process.pid}-"
+  end
+
+  def test_system_check_succeeds_and_missing_handler_fails_with_diagnostics
     queue = Valpo::Jobs::Queue.new
     success = queue.enqueue("system_check")
     Valpo::Jobs::Worker.new(queue:, worker_id: "worker-1").run(once: true)
     assert_equal "succeeded", queue.find(success.id).status
 
-    failure = queue.enqueue("missing_handler")
-    Valpo::Jobs::Worker.new(queue:, worker_id: "worker-1").run(once: true)
+    failure = queue.enqueue("repair_system")
+    diagnostics = StringIO.new
+    Valpo::Jobs::Worker.new(queue:, handlers: {}, worker_id: "worker-1", err: diagnostics).run(once: true)
     assert_equal "failed", queue.find(failure.id).status
-    assert_equal "Unknown job type: missing_handler", queue.find(failure.id).error
+    assert_equal "Unknown job type: repair_system", queue.find(failure.id).error
+    assert_includes diagnostics.string, "job=#{failure.id} type=repair_system"
+    assert_includes diagnostics.string, "Valpo::ValidationError: Unknown job type: repair_system"
+    assert_includes diagnostics.string, "lib/valpo/jobs/worker.rb"
+  end
+
+  def test_startup_abandons_running_jobs_before_processing_queued_work
+    queue = Valpo::Jobs::Queue.new
+    abandoned = queue.enqueue("system_check")
+    queue.lock_next("old-worker")
+    queued = queue.enqueue("system_check")
+
+    processed = Valpo::Jobs::Worker.new(queue:, worker_id: "new-worker").run(once: true)
+
+    assert_equal queued.id, processed.id
+    assert_equal "failed", queue.find(abandoned.id).status
+    assert_equal "succeeded", queue.find(queued.id).status
+  end
+
+  def test_stop_finishes_the_current_job_without_locking_another
+    queue = Valpo::Jobs::Queue.new
+    first = queue.enqueue("system_check")
+    second = queue.enqueue("system_check")
+    worker = nil
+    handler = lambda do |_job, queue:|
+      queue.event(first.id, "system", "Handler completed")
+      worker.stop
+    end
+    worker = Valpo::Jobs::Worker.new(
+      queue:,
+      handlers: {"system_check" => handler},
+      worker_id: "worker-1"
+    )
+
+    worker.run
+
+    assert_equal "succeeded", queue.find(first.id).status
+    assert_equal "queued", queue.find(second.id).status
   end
 
   def test_deploy_handler_dispatches_service_id
@@ -106,7 +149,8 @@ class ValpoJobsWorkerTest < Minitest::Test
     Valpo::Jobs::Worker.new(
       queue:,
       handlers: {"create_source_service" => handler},
-      worker_id: "worker-1"
+      worker_id: "worker-1",
+      err: StringIO.new
     ).run(once: true)
 
     service = Valpo::Service.where(project_id: project.id, name: "web").first
@@ -133,7 +177,8 @@ class ValpoJobsWorkerTest < Minitest::Test
     Valpo::Jobs::Worker.new(
       queue:,
       handlers: {"create_source_service" => handler},
-      worker_id: "worker-1"
+      worker_id: "worker-1",
+      err: StringIO.new
     ).run(once: true)
 
     assert_equal "failed", queue.find(job.id).status
@@ -162,7 +207,8 @@ class ValpoJobsWorkerTest < Minitest::Test
     Valpo::Jobs::Worker.new(
       queue:,
       handlers: {"create_source_service" => handler},
-      worker_id: "worker-1"
+      worker_id: "worker-1",
+      err: StringIO.new
     ).run(once: true)
 
     service = Valpo::Service.where(project_id: project.id, name: "web").first

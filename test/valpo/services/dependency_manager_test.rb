@@ -43,6 +43,56 @@ class ValpoServicesDependencyManagerTest < Minitest::Test
     end
   end
 
+  def test_failed_bind_restart_removes_a_new_dependency
+    project = create_project
+    app = create_app_service(project:, status: "running")
+    create_release(service: app, status: "active")
+    database = create_managed_service(project:)
+
+    assert_raises Valpo::ValidationError do
+      run_job do |queue, job|
+        manager(deployment_lifecycle: FakeDeploymentLifecycle.new(error: "restart failed")).bind_service(
+          service_id: app.id,
+          dependency_service_id: database.id,
+          queue:,
+          job_id: job.id
+        )
+      end
+    end
+
+    assert_nil Valpo::ServiceDependency.where(
+      service_id: app.id,
+      dependency_service_id: database.id
+    ).first
+  end
+
+  def test_failed_rebind_restores_the_previous_dependency
+    project = create_project
+    app = create_app_service(project:, status: "running")
+    create_release(service: app, status: "active")
+    database = create_managed_service(project:)
+    dependency = Valpo::ServiceDependency.create(
+      service_id: app.id,
+      dependency_service_id: database.id,
+      status: "deleting",
+      env_json: JSON.generate("OLD_URL" => "old")
+    )
+
+    assert_raises Valpo::ValidationError do
+      run_job do |queue, job|
+        manager(deployment_lifecycle: FakeDeploymentLifecycle.new(error: "restart failed")).bind_service(
+          service_id: app.id,
+          dependency_service_id: database.id,
+          queue:,
+          job_id: job.id
+        )
+      end
+    end
+
+    assert_equal "deleting", dependency.refresh.status
+    assert_equal({"OLD_URL" => "old"}, dependency.env)
+  end
+
   def test_unbind_removes_dependency
     project = create_project
     app = create_app_service(project:)
@@ -58,7 +108,7 @@ class ValpoServicesDependencyManagerTest < Minitest::Test
 
   def run_job
     queue = Valpo::Jobs::Queue.new
-    job = queue.enqueue("test")
+    job = queue.enqueue("system_check")
     yield queue, job
   end
 
@@ -73,8 +123,14 @@ class ValpoServicesDependencyManagerTest < Minitest::Test
   class FakeDeploymentLifecycle
     attr_reader :service_id
 
+    def initialize(error: nil)
+      @error = error
+    end
+
     def restart_service(service_id:, queue:, job_id:)
       @service_id = service_id
+      raise Valpo::ValidationError, @error if @error
+
       queue.event(job_id, "system", "fake restart")
     end
   end

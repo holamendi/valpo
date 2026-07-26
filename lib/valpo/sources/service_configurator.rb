@@ -114,17 +114,13 @@ module Valpo
         values = fallback ? fallback.merge(stringify_keys(input || {})) : stringify_keys(input || {})
         provider = required(values, "provider").downcase
         repository = required(values, "repository")
-        ref = optional(values, "ref") || DEFAULT_REF
+        ref = Valpo::Sources::Validation.github_ref(optional(values, "ref") || DEFAULT_REF)
         unless Valpo::Source::PROVIDERS.include?(provider)
           raise Valpo::ValidationError, "Unsupported source provider: #{provider}"
         end
         if provider == "github" && !repository.match?(Valpo::Sources::GitHub::REPOSITORY_PATTERN)
           raise Valpo::ValidationError, "GitHub repository must be an owner/repository name"
         end
-        unless ref.match?(Valpo::Sources::GitHub::REF_PATTERN)
-          raise Valpo::ValidationError, "GitHub ref must be a branch, tag, or commit SHA without whitespace"
-        end
-
         {"provider" => provider, "repository" => repository, "ref" => ref}
       end
 
@@ -151,6 +147,7 @@ module Valpo
         else
           fallback&.fetch("context", nil) || DEFAULT_CONTEXT
         end
+        context = Valpo::Sources::Validation.relative_path(context, key: "context")
         dockerfile = if strategy == "dockerfile"
           if changes.key?("dockerfile")
             required(changes, "dockerfile")
@@ -160,6 +157,7 @@ module Valpo
             DEFAULT_DOCKERFILE
           end
         end
+        dockerfile = Valpo::Sources::Validation.relative_path(dockerfile, key: "dockerfile") if dockerfile
 
         {
           "strategy" => strategy,

@@ -1,28 +1,21 @@
 # Valpo Packaging
 
-Valpo currently ships a bootstrap installer, a source installer, and Ubuntu 26.04 LTS packaging templates.
+Valpo currently ships a source installer for one fixed Ubuntu 26.04 LTS host layout and a development-only bootstrap.
 
-Run installation and installed `valpo` commands as root. The examples below assume a root shell.
+Run installation as root and use root for installed `valpo` commands that manage the host.
 
-## Bootstrap Installer
+## Supported Source Installation
 
-Install the current development version on a fresh host:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/holamendi/valpo/main/packaging/bootstrap.sh | bash
-```
-
-The bootstrap downloads a GitHub source archive into a private temporary directory, extracts it, invokes `packaging/install.sh`, and removes the temporary files. It requires root because the source installer installs system packages and writes system configuration.
-
-The bootstrap intentionally has no installation options. Valpo owns its host layout, and domain configuration happens after installation. For an inspect-first installation, download `bootstrap.sh`, review it, then run it with `bash bootstrap.sh`.
-
-## Source Installer
-
-Run from a Valpo source checkout:
+Install from a reviewed checkout pinned to an immutable full commit:
 
 ```bash
-packaging/install.sh
+git clone https://github.com/holamendi/valpo.git
+cd valpo
+git checkout --detach <full-commit-sha>
+sudo packaging/install.sh
 ```
+
+Use a release tag only after verifying it and recording the full commit it resolves to. Keep the checkout outside `/opt/valpo`; the installer copies it into the installed layout. Review the selected revision and the installer before running it.
 
 The installer:
 
@@ -30,11 +23,14 @@ The installer:
 - installs checksum-verified `pack` 0.40.8 on Linux amd64/arm64 for Cloud Native Buildpacks
 - installs source into `/opt/valpo`
 - stores Valpo state under `/var/lib/valpo`
-- writes production config to `/etc/valpo/valpo.yml`
+- copies the production config template to `/etc/valpo/valpo.yml` on the first install
+- preserves the existing config byte-for-byte on later compatible installs
 - creates the private credential directory at `/var/lib/valpo/secrets`
 - writes Valpo-generated Caddy routes to `/var/lib/valpo/caddy/valpo.caddy`
 - ensures `/etc/caddy/Caddyfile` imports the generated Valpo Caddy file
 - installs systemd units and starts `valpo-api` and `valpo-worker`
+
+The supported layout is intentionally fixed: user/group `valpo`, Ruby `4.0.5`, source at `/opt/valpo`, configuration at `/etc/valpo/valpo.yml`, and state at `/var/lib/valpo`. The installer refuses non-Ubuntu hosts and Ubuntu releases other than 26.04 instead of attempting an untested installation.
 
 Ruby is installed through mise with precompiled binaries enabled:
 
@@ -43,7 +39,19 @@ MISE_RUBY_COMPILE=false
 mise settings set ruby.compile false
 ```
 
-If mise falls back to compiling Ruby from source, the installer fails.
+If mise falls back to compiling Ruby from source, the installer fails. Valpo is installed from its source checkout; the gemspec supports dependency resolution and repository tooling, not a supported `gem install valpo` distribution path.
+
+## Development Bootstrap
+
+For a disposable development host, the bootstrap can install the current mutable snapshot from `main`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/holamendi/valpo/main/packaging/bootstrap.sh | sudo bash
+```
+
+The bootstrap downloads the current `main` archive into a private temporary directory, extracts it, invokes `packaging/install.sh`, and removes the temporary files.
+
+This path is deliberately development-only: the branch is mutable, the archive is not a versioned release artifact, and two runs may install different commits. It is not reproducible installation guidance. For an inspect-first development installation, download `bootstrap.sh`, review it, then run it with `sudo bash bootstrap.sh`.
 
 ## App Domain
 
@@ -69,9 +77,18 @@ valpo domain add web hello.example.com --project hello
 
 ## API Binding And Auth
 
-The installer binds `valpo-api` to `127.0.0.1` by default. If you change `api_host` to a non-local address, configure `api_token` in `/etc/valpo/valpo.yml` or set `VALPO_API_TOKEN`; Valpo refuses to boot a non-local API without a token.
+The installer binds `valpo-api` to `127.0.0.1` by default. `/etc/valpo/valpo.yml` is owned by `root:valpo` with mode `0640` because it may contain the API bearer token. If you change `api_host` to a non-local address, configure `api_token` in that file or set `VALPO_API_TOKEN`; Valpo refuses to boot a non-local API without a token.
 
 CLI calls use `VALPO_API_TOKEN` first, then the `api_token` in the loaded config file. The CLI intentionally has no token command-line flag so credentials do not leak through process listings or shell history.
+
+The packaged wrapper and systemd units set `VALPO_ENV=production`. When running an executable directly from a development checkout with an environment-keyed config file, set both variables explicitly:
+
+```bash
+VALPO_ENV=production VALPO_CONFIG=/path/to/valpo.yml \
+  mise exec -- bundle exec exe/valpo-api
+```
+
+Without `VALPO_ENV=production`, direct development commands select the `development` section/defaults rather than the `production` mapping.
 
 ## GitHub Source Authentication
 
@@ -105,7 +122,7 @@ Because the App callback and webhook URLs contain the default app domain, Valpo 
 
 ## Source Build Configuration
 
-Source services default to build strategy `auto`: Valpo uses a context-root Dockerfile when present and otherwise builds with Cloud Native Buildpacks. Packaged installs pin `pack` under `/var/lib/valpo/.local/bin` and pin the Paketo Ubuntu Noble builder. `/etc/valpo/valpo.yml` controls the build deadline and builder:
+Source services default to build strategy `auto`: Valpo uses a context-root Dockerfile when present and otherwise builds with Cloud Native Buildpacks. Packaged installs pin `pack` under `/var/lib/valpo/.local/bin` and pin the Paketo Jammy base builder. `/etc/valpo/valpo.yml` controls the build deadline and builder:
 
 ```yaml
 production:
@@ -121,40 +138,81 @@ On a Linux development host with Docker and `pack`, run the opt-in build/inspect
 VALPO_TEST_BUILDPACKS=1 mise exec -- bundle exec ruby -Itest test/integration/buildpack_smoke_test.rb
 ```
 
-## Templates
+## Installed Host Layout
 
-The current templates assume:
+The installed services use:
 
-- Valpo is deployed from a source checkout at `/opt/valpo`.
-- Ruby 4.0.5 is installed through mise under `/var/lib/valpo`.
-- Bundler has installed dependencies for that checkout.
-- Production config lives at `/etc/valpo/valpo.yml`.
-- Valpo state lives under `/var/lib/valpo`.
-
-Adjust the `ExecStart` paths or service `PATH` for the Ruby manager used on the host.
+- source at `/opt/valpo`;
+- Ruby 4.0.5 installed through mise under `/var/lib/valpo`;
+- Bundler dependencies under `/var/lib/valpo/bundle`;
+- production config at `/etc/valpo/valpo.yml`;
+- state under `/var/lib/valpo`.
 
 `valpo-migrate.service` is a one-shot unit that runs before the API and worker. Keep migrations owned by that unit instead of adding `--migrate` to both long-running services.
 
-## VPS Smoke Test
+## Development Updates And Clean Reinstalls
 
-Run the repeatable VPS smoke test from a local checkout:
+The installer supports an in-place development update only when the incoming and installed `db/migrations/001_bootstrap.rb` files have the same SHA-256 digest. It performs that comparison before installing packages, copying source, changing configuration, or running migrations. An existing `/etc/valpo/valpo.yml` is preserved byte-for-byte, with ownership/mode restored to `root:valpo`/`0640`.
+
+Valpo deliberately rewrites its single bootstrap migration before release. Sequel does not rerun migration version `001` when its contents change, so an in-place update across a bootstrap-schema change would leave code and database out of sync. The installer refuses that update. Until incremental migrations are adopted, use a clean reinstall on a disposable/development host:
 
 ```bash
-packaging/vps-smoke-test.sh root@162.55.43.108 apps.valpo.dev --reboot
+packaging/uninstall.sh
+packaging/install.sh
 ```
 
-By default the smoke test copies the current checkout to `/tmp/valpo-src`, runs the full installer, deploys `nginx:alpine`, verifies HTTPS, releases, logs, optional reboot recovery, and then deletes the project. Use `--skip-deps` only when intentionally testing an update on a host whose dependencies are already installed.
+Before uninstalling, stop Valpo and make an offline backup of all operator-owned state:
 
-To prove installation from a clean Valpo state, use the guarded destructive wrapper. It removes all Valpo-owned services, runtime resources, state, files, and the dedicated account; verifies their absence; then runs the full smoke test from the local checkout. Docker, Caddy, and other shared host packages remain installed.
+- `/etc/valpo/valpo.yml`;
+- `/var/lib/valpo`, including the SQLite database, its sidecar files, and credentials;
+- every volume reported by `docker volume ls --filter label=valpo.owned=true`.
+
+Keep those backups access-restricted because they contain secrets and application data. Use the backup mechanism appropriate to the volume's storage driver, and verify the backup before continuing.
+
+The uninstall destroys Valpo metadata, credentials, generated routing state, and label-owned Docker containers, volumes, and networks. The copies above are a manual safety measure, not a supported restore or data-preserving schema-upgrade workflow; test any recovery procedure on a separate host. Review retained Docker images and any intentionally unlabeled Docker resources separately. Run the source installer from a checkout outside `/opt/valpo`; replacing `/opt/valpo` manually defeats the installed/incoming migration comparison.
+
+## Service Logs And Troubleshooting
+
+The API and worker log to the systemd journal; Valpo does not write `api.log` or `worker.log` files:
 
 ```bash
-packaging/vps-clean-install-smoke-test.sh root@162.55.43.108 apps.valpo.dev --confirm-destroy-valpo
+journalctl -u valpo-api.service -u valpo-worker.service
+journalctl -u valpo-migrate.service
+systemctl status valpo-api.service valpo-worker.service
+```
+
+Use `valpo system status`, `valpo job list`, and `valpo job events JOB_ID` for control-plane and operation-level diagnosis.
+
+## Uninstall
+
+Run the destructive uninstaller from a reviewed checkout:
+
+```bash
+packaging/uninstall.sh
+```
+
+It disables Valpo services, removes containers, volumes, and networks carrying `valpo.owned=true`, removes the Caddy import, and deletes Valpo host files/state/account. It deliberately retains Docker images and every unlabeled Docker resource rather than guessing ownership from a `valpo-*` name. Shared packages such as Docker and Caddy are also retained.
+
+## VPS Smoke Test
+
+Run the repeatable VPS smoke test from a local checkout against a dedicated test host:
+
+```bash
+packaging/vps-smoke-test.sh root@SERVER_IP apps.example.com --reboot
+```
+
+By default the smoke test copies the current checkout to `/tmp/valpo-src`, runs the full installer, sets the host-wide app domain, deploys `nginx:alpine`, verifies HTTPS, releases, logs, optional reboot recovery, and then deletes the project. It does not restore a previous app domain, so do not run it against a host serving unrelated projects. Use `--skip-deps` only when intentionally testing a schema-compatible development update on a host whose dependencies are already installed.
+
+To prove installation from a clean Valpo state, use the guarded destructive wrapper. It runs the uninstaller, verifies the absence of label-owned runtime resources and host state, then runs the full smoke test from the local checkout. Docker images, unlabeled Docker resources, Docker, Caddy, and other shared host packages remain installed.
+
+```bash
+packaging/vps-clean-install-smoke-test.sh root@SERVER_IP apps.example.com --confirm-destroy-valpo
 ```
 
 Use the source smoke test on a host whose GitHub PAT is already configured:
 
 ```bash
-packaging/vps-source-smoke-test.sh root@162.55.43.108 apps.valpo.dev
+packaging/vps-source-smoke-test.sh root@SERVER_IP apps.example.com
 ```
 
 It installs the current checkout, creates a unique project without a manifest, and deploys `holamendi/smol-roda` while omitting ref, build strategy, Dockerfile, context, and port. It verifies automatic Dockerfile selection, the resolved commit, port `3000`, injected `PORT`, HTTPS, and release metadata, then removes only the generated project/runtime resources. The script checks the GitHub credential file digest and `auth status github` before and after; it never logs out or deletes the stored PAT. Use `--repository OWNER/REPO` for another repository or `--skip-install` to test the already-installed version.

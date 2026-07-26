@@ -71,7 +71,7 @@ module Valpo
 
         class TailQueryContract < Contract
           params do
-            optional(:tail).filled(:integer, gt?: 0)
+            optional(:tail).filled(:integer, gt?: 0, lteq?: 10_000)
           end
         end
 
@@ -109,7 +109,8 @@ module Valpo
         module_function
 
         def render(service)
-          output = Fields.call(service, :id, :project_id, :name, :kind, :status, :created_at, :updated_at)
+          output = Fields.call(service, :id, :project_id, :name, :status, :created_at, :updated_at)
+          output[:type] = service.kind
           output[:project] = service.project.name
           service.app? ? add_app_configuration(output, service) : add_managed_configuration(output, service)
           output[:dependencies] = dependencies(service)
@@ -156,7 +157,7 @@ module Valpo
         def add_managed_configuration(output, service)
           config = Valpo::ManagedServiceConfig[service.id]
           output[:managed] = Fields.call(
-            config, :version, :image, :plan, :container_name, :volume_name, :internal_host, :internal_port
+            config, :version, :image, :container_name, :volume_name, :internal_host, :internal_port
           )
         end
 

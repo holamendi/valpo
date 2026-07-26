@@ -34,4 +34,10 @@ class ValpoServiceTest < Minitest::Test
     error = assert_raises(Sequel::ValidationFailed) { managed.update(version: "17") }
     assert_match "version is immutable", error.message
   end
+
+  def test_managed_service_schema_has_no_inert_plan_column
+    columns = Valpo::Database.connection.schema(:managed_service_configs).map(&:first)
+
+    refute_includes columns, :plan
+  end
 end

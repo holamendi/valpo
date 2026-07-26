@@ -25,7 +25,6 @@ module Valpo
       errors.add(:version, "is required") if version.nil? || version.to_s.strip.empty?
       errors.add(:version, "is immutable") if !new? && changed_columns.include?(:version)
       errors.add(:image, "is required") if image.nil? || image.to_s.strip.empty?
-      errors.add(:plan, "is required") if plan.nil? || plan.to_s.strip.empty?
       errors.add(:internal_port, "must be greater than 0") if internal_port && internal_port <= 0
     end
   end

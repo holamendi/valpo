@@ -66,7 +66,8 @@ class ValpoAPIAppTest < Minitest::Test
     post_json "/v1/projects/#{project.id}/services", name: "web", type: "web", internal_port: 3000
     assert_equal 201, last_response.status
     web = json.fetch("service")
-    assert_equal "web", web.fetch("kind")
+    assert_equal "web", web.fetch("type")
+    refute web.key?("kind")
     assert_nil json["job"]
 
     post_json "/v1/projects/#{project.id}/services", name: "database", type: "postgres", version: "17"
@@ -455,6 +456,44 @@ class ValpoAPIAppTest < Minitest::Test
     assert_equal "Job queued", json.first.fetch("message")
   end
 
+  def test_job_and_event_lists_are_bounded_and_cursor_paginated
+    queue = Valpo::Jobs::Queue.new
+    105.times { queue.enqueue("system_check") }
+
+    get "/v1/jobs"
+    assert_equal 100, json.length
+    get "/v1/jobs?limit=105"
+    assert_equal 105, json.length
+    get "/v1/jobs?limit=501"
+    assert_equal 400, last_response.status
+    assert_equal "limit", json.fetch("details").first.fetch("field")
+
+    job = queue.list(limit: 1).first
+    205.times { queue.event(job.id, "stdout", "event #{it}") }
+    get "/v1/jobs/#{job.id}/events"
+    first_page = json
+    assert_equal 200, first_page.length
+
+    all_events = queue.events(job.id, limit: 500)
+    cursor_id = first_page.last.fetch("id")
+    expected_next_id = all_events.fetch(all_events.index { it.id == cursor_id } + 1).id
+    get "/v1/jobs/#{job.id}/events?after=#{cursor_id}"
+    assert_equal 6, json.length
+    assert_equal expected_next_id, json.first.fetch("id")
+  end
+
+  def test_event_cursor_must_belong_to_the_requested_job
+    queue = Valpo::Jobs::Queue.new
+    job = queue.enqueue("system_check")
+    other = queue.enqueue("system_check")
+    cursor = queue.events(other.id).first
+
+    get "/v1/jobs/#{job.id}/events?after=#{cursor.id}"
+
+    assert_equal 422, last_response.status
+    assert_match "cursor does not belong", json.fetch("message")
+  end
+
   def test_platform_app_domain_is_configured_after_install
     put "/v1/system/app-domain", JSON.generate(hostname: "apps.example.com"), "CONTENT_TYPE" => "application/json"
 
@@ -502,6 +541,27 @@ class ValpoAPIAppTest < Minitest::Test
       assert_equal 401, last_response.status
       assert_equal "Invalid GitHub webhook signature", json.fetch("message")
     end
+  end
+
+  def test_github_webhook_rejects_payloads_over_25_mib_before_signature_validation
+    post "/integrations/github/webhook", "{}", {
+      "CONTENT_TYPE" => "application/json",
+      "CONTENT_LENGTH" => (Valpo::API::App::GITHUB_WEBHOOK_MAX_BYTES + 1).to_s
+    }
+
+    assert_equal 413, last_response.status
+    assert_equal "payload_too_large", json.fetch("error")
+  end
+
+  def test_github_webhook_bounded_read_rejects_an_oversized_body_with_a_misleading_length
+    limit = Valpo::API::App::GITHUB_WEBHOOK_MAX_BYTES
+    post "/integrations/github/webhook", "x" * (limit + 1), {
+      "CONTENT_TYPE" => "application/json",
+      "CONTENT_LENGTH" => limit.to_s
+    }
+
+    assert_equal 413, last_response.status
+    assert_equal "payload_too_large", json.fetch("error")
   end
 
   def test_github_integration_homepage_is_public_but_does_not_expose_control_state

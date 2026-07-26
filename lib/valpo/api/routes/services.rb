@@ -23,7 +23,7 @@ module Valpo
             # GET /v1/services/{service}/logs — read service logs.
             r.get true do
               query = validate_query(V1::Services::TailQueryContract)
-              logs_for(service, tail: query[:tail]).merge(service: V1::Services.render(service))
+              logs_for(service, tail: query.fetch(:tail, 200)).merge(service: V1::Services.render(service))
             end
           end
 

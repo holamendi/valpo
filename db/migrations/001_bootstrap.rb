@@ -72,7 +72,6 @@ Sequel.migration do
       foreign_key :service_id, :services, type: String, size: 40, primary_key: true, on_delete: :cascade
       String :version, null: false
       String :image, null: false
-      String :plan, null: false, default: "starter"
       String :container_name
       String :volume_name
       String :internal_host

@@ -6,7 +6,10 @@ require "json"
 module Valpo
   module API
     class App
+      GITHUB_WEBHOOK_MAX_BYTES = 25 * 1024 * 1024
+
       hash_branch("/integrations", "github") do |r|
+        # GET /integrations/github — describe the public GitHub integration.
         r.get true do
           html(<<~HTML)
             <!doctype html>
@@ -18,6 +21,7 @@ module Valpo
         end
 
         r.on "setup" do
+          # GET /integrations/github/setup — render the GitHub App manifest form.
           r.get true do
             query = validate_query(V1::GitHub::SetupQueryContract)
             form = github_setup.form(query.fetch(:token))
@@ -30,6 +34,7 @@ module Valpo
         end
 
         r.on "callback" do
+          # GET /integrations/github/callback — complete GitHub App setup.
           r.get true do
             query = validate_query(V1::GitHub::CallbackQueryContract)
             result = github_setup.complete(code: query.fetch(:code), state: query.fetch(:state))
@@ -40,6 +45,7 @@ module Valpo
         end
 
         r.on "installation" do
+          # GET /integrations/github/installation — confirm a GitHub App installation.
           r.get true do
             query = validate_query(V1::GitHub::InstallationQueryContract)
             installation = github_setup.installation(query.fetch(:installation_id))
@@ -48,9 +54,10 @@ module Valpo
         end
 
         r.on "webhook" do
+          # POST /integrations/github/webhook — receive a signed GitHub webhook.
           r.post true do
             validate_query
-            body = request.body.read
+            body = github_webhook_body
             unless github_webhook.valid_signature?(body, request.env["HTTP_X_HUB_SIGNATURE_256"])
               response.status = 401
               next({error: "unauthorized", message: "Invalid GitHub webhook signature"})
@@ -70,6 +77,18 @@ module Valpo
       end
 
       private
+
+      def github_webhook_body
+        content_length = Integer(request.env["CONTENT_LENGTH"].to_s, exception: false)
+        if content_length && content_length > GITHUB_WEBHOOK_MAX_BYTES
+          raise PayloadTooLarge, "GitHub webhook payload exceeds 25 MiB"
+        end
+
+        body = request.body.read(GITHUB_WEBHOOK_MAX_BYTES + 1)
+        raise PayloadTooLarge, "GitHub webhook payload exceeds 25 MiB" if body.bytesize > GITHUB_WEBHOOK_MAX_BYTES
+
+        body
+      end
 
       def html(value)
         response["Content-Type"] = "text/html; charset=utf-8"

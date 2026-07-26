@@ -38,6 +38,27 @@ class ValpoDeploymentsLifecycleTest < Minitest::Test
     assert_equal app.id, docker.run_requests.first.fetch(:labels).fetch("valpo.service_id")
   end
 
+  def test_deploy_refuses_an_existing_network_without_the_ownership_label
+    app = create_app_service
+    docker = ValpoTestSupport::FakeDocker.new(network_exists: true, network_owned: false)
+
+    error = assert_raises Valpo::ValidationError do
+      run_job do |queue, job|
+        lifecycle(docker:).deploy_registry_image(
+          service_id: app.id,
+          image: "ghcr.io/example/hello:latest",
+          internal_port: 3000,
+          healthcheck_path: nil,
+          queue:,
+          job_id: job.id
+        )
+      end
+    end
+
+    assert_match "exists without valpo.owned=true", error.message
+    assert_empty docker.run_requests
+  end
+
   def test_registry_deploy_infers_one_exposed_port
     app = create_app_service(port: nil)
     docker = ValpoTestSupport::FakeDocker.new(exposed_ports: [8080])
@@ -286,6 +307,111 @@ class ValpoDeploymentsLifecycleTest < Minitest::Test
     assert_equal "failed", Valpo::Release.where(service_id: app.id, version: 2).first.status
   end
 
+  def test_caddy_failure_during_deploy_restores_the_active_route_and_removes_the_candidate
+    app = create_app_service(status: "running")
+    create_domain(service: app)
+    active = create_release(
+      service: app,
+      status: "active",
+      container_name: "old",
+      route_target: "127.0.0.1:20000"
+    )
+    docker = ValpoTestSupport::FakeDocker.new
+    caddy = ValpoTestSupport::FakeCaddy.new(fail_reloads: 1)
+
+    assert_raises Valpo::ValidationError do
+      run_job do |queue, job|
+        lifecycle(docker:, caddy:).deploy_registry_image(
+          service_id: app.id,
+          image: "example/app:v2",
+          internal_port: 3000,
+          healthcheck_path: nil,
+          queue:,
+          job_id: job.id
+        )
+      end
+    end
+
+    assert_equal "active", active.refresh.status
+    assert_equal "running", app.refresh.status
+    assert_equal "127.0.0.1:20000", caddy.routes.first.fetch(:upstream)
+    candidate = Valpo::Release.where(service_id: app.id, version: 2).first
+    assert_equal "failed", candidate.status
+    assert_nil candidate.container_name
+  end
+
+  def test_database_failure_during_deploy_restores_the_active_release_and_route
+    app = create_app_service(status: "running")
+    create_domain(service: app)
+    active = create_release(
+      service: app,
+      status: "active",
+      container_name: "old",
+      route_target: "127.0.0.1:20000"
+    )
+    connection = inject_one_shot_running_failure(app, trigger_name: "fail_deploy_activation")
+    caddy = ValpoTestSupport::FakeCaddy.new
+
+    assert_raises Sequel::DatabaseError do
+      run_job do |queue, job|
+        lifecycle(docker: ValpoTestSupport::FakeDocker.new, caddy:).deploy_registry_image(
+          service_id: app.id,
+          image: "example/app:v2",
+          internal_port: 3000,
+          healthcheck_path: nil,
+          queue:,
+          job_id: job.id
+        )
+      end
+    end
+
+    candidate = Valpo::Release.where(service_id: app.id, version: 2).first
+    assert_equal "active", active.refresh.status
+    assert_equal "failed", candidate.status
+    assert_nil candidate.container_name
+    assert_equal "running", app.refresh.status
+    assert_equal "127.0.0.1:20000", caddy.routes.first.fetch(:upstream)
+  ensure
+    connection&.run("DROP TRIGGER IF EXISTS fail_deploy_activation")
+  end
+
+  def test_deploy_succeeds_when_retiring_the_previous_release_fails
+    %i[stop rm].each_with_index do |failure, index|
+      app = create_app_service(
+        project: create_project(name: "deploy-retirement-#{index}"),
+        status: "running"
+      )
+      create_domain(service: app, hostname: "deploy-retirement-#{index}.example.com")
+      previous = create_release(
+        service: app,
+        status: "active",
+        container_name: "old-#{index}",
+        route_target: "127.0.0.1:#{20_000 + index}"
+      )
+      docker = ValpoTestSupport::FakeDocker.new(fail_on: failure)
+
+      release = run_job do |queue, job|
+        result = lifecycle(docker:).deploy_registry_image(
+          service_id: app.id,
+          image: "example/app:v2",
+          internal_port: 3000,
+          healthcheck_path: nil,
+          queue:,
+          job_id: job.id
+        )
+        assert queue.events(job.id).any? {
+          it.stream == "stderr" && it.message.include?("Could not retire release 1")
+        }
+        result
+      end
+
+      assert_equal "active", release.status
+      assert_equal "inactive", previous.refresh.status
+      assert_equal "old-#{index}", previous.container_name
+      assert_equal "running", app.refresh.status
+    end
+  end
+
   def test_rollback_reactivates_previous_release
     app = create_app_service(status: "running")
     create_domain(service: app)
@@ -296,6 +422,215 @@ class ValpoDeploymentsLifecycleTest < Minitest::Test
     assert_equal previous.id, rolled_back.id
     assert_equal "active", previous.refresh.status
     assert_equal "inactive", current.refresh.status
+  end
+
+  def test_caddy_failure_during_rollback_restores_the_current_release
+    app = create_app_service(status: "running")
+    create_domain(service: app)
+    previous = create_release(
+      service: app,
+      image: "example/app:v1",
+      status: "inactive",
+      container_name: "previous",
+      route_target: "127.0.0.1:20000"
+    )
+    current = create_release(
+      service: app,
+      image: "example/app:v2",
+      status: "active",
+      container_name: "current",
+      route_target: "127.0.0.1:20001"
+    )
+    caddy = ValpoTestSupport::FakeCaddy.new(fail_reloads: 1)
+
+    assert_raises Valpo::ValidationError do
+      run_job do |queue, job|
+        lifecycle(docker: ValpoTestSupport::FakeDocker.new, caddy:).rollback_service(
+          service_id: app.id,
+          queue:,
+          job_id: job.id
+        )
+      end
+    end
+
+    assert_equal "inactive", previous.refresh.status
+    assert_equal "previous", previous.container_name
+    assert_equal "active", current.refresh.status
+    assert_equal "running", app.refresh.status
+    assert_equal "127.0.0.1:20001", caddy.routes.first.fetch(:upstream)
+  end
+
+  def test_database_failure_during_rollback_restores_release_metadata_and_routes
+    app = create_app_service(status: "running")
+    create_domain(service: app)
+    previous = create_release(
+      service: app,
+      image: "example/app:v1",
+      status: "inactive",
+      container_name: "previous",
+      route_target: "127.0.0.1:20000"
+    )
+    current = create_release(
+      service: app,
+      image: "example/app:v2",
+      status: "active",
+      container_name: "current",
+      route_target: "127.0.0.1:20001"
+    )
+    connection = inject_one_shot_running_failure(app, trigger_name: "fail_rollback_activation")
+    caddy = ValpoTestSupport::FakeCaddy.new
+
+    assert_raises Sequel::DatabaseError do
+      run_job do |queue, job|
+        lifecycle(docker: ValpoTestSupport::FakeDocker.new, caddy:).rollback_service(
+          service_id: app.id,
+          queue:,
+          job_id: job.id
+        )
+      end
+    end
+
+    assert_equal "inactive", previous.refresh.status
+    assert_equal "previous", previous.container_name
+    assert_equal "127.0.0.1:20000", previous.route_target
+    assert_equal "active", current.refresh.status
+    assert_equal "current", current.container_name
+    assert_equal "running", app.refresh.status
+    assert_equal "127.0.0.1:20001", caddy.routes.first.fetch(:upstream)
+  ensure
+    connection&.run("DROP TRIGGER IF EXISTS fail_rollback_activation")
+  end
+
+  def test_rollback_succeeds_when_retiring_the_current_release_fails
+    %i[stop rm].each_with_index do |failure, index|
+      app = create_app_service(
+        project: create_project(name: "rollback-retirement-#{index}"),
+        status: "running"
+      )
+      create_domain(service: app, hostname: "rollback-retirement-#{index}.example.com")
+      previous = create_release(
+        service: app,
+        image: "example/app:v1",
+        status: "inactive",
+        container_name: "previous-#{index}",
+        route_target: "127.0.0.1:#{20_000 + index}"
+      )
+      current = create_release(
+        service: app,
+        image: "example/app:v2",
+        status: "active",
+        container_name: "current-#{index}",
+        route_target: "127.0.0.1:#{21_000 + index}"
+      )
+
+      rolled_back = run_job do |queue, job|
+        result = lifecycle(docker: ValpoTestSupport::FakeDocker.new(fail_on: failure)).rollback_service(
+          service_id: app.id,
+          queue:,
+          job_id: job.id
+        )
+        assert queue.events(job.id).any? {
+          it.stream == "stderr" && it.message.include?("Could not retire release 2")
+        }
+        result
+      end
+
+      assert_equal previous.id, rolled_back.id
+      assert_equal "active", previous.refresh.status
+      assert_equal "inactive", current.refresh.status
+      assert_equal "current-#{index}", current.container_name
+      assert_equal "running", app.refresh.status
+    end
+  end
+
+  def test_restart_succeeds_when_removing_the_previous_container_fails
+    %i[stop rm].each_with_index do |failure, index|
+      app = create_app_service(
+        project: create_project(name: "restart-retirement-#{index}"),
+        status: "running"
+      )
+      create_domain(service: app, hostname: "restart-retirement-#{index}.example.com")
+      old_container = "old-#{index}"
+      release = create_release(
+        service: app,
+        status: "active",
+        container_name: old_container,
+        route_target: "127.0.0.1:#{20_000 + index}"
+      )
+      docker = ValpoTestSupport::FakeDocker.new(fail_on: failure)
+
+      restarted = run_job do |queue, job|
+        result = lifecycle(docker:).restart_service(service_id: app.id, queue:, job_id: job.id)
+        assert queue.events(job.id).any? {
+          it.stream == "stderr" && it.message.include?("Could not retire container #{old_container}")
+        }
+        result
+      end
+
+      assert_equal release.id, restarted.id
+      refute_equal old_container, release.refresh.container_name
+      assert_equal "active", release.status
+      assert_equal "running", app.refresh.status
+    end
+  end
+
+  def test_caddy_failure_during_restart_restores_release_metadata_before_routes
+    app = create_app_service(status: "running")
+    create_domain(service: app)
+    release = create_release(
+      service: app,
+      status: "active",
+      container_name: "old",
+      route_target: "127.0.0.1:20000"
+    )
+    docker = ValpoTestSupport::FakeDocker.new
+    caddy = ValpoTestSupport::FakeCaddy.new(fail_reloads: 1)
+
+    assert_raises Valpo::ValidationError do
+      run_job do |queue, job|
+        lifecycle(docker:, caddy:).restart_service(service_id: app.id, queue:, job_id: job.id)
+      end
+    end
+
+    assert_equal "old", release.refresh.container_name
+    assert_equal "127.0.0.1:20000", release.route_target
+    assert_equal "active", release.status
+    assert_equal "running", app.refresh.status
+    assert_equal "127.0.0.1:20000", caddy.routes.first.fetch(:upstream)
+    candidate_name = docker.run_requests.first.fetch(:name)
+    assert docker.executed?(:stop, candidate_name)
+    assert docker.executed?(:rm, candidate_name, true)
+  end
+
+  def test_database_failure_during_restart_restores_release_metadata_and_routes
+    app = create_app_service(status: "running")
+    create_domain(service: app)
+    release = create_release(
+      service: app,
+      status: "active",
+      container_name: "old",
+      route_target: "127.0.0.1:20000"
+    )
+    connection = inject_one_shot_running_failure(app, trigger_name: "fail_restart_activation")
+    caddy = ValpoTestSupport::FakeCaddy.new
+
+    assert_raises Sequel::DatabaseError do
+      run_job do |queue, job|
+        lifecycle(docker: ValpoTestSupport::FakeDocker.new, caddy:).restart_service(
+          service_id: app.id,
+          queue:,
+          job_id: job.id
+        )
+      end
+    end
+
+    assert_equal "old", release.refresh.container_name
+    assert_equal "127.0.0.1:20000", release.route_target
+    assert_equal "active", release.status
+    assert_equal "running", app.refresh.status
+    assert_equal "127.0.0.1:20000", caddy.routes.first.fetch(:upstream)
+  ensure
+    connection&.run("DROP TRIGGER IF EXISTS fail_restart_activation")
   end
 
   def test_stop_restart_and_logs_are_service_scoped
@@ -410,9 +745,32 @@ class ValpoDeploymentsLifecycleTest < Minitest::Test
 
   private
 
+  def inject_one_shot_running_failure(service, trigger_name:)
+    connection = Valpo::Database.connection
+    function_name = "#{trigger_name}_once"
+    attempts = 0
+    connection.synchronize do |raw_connection|
+      raw_connection.create_function(function_name, 0) do
+        attempts += 1
+        it.result = (attempts == 1) ? 1 : 0
+      end
+    end
+    connection.run(<<~SQL)
+      CREATE TRIGGER #{trigger_name}
+      BEFORE UPDATE OF status ON services
+      WHEN OLD.id = #{connection.literal(service.id)}
+        AND NEW.status = 'running'
+        AND #{function_name}() = 1
+      BEGIN
+        SELECT RAISE(FAIL, 'injected activation failure');
+      END
+    SQL
+    connection
+  end
+
   def run_job
     queue = Valpo::Jobs::Queue.new
-    job = queue.enqueue("test")
+    job = queue.enqueue("system_check")
     yield queue, job
   end
 

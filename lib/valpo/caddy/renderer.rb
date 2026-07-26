@@ -19,9 +19,6 @@ module Valpo
         when "container"
           upstream = route.fetch(:upstream)
           "#{hostname} {\n  reverse_proxy #{upstream}\n}"
-        when "static"
-          root = route.fetch(:root)
-          "#{hostname} {\n  root * #{root}\n  file_server\n}"
         when "verification"
           token = route.fetch(:token)
           path = Valpo::Domains::ReachabilityVerifier.challenge_path(token)

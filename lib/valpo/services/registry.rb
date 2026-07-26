@@ -91,10 +91,11 @@ module Valpo
 
         def runtime_attributes(service)
           definition = fetch_managed(service.kind)
+          runtime_name = "valpo-#{service.id.tr("_", "-")}"
           {
-            container_name: "valpo-#{service.id}",
-            volume_name: "valpo-#{service.id}-data",
-            internal_host: "valpo-#{service.id}",
+            container_name: runtime_name,
+            volume_name: "#{runtime_name}-data",
+            internal_host: runtime_name,
             internal_port: definition.internal_port
           }
         end

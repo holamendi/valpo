@@ -65,7 +65,7 @@ module Valpo
           [name, {
             "provider" => provider,
             "repository" => repository,
-            "ref" => optional_string(config, "ref") || "HEAD",
+            "ref" => Valpo::Sources::Validation.github_ref(optional_string(config, "ref") || "HEAD"),
             "auto_deploy" => boolean(config, "auto_deploy", false)
           }]
         end
@@ -182,13 +182,8 @@ module Valpo
       def optional_relative_path(hash, key)
         value = optional_string(hash, key)
         return nil unless value
-        path = Pathname.new(value)
-        clean = path.cleanpath.to_s
-        if path.absolute? || clean == ".." || clean.start_with?("../")
-          raise Valpo::ValidationError, "#{key} must stay within the source checkout"
-        end
 
-        clean
+        Valpo::Sources::Validation.relative_path(value, key:)
       end
 
       def boolean(hash, key, default)

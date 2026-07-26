@@ -10,6 +10,9 @@ usage() {
   cat <<USAGE
 Usage: curl -fsSL https://raw.githubusercontent.com/${REPOSITORY}/main/packaging/bootstrap.sh | bash
 
+Installs the mutable development snapshot from ${REPOSITORY}@${REF}.
+This is not a versioned or reproducible production release installer.
+
 Options:
   -h, --help  Show this help
 USAGE
@@ -45,6 +48,7 @@ command -v curl >/dev/null 2>&1 || fail "curl is required"
 command -v tar >/dev/null 2>&1 || fail "tar is required"
 command -v mktemp >/dev/null 2>&1 || fail "mktemp is required"
 
+log "WARNING: installing a mutable development snapshot from ${REPOSITORY}@${REF}"
 WORK_DIR="$(mktemp -d)"
 trap cleanup EXIT
 ARCHIVE_PATH="${WORK_DIR}/valpo.tar.gz"

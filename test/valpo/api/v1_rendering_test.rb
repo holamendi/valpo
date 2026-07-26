@@ -74,6 +74,8 @@ class ValpoAPIV1ResourceRenderingTest < Minitest::Test
 
     output = Valpo::API::V1::Services.render(app)
     assert_equal "hello", output.fetch(:project)
+    assert_equal "web", output.fetch(:type)
+    refute output.key?(:kind)
     assert_equal ["bin/server"], output.dig(:app, :command)
     assert_equal "acme/backend", output.dig(:app, :source, :repository)
     assert_equal "Dockerfile", output.dig(:app, :build, :dockerfile)
@@ -92,7 +94,9 @@ class ValpoAPIV1ResourceRenderingTest < Minitest::Test
       env_json: "{}"
     )
 
-    assert_equal "17", Valpo::API::V1::Services.render(database).dig(:managed, :version)
+    managed = Valpo::API::V1::Services.render(database).fetch(:managed)
+    assert_equal "17", managed.fetch(:version)
+    refute managed.key?(:plan)
     assert_equal database.id, Valpo::API::V1::Services.render_dependency(dependency).fetch(:dependency_service_id)
   end
 

@@ -27,6 +27,8 @@ module Valpo
         status, code, message = case it
         when BadRequest
           [400, "invalid_request", it.message]
+        when PayloadTooLarge
+          [413, "payload_too_large", it.message]
         when Valpo::ValidationError, Sequel::ValidationFailed
           [422, "validation_failed", it.message]
         when Valpo::ConflictError, Sequel::UniqueConstraintViolation
@@ -95,10 +97,6 @@ module Valpo
         Valpo::Services::ManagedLifecycle.new(config: Valpo.config || Valpo::Config.load)
       end
 
-      def manifest_reconciler
-        Valpo::Manifests::Reconciler.new
-      end
-
       def manifest_planner
         Valpo::Manifests::Planner.new
       end
@@ -124,9 +122,9 @@ module Valpo
         services = services_for_project(project)
         services.select! { it.name == filter } if filter && !filter.empty?
         entries = services.filter_map do
-          logs_for(it, tail:).merge(service_id: it.id, service_name: it.name, kind: it.kind)
+          logs_for(it, tail:).merge(service_id: it.id, service_name: it.name, type: it.kind)
         rescue Valpo::ValidationError => e
-          {service_id: it.id, service_name: it.name, kind: it.kind, error: e.message}
+          {service_id: it.id, service_name: it.name, type: it.kind, error: e.message}
         end
         {project: V1::Projects.render(project), logs: entries}
       end

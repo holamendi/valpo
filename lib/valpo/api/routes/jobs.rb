@@ -6,18 +6,22 @@ module Valpo
       hash_branch("/v1", "jobs") do |r|
         # GET /v1/jobs — list jobs.
         r.get true do
-          validate_query
-          jobs.list.map { V1::Jobs.render(it) }
+          query = validate_query(V1::Jobs::ListQueryContract)
+          jobs.list(limit: query.fetch(:limit, Valpo::Jobs::Queue::DEFAULT_JOB_LIMIT)).map { V1::Jobs.render(it) }
         end
 
         r.on String do |id|
           r.on "events" do
             # GET /v1/jobs/{job}/events — list a job's events.
             r.get true do
-              validate_query
+              query = validate_query(V1::Jobs::EventListQueryContract)
               next not_found("Job not found") unless jobs.find(id)
 
-              jobs.events(id).map { V1::Jobs.render_event(it) }
+              jobs.events(
+                id,
+                after: query[:after],
+                limit: query.fetch(:limit, Valpo::Jobs::Queue::DEFAULT_EVENT_LIMIT)
+              ).map { V1::Jobs.render_event(it) }
             end
           end
 

@@ -7,26 +7,36 @@ module Valpo
   module Services
     class Runtime
       MANAGED_LABEL = "valpo.managed"
+      OWNED_LABEL = "valpo.owned"
       SERVICE_ID_LABEL = "valpo.service_id"
       SERVICE_TYPE_LABEL = "valpo.service_type"
       READY_RETRY_INTERVAL = 0.25
 
       include Valpo::Deployments::CommandOutput
 
-      def initialize(config:, docker:, queue: nil, job_id: nil, sleeper: Kernel)
+      def initialize(
+        config:,
+        docker:,
+        queue: nil,
+        job_id: nil,
+        sleeper: Kernel,
+        clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }
+      )
         @config = config
         @docker = docker
         @queue = queue
         @job_id = job_id
         @sleeper = sleeper
+        @clock = clock
       end
 
       def start_service_container(service)
+        started = false
         managed = Registry.managed_config(service)
         ensure_network
         create_volume(managed.volume_name)
         event("system", "Starting #{managed.container_name}")
-        result = docker.execute(docker.run_command(
+        result = docker.run_container(
           name: managed.container_name,
           image: managed.image,
           network: config.docker_network,
@@ -36,12 +46,16 @@ module Valpo
           volumes: {managed.volume_name => Registry.volume_path(service)},
           restart_policy: "unless-stopped",
           command_args: Registry.command(service)
-        ))
+        )
         emit_command_output(result)
         raise_command_error("Docker run failed", result) unless result.fetch(:success)
 
+        started = true
         wait_until_ready(service)
         managed.container_name
+      rescue
+        cleanup_started_container(managed.container_name) if started
+        raise
       end
 
       def restart_service_container(service)
@@ -104,14 +118,14 @@ module Valpo
 
       def wait_until_ready(service)
         event("system", "Waiting for #{service.name} readiness")
-        deadline = Time.now + config.healthcheck_timeout
+        deadline = clock.call + config.healthcheck_timeout
         last_result = nil
 
         loop do
           last_result = docker.execute(docker.exec_command(Registry.managed_config(service).container_name, *Registry.readiness_command(service)))
           return true if last_result.fetch(:success)
 
-          break if Time.now >= deadline
+          break if clock.call >= deadline
 
           sleeper.sleep(READY_RETRY_INTERVAL)
         end
@@ -121,11 +135,18 @@ module Valpo
 
       private
 
-      attr_reader :config, :docker, :queue, :job_id, :sleeper
+      attr_reader :config, :docker, :queue, :job_id, :sleeper, :clock
+
+      def cleanup_started_container(container_name)
+        stop_container(container_name, ignore_missing: true)
+      rescue => e
+        event("stderr", "Cleanup failed for #{container_name}: #{e.message}")
+      end
 
       def labels_for(service)
         {
           MANAGED_LABEL => "true",
+          OWNED_LABEL => "true",
           SERVICE_ID_LABEL => service.id,
           SERVICE_TYPE_LABEL => service.kind,
           "valpo.project_id" => service.project_id
@@ -133,16 +154,32 @@ module Valpo
       end
 
       def ensure_network
-        result = docker.execute(docker.network_create_command(config.docker_network))
+        result = docker.execute(docker.network_create_command(config.docker_network, labels: {OWNED_LABEL => "true"}))
         return if result.fetch(:success)
-        return if result.fetch(:stderr).include?("already exists")
+        if result.fetch(:stderr).include?("already exists")
+          return if owned_network?
 
+          raise Valpo::ValidationError,
+            "Docker network #{config.docker_network} exists without #{OWNED_LABEL}=true"
+        end
         emit_command_output(result)
         raise_command_error("Docker network create failed", result)
       end
 
+      def owned_network?
+        result = docker.execute(docker.network_inspect_command(config.docker_network))
+        return false unless result.fetch(:success)
+
+        JSON.parse(result.fetch(:stdout)).first&.dig("Labels", OWNED_LABEL) == "true"
+      rescue JSON::ParserError
+        false
+      end
+
       def create_volume(volume_name)
-        execute_docker(docker.volume_create_command(volume_name), failure_message: "Docker volume create failed")
+        execute_docker(
+          docker.volume_create_command(volume_name, labels: {OWNED_LABEL => "true"}),
+          failure_message: "Docker volume create failed"
+        )
       end
 
       def execute_docker(command, failure_message:)

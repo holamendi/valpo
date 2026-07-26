@@ -19,7 +19,7 @@ module Valpo
 
         class LogsQueryContract < Contract
           params do
-            optional(:tail).filled(:integer, gt?: 0)
+            optional(:tail).filled(:integer, gt?: 0, lteq?: 10_000)
             optional(:service).filled(:string, format?: NONEMPTY)
           end
         end

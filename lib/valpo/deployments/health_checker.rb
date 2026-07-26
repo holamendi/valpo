@@ -8,12 +8,18 @@ module Valpo
     class HealthChecker
       RETRY_INTERVAL = 0.25
 
-      def initialize(http: Net::HTTP)
+      def initialize(
+        http: Net::HTTP,
+        sleeper: Kernel,
+        clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }
+      )
         @http = http
+        @sleeper = sleeper
+        @clock = clock
       end
 
       def wait(route_target:, path:, timeout:)
-        deadline = Time.now + timeout
+        deadline = clock.call + timeout
         last_error = nil
 
         loop do
@@ -23,9 +29,9 @@ module Valpo
             last_error = e
           end
 
-          break if Time.now >= deadline
+          break if clock.call >= deadline
 
-          sleep RETRY_INTERVAL
+          sleeper.sleep(RETRY_INTERVAL)
         end
 
         detail = last_error ? ": #{last_error.message}" : ""
@@ -34,7 +40,7 @@ module Valpo
 
       private
 
-      attr_reader :http
+      attr_reader :http, :sleeper, :clock
 
       def healthy?(route_target:, path:)
         host, port = route_target.split(":", 2)

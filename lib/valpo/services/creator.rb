@@ -62,7 +62,6 @@ module Valpo
           service_id: service.id,
           version: normalized_version,
           image: definition.image(normalized_version),
-          plan: "starter",
           credentials_json: JSON.generate(definition.credentials)
         )
       end

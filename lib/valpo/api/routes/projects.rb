@@ -144,7 +144,7 @@ module Valpo
             # GET /v1/projects/{project}/logs — aggregate logs for a project.
             r.get true do
               query = validate_query(V1::Projects::LogsQueryContract)
-              aggregate_logs(project, tail: query[:tail], filter: query[:service])
+              aggregate_logs(project, tail: query.fetch(:tail, 200), filter: query[:service])
             end
           end
 

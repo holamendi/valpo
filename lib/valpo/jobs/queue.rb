@@ -6,7 +6,12 @@ require "time"
 module Valpo
   module Jobs
     class Queue
+      ABANDONED_ERROR = "Interrupted; manual retry required"
+      ABANDONED_EVENT = "Job was interrupted by worker termination; manual retry required"
       ACTIVE_PROJECT_JOB_STATUSES = %w[queued running].freeze
+      DEFAULT_EVENT_LIMIT = 200
+      DEFAULT_JOB_LIMIT = 100
+      MAX_PAGE_LIMIT = 500
       PROJECT_OPERATION_TYPES = %w[
         delete_project
         apply_project_manifest
@@ -33,12 +38,14 @@ module Valpo
       ).uniq.freeze
 
       def enqueue(type, payload = {})
+        type = validate_type(type)
         Valpo::Database.connection.transaction(mode: :immediate) do
           create_job(type, payload)
         end
       end
 
       def enqueue_project_operation(type, project_id:, payload: {})
+        type = validate_type(type)
         project_id = project_id.to_s
         Valpo::Database.connection.transaction(mode: :immediate) do
           active_job = active_project_job(project_id)
@@ -74,6 +81,7 @@ module Valpo
       end
 
       def enqueue_service_operation(type, service_id:, payload: {})
+        type = validate_type(type)
         service_id = service_id.to_s
         project_id = payload[:project_id] || payload["project_id"]
         project_id = project_id.to_s unless project_id.nil?
@@ -123,16 +131,32 @@ module Valpo
           end
       end
 
-      def list
-        Valpo::Job.reverse_order(:created_at).all
+      def list(limit: DEFAULT_JOB_LIMIT)
+        Valpo::Job.order(Sequel.desc(:created_at), Sequel.desc(:id))
+          .limit(validate_limit(limit))
+          .all
       end
 
       def find(id)
         Valpo::Job[id]
       end
 
-      def events(job_id)
-        Valpo::JobEvent.where(job_id:).order(:created_at).all
+      def events(job_id, after: nil, limit: DEFAULT_EVENT_LIMIT)
+        dataset = Valpo::JobEvent.where(job_id:)
+        if after
+          cursor = Valpo::JobEvent.where(id: after, job_id:).first
+          raise Valpo::ValidationError, "Event cursor does not belong to job" unless cursor
+
+          dataset = dataset.where(
+            Sequel.lit(
+              "created_at > ? OR (created_at = ? AND id > ?)",
+              cursor.created_at,
+              cursor.created_at,
+              cursor.id
+            )
+          )
+        end
+        dataset.order(:created_at, :id).limit(validate_limit(limit)).all
       end
 
       def lock_next(worker_id)
@@ -151,11 +175,24 @@ module Valpo
         end
       end
 
-      def release_stale_locks(older_than:)
-        cutoff = now - older_than
-        Valpo::Job.where(status: "running")
-          .where { locked_at < cutoff }
-          .update(status: "queued", locked_by: nil, locked_at: nil, started_at: nil)
+      def abandon_running_jobs
+        Valpo::Database.connection.transaction(mode: :immediate) do
+          abandoned = 0
+          Valpo::Job.where(status: "running").order(:created_at, :id).each do
+            updated = Valpo::Job.where(id: it.id, status: "running").update(
+              status: "failed",
+              error: ABANDONED_ERROR,
+              locked_by: nil,
+              locked_at: nil,
+              finished_at: now
+            )
+            next unless updated == 1
+
+            event(it.id, "stderr", ABANDONED_EVENT)
+            abandoned += 1
+          end
+          abandoned
+        end
       end
 
       def succeed(job_id, worker_id:, progress: 100)
@@ -196,6 +233,7 @@ module Valpo
       private
 
       def create_job(type, payload)
+        type = validate_type(type)
         job = Valpo::Job.create(
           type:,
           payload_json: JSON.generate(payload)
@@ -206,6 +244,21 @@ module Valpo
 
       def now
         Time.now.utc
+      end
+
+      def validate_limit(limit)
+        unless limit.is_a?(Integer) && limit.between?(1, MAX_PAGE_LIMIT)
+          raise Valpo::ValidationError, "limit must be between 1 and #{MAX_PAGE_LIMIT}"
+        end
+
+        limit
+      end
+
+      def validate_type(type)
+        type = type.to_s
+        raise Valpo::ValidationError, "Unsupported job type: #{type}" unless SUPPORTED_TYPES.include?(type)
+
+        type
       end
     end
   end

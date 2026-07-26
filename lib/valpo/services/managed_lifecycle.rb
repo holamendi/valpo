@@ -7,12 +7,14 @@ module Valpo
         config: Valpo.config || Valpo::Config.load,
         docker: Valpo::Docker::Client.new,
         dependency_manager: nil,
-        sleeper: Kernel
+        sleeper: Kernel,
+        clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }
       )
         @config = config
         @docker = docker
         @dependency_manager = dependency_manager
         @sleeper = sleeper
+        @clock = clock
       end
 
       def provision_service(service_id:, queue:, job_id:)
@@ -58,21 +60,43 @@ module Valpo
         runtime = runtime_for(queue:, job_id:)
         dependencies = Valpo::ServiceDependency.where(dependency_service_id: service.id).all
         original_statuses = dependencies.to_h { [it.id, it.status] }
+        original_service_status = service.status
+        restarted_apps = []
+        container_removed = false
+        volume_deleted = false
         service.update(status: "deleting")
         dependencies.each { it.update(status: "deleting") }
         dependencies.each do
           app = Valpo::Service[it.service_id]
-          dependency_manager.restart_app_if_running(app, queue:, job_id:) if app
+          next unless app
+
+          restarted_apps << app if dependency_manager.restart_app_if_running(app, queue:, job_id:)
         end
         runtime.stop_container(managed.container_name, ignore_missing: true)
+        container_removed = true
         runtime.remove_volume(managed.volume_name, ignore_missing: true)
-        dependencies.each(&:destroy)
-        service.destroy
+        volume_deleted = true
+        Valpo::Database.connection.transaction do
+          dependencies.each(&:destroy)
+          service.destroy
+        end
         true
       rescue
-        Valpo::Service.where(id: service&.id).update(status: "failed") if service
-        original_statuses&.each do |id, status|
-          Valpo::ServiceDependency.where(id:).update(status:)
+        if volume_deleted
+          Valpo::Service.where(id: service&.id).update(status: "failed") if service
+        else
+          restore_managed_runtime(
+            service,
+            runtime,
+            original_status: original_service_status,
+            container_removed:,
+            queue:,
+            job_id:
+          )
+          original_statuses&.each do |id, status|
+            Valpo::ServiceDependency.where(id:).update(status:)
+          end
+          restore_restarted_apps(restarted_apps, queue:, job_id:)
         end
         raise
       end
@@ -96,7 +120,7 @@ module Valpo
 
       private
 
-      attr_reader :config, :docker, :sleeper
+      attr_reader :config, :docker, :sleeper, :clock
 
       def dependency_manager
         @dependency_manager ||= DependencyManager.new(config:, docker:, sleeper:)
@@ -110,8 +134,8 @@ module Valpo
           unless inspection.dig("State", "Running")
             event(queue, job_id, "system", "Starting #{managed.container_name}")
             runtime.start_container(managed.container_name)
-            runtime.wait_until_ready(service)
           end
+          runtime.wait_until_ready(service)
         else
           event(queue, job_id, "system", "Recreating service runtime for #{service.name}")
           runtime.start_service_container(service)
@@ -138,7 +162,39 @@ module Valpo
       end
 
       def runtime_for(queue: nil, job_id: nil)
-        Runtime.new(config:, docker:, queue:, job_id:, sleeper:)
+        Runtime.new(config:, docker:, queue:, job_id:, sleeper:, clock:)
+      end
+
+      def restore_restarted_apps(apps, queue:, job_id:)
+        return unless apps
+
+        apps.each do
+          dependency_manager.restart_app_if_running(it.refresh, queue:, job_id:)
+        rescue => e
+          event(queue, job_id, "stderr", "Could not restore #{it.name} after failed deletion: #{e.message}")
+        end
+      end
+
+      def restore_managed_runtime(service, runtime, original_status:, container_removed:, queue:, job_id:)
+        return unless service && original_status
+
+        if original_status == "running"
+          if container_removed
+            runtime.start_service_container(service)
+          else
+            inspection = runtime.inspect_container(Registry.managed_config(service).container_name)
+            if inspection
+              runtime.start_container(Registry.managed_config(service).container_name) unless inspection.dig("State", "Running")
+              runtime.wait_until_ready(service)
+            else
+              runtime.start_service_container(service)
+            end
+          end
+        end
+        Valpo::Service.where(id: service.id).update(status: original_status)
+      rescue => e
+        Valpo::Service.where(id: service.id).update(status: "failed")
+        event(queue, job_id, "stderr", "Could not restore #{service.name} after failed deletion: #{e.message}")
       end
 
       def event(queue, job_id, stream, message)
