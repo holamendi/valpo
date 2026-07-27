@@ -15,11 +15,9 @@ module Valpo
     DEFAULT_BUILDPACK_BUILDER = "paketobuildpacks/builder-jammy-base@sha256:7510725172c8b2f1a7bce82b694e2af9599d5e2d97528c140eaeb81c569c21df"
     KEYS = %w[
       database_path
+      encryption_key_path
       api_host
       api_port
-      api_token
-      github_token_path
-      github_app_credentials_path
       caddy_config_path
       caddy_reload_config_path
       docker_network
@@ -35,11 +33,9 @@ module Valpo
     attr_reader :env,
       :root,
       :database_path,
+      :encryption_key_path,
       :api_host,
       :api_port,
-      :api_token,
-      :github_token_path,
-      :github_app_credentials_path,
       :caddy_config_path,
       :caddy_reload_config_path,
       :docker_network,
@@ -61,11 +57,9 @@ module Valpo
         env:,
         root: Valpo.root,
         database_path: value(env_data, "database_path", ENV["VALPO_DATABASE_PATH"], default_database_path(env)),
+        encryption_key_path: value(env_data, "encryption_key_path", ENV["VALPO_ENCRYPTION_KEY_PATH"], nil),
         api_host: value(env_data, "api_host", ENV["VALPO_API_HOST"], "127.0.0.1"),
         api_port: integer_value(env_data, "api_port", ENV["VALPO_API_PORT"], DEFAULT_API_PORT),
-        api_token: blank_to_nil(value(env_data, "api_token", ENV["VALPO_API_TOKEN"], nil)),
-        github_token_path: value(env_data, "github_token_path", nil, nil),
-        github_app_credentials_path: value(env_data, "github_app_credentials_path", nil, nil),
         caddy_config_path: value(env_data, "caddy_config_path", ENV["VALPO_CADDY_CONFIG_PATH"], default_caddy_config_path(env)),
         caddy_reload_config_path: value(env_data, "caddy_reload_config_path", ENV["VALPO_CADDY_RELOAD_CONFIG_PATH"], nil),
         docker_network: value(env_data, "docker_network", ENV["VALPO_DOCKER_NETWORK"], "valpo"),
@@ -180,27 +174,13 @@ module Valpo
     end
     private_class_method :float_value
 
-    def self.blank_to_nil(value)
-      return nil if value.nil?
-      raise Valpo::ValidationError, "api_token must be a string" unless value.is_a?(String)
-
-      value.strip.empty? ? nil : value
-    end
-    private_class_method :blank_to_nil
-
-    def initialize(env:, root:, database_path:, api_host:, api_port:, caddy_config_path:, docker_network:, worker_poll_interval:, app_port_start:, app_port_end:, healthcheck_timeout:, deploy_drain_delay:, api_token: nil, github_token_path: nil, github_app_credentials_path: nil, caddy_reload_config_path: nil, build_timeout: DEFAULT_BUILD_TIMEOUT, buildpack_builder: DEFAULT_BUILDPACK_BUILDER)
+    def initialize(env:, root:, database_path:, api_host:, api_port:, caddy_config_path:, docker_network:, worker_poll_interval:, app_port_start:, app_port_end:, healthcheck_timeout:, deploy_drain_delay:, encryption_key_path: nil, caddy_reload_config_path: nil, build_timeout: DEFAULT_BUILD_TIMEOUT, buildpack_builder: DEFAULT_BUILDPACK_BUILDER)
       @env = required_string(env, "env")
       @root = required_string(root, "root")
       @database_path = expand_path(database_path)
+      @encryption_key_path = encryption_key_path ? expand_path(encryption_key_path) : File.join(File.dirname(@database_path), "secrets", "master.key")
       @api_host = required_string(api_host, "api_host")
       @api_port = api_port
-      @api_token = self.class.send(:blank_to_nil, api_token)
-      @github_token_path = github_token_path ? expand_path(github_token_path) : File.join(File.dirname(@database_path), "secrets", "github-token")
-      @github_app_credentials_path = if github_app_credentials_path
-        expand_path(github_app_credentials_path)
-      else
-        File.join(File.dirname(@database_path), "secrets", "github-app.json")
-      end
       @caddy_config_path = expand_path(caddy_config_path)
       @caddy_reload_config_path = caddy_reload_config_path ? expand_path(caddy_reload_config_path) : @caddy_config_path
       @docker_network = required_string(docker_network, "docker_network")
@@ -232,10 +212,6 @@ module Valpo
         raise Valpo::ValidationError, "deploy_drain_delay must be greater than or equal to 0"
       end
       raise Valpo::ValidationError, "build_timeout must be greater than 0" unless @build_timeout.positive?
-    end
-
-    def github_token
-      Valpo::Credentials::FileStore.new(github_token_path).read
     end
 
     private

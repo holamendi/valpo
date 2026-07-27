@@ -136,7 +136,7 @@ module Valpo
           end
 
           r.on "env" do
-            # GET /v1/services/{service}/env — show generated service environment entries.
+            # GET /v1/services/{service}/env — show effective service environment entries.
             r.get true do
               query = validate_query(V1::Services::EnvironmentQueryContract)
               require_app!(service)
@@ -146,6 +146,66 @@ module Valpo
                   service.id, reveal: query[:reveal] == "true"
                 )
               }
+            end
+
+            r.on "reconcile" do
+              # POST /v1/services/{service}/env/reconcile — apply the latest environment revision.
+              r.post true do
+                validate_query
+                require_app!(service)
+                response.status = 202
+                V1::Jobs.render(jobs.enqueue_service_operation(
+                  "reconcile_service_environment",
+                  service_id: service.id,
+                  payload: {project_id: service.project_id}
+                ))
+              end
+            end
+
+            r.on String do |name|
+              if r.put?
+                # PUT /v1/services/{service}/env/{name} — set a custom environment variable.
+                r.is do
+                  validate_query
+                  require_app!(service)
+                  payload = validate_body(V1::Services::SetEnvironmentVariableContract)
+                  variable = nil
+                  job = jobs.enqueue_service_operation(
+                    "reconcile_service_environment",
+                    service_id: service.id,
+                    payload: {project_id: service.project_id}
+                  ) do
+                    variable = environment_manager.set(
+                      service_id: service.id,
+                      name:,
+                      value: payload.fetch(:value),
+                      sensitive: payload.fetch(:sensitive, true)
+                    )
+                  end
+                  response.status = 202
+                  {
+                    variable: V1::Services.render_environment_variable(variable),
+                    job: V1::Jobs.render(job)
+                  }
+                end
+              end
+
+              if r.delete?
+                # DELETE /v1/services/{service}/env/{name} — remove a custom environment variable.
+                r.is do
+                  validate_query
+                  require_app!(service)
+                  job = jobs.enqueue_service_operation(
+                    "reconcile_service_environment",
+                    service_id: service.id,
+                    payload: {project_id: service.project_id}
+                  ) do
+                    environment_manager.unset(service_id: service.id, name:)
+                  end
+                  response.status = 202
+                  {deleted: true, name:, job: V1::Jobs.render(job)}
+                end
+              end
             end
           end
 

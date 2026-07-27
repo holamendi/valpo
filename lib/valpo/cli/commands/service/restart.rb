@@ -10,15 +10,15 @@ module Valpo
           project_option
           wait_options
 
-          def call(service:, wait:, timeout:, api_url:, project: nil, config: nil, json: false, args: nil, **)
-            operate(service, "restart", project:, wait:, timeout:, api_url:, config:, json:, args:)
+          def call(service:, wait:, timeout:, api_url:, project: nil, json: false, args: nil, **)
+            operate(service, "restart", project:, wait:, timeout:, api_url:, json:, args:)
           end
 
           private
 
-          def operate(service, action, project:, wait:, timeout:, api_url:, config:, json:, args:)
+          def operate(service, action, project:, wait:, timeout:, api_url:, json:, args:)
             reject_extra_arguments!(args)
-            current = context(api_url:, config:, json:)
+            current = context(api_url:, json:)
             response = current.request(:post, "#{current.service_path(service, project:)}/#{action}")
             current.presenter.operation(current.finish_operation(response, wait:, timeout:))
           end

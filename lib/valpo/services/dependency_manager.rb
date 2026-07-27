@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require "json"
-
 module Valpo
   module Services
     class DependencyManager
@@ -28,14 +26,14 @@ module Valpo
           service_id: app.id, dependency_service_id: managed.id, env:
         )
         unless conflicts.empty?
-          raise Valpo::ConflictError, "App service already has managed env keys: #{conflicts.sort.join(", ")}"
+          raise Valpo::ConflictError, "App service already has environment keys: #{conflicts.sort.join(", ")}"
         end
 
         existing = Valpo::ServiceDependency.where(
           service_id: app.id, dependency_service_id: managed.id
         ).first
-        previous = existing&.values&.slice(:status, :env_json)
-        dependency = upsert_dependency(app:, managed:, env:, existing:)
+        previous = existing&.values&.slice(:status)
+        dependency = upsert_dependency(app:, managed:, existing:)
         event(queue, job_id, "system", "Bound #{managed.name} to #{app.name}")
         restart_app_if_running(app, queue:, job_id:)
         dependency
@@ -73,8 +71,8 @@ module Valpo
 
       attr_reader :config, :docker, :sleeper
 
-      def upsert_dependency(app:, managed:, env:, existing:)
-        attributes = {status: "active", env_json: JSON.generate(env)}
+      def upsert_dependency(app:, managed:, existing:)
+        attributes = {status: "active"}
         return existing.update(attributes) if existing
 
         Valpo::ServiceDependency.create(

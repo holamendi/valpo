@@ -20,7 +20,7 @@ class ValpoServicesDependencyManagerTest < Minitest::Test
 
     assert_equal "active", dependency.status
     assert_equal app.id, deployment.service_id
-    assert dependency.env.key?("DATABASE_URL")
+    assert Valpo::Services::Environment.raw_for_service(app.id).key?("DATABASE_URL")
   end
 
   def test_bind_rejects_cross_project_and_duplicate_env_keys
@@ -35,8 +35,7 @@ class ValpoServicesDependencyManagerTest < Minitest::Test
     first = create_managed_service(project: first_project)
     second = create_managed_service(project: first_project, name: "other-db")
     Valpo::ServiceDependency.create(
-      service_id: app.id, dependency_service_id: first.id, status: "active",
-      env_json: JSON.generate(Valpo::Services::Registry.binding_environment(first))
+      service_id: app.id, dependency_service_id: first.id, status: "active"
     )
     assert_raises(Valpo::ConflictError) do
       run_job { |queue, job| manager.bind_service(service_id: app.id, dependency_service_id: second.id, queue:, job_id: job.id) }
@@ -74,8 +73,7 @@ class ValpoServicesDependencyManagerTest < Minitest::Test
     dependency = Valpo::ServiceDependency.create(
       service_id: app.id,
       dependency_service_id: database.id,
-      status: "deleting",
-      env_json: JSON.generate("OLD_URL" => "old")
+      status: "deleting"
     )
 
     assert_raises Valpo::ValidationError do
@@ -90,7 +88,6 @@ class ValpoServicesDependencyManagerTest < Minitest::Test
     end
 
     assert_equal "deleting", dependency.refresh.status
-    assert_equal({"OLD_URL" => "old"}, dependency.env)
   end
 
   def test_unbind_removes_dependency
@@ -98,7 +95,7 @@ class ValpoServicesDependencyManagerTest < Minitest::Test
     app = create_app_service(project:)
     database = create_managed_service(project:)
     dependency = Valpo::ServiceDependency.create(
-      service_id: app.id, dependency_service_id: database.id, status: "active", env_json: "{}"
+      service_id: app.id, dependency_service_id: database.id, status: "active"
     )
     run_job { |queue, job| manager.unbind_service(service_id: app.id, dependency_service_id: database.id, queue:, job_id: job.id) }
     assert_nil Valpo::ServiceDependency[dependency.id]

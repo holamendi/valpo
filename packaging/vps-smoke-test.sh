@@ -247,6 +247,7 @@ fi
 echo "[smoke] verifying services"
 remote "systemctl is-active docker caddy valpo-api valpo-worker"
 remote "curl -fsS http://127.0.0.1:7092/health"
+remote "test -f /var/lib/valpo/secrets/master.key; test \"\$(stat -c '%a' /var/lib/valpo/secrets/master.key)\" = 600"
 
 echo "[smoke] configuring app domain"
 remote "valpo domain set-default '${domain_suffix}' --timeout 180"
@@ -297,7 +298,7 @@ remote "valpo service show '${postgres_service}' --project '${project}'"
 remote "valpo service show '${redis_service}' --project '${project}'"
 remote "valpo service logs '${postgres_service}' --project '${project}' --tail 50"
 remote "valpo service logs '${redis_service}' --project '${project}' --tail 50"
-environment_output="$(remote "valpo service env '${web_service}' --project '${project}'")"
+environment_output="$(remote "valpo service env list '${web_service}' --project '${project}'")"
 printf '%s\n' "$environment_output"
 for secret_name in DATABASE_URL PGPASSWORD REDIS_URL REDIS_PASSWORD; do
   printf '%s\n' "$environment_output" | grep -F "$secret_name" | grep -F '********' >/dev/null
@@ -306,8 +307,18 @@ if printf '%s\n' "$environment_output" | grep -Eq 'postgres(ql)?://|redis://'; t
   echo "Managed credential value leaked into smoke-test output" >&2
   exit 1
 fi
-remote "redacted_output=\$(valpo service env '${web_service}' --project '${project}'); revealed_output=\$(valpo service env '${web_service}' --project '${project}' --reveal); for secret_name in DATABASE_URL PGPASSWORD REDIS_URL REDIS_PASSWORD; do secret_value=\$(printf '%s\n' \"\$revealed_output\" | awk -v name=\"\$secret_name\" '\$1 == name { print \$2; exit }'); test -n \"\$secret_value\"; if printf '%s\n' \"\$redacted_output\" | grep -F -- \"\$secret_value\" >/dev/null; then printf 'Credential value leaked for %s\n' \"\$secret_name\" >&2; exit 1; fi; done"
+remote "redacted_output=\$(valpo service env list '${web_service}' --project '${project}'); revealed_output=\$(valpo service env list '${web_service}' --project '${project}' --reveal); for secret_name in DATABASE_URL PGPASSWORD REDIS_URL REDIS_PASSWORD; do secret_value=\$(printf '%s\n' \"\$revealed_output\" | awk -v name=\"\$secret_name\" '\$1 == name { print \$2; exit }'); test -n \"\$secret_value\"; if printf '%s\n' \"\$redacted_output\" | grep -F -- \"\$secret_value\" >/dev/null; then printf 'Credential value leaked for %s\n' \"\$secret_name\" >&2; exit 1; fi; done"
 remote "container=\$(docker ps --filter 'label=valpo.service_id=${web_service_id}' --format '{{.Names}}' | head -n 1); test -n \"\$container\"; docker inspect \"\$container\" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E 'DATABASE_URL=|REDIS_URL=' >/dev/null"
+
+echo "[smoke] verifying encrypted custom service environment"
+custom_secret="valpo-smoke-secret-${project}"
+remote "printf %s '${custom_secret}' | valpo service env set '${web_service}' SMOKE_SECRET --project '${project}' --timeout 180"
+remote "valpo service env list '${web_service}' --project '${project}' | grep -F 'SMOKE_SECRET' | grep -F '********' >/dev/null"
+remote "valpo service env list '${web_service}' --project '${project}' --reveal | grep -F '${custom_secret}' >/dev/null"
+remote "if grep -aF -- '${custom_secret}' /var/lib/valpo/valpo.db* >/dev/null; then echo 'Custom environment plaintext leaked into SQLite' >&2; exit 1; fi"
+remote "container=\$(docker ps --filter 'label=valpo.service_id=${web_service_id}' --format '{{.Names}}' | head -n 1); docker inspect \"\$container\" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -F 'SMOKE_SECRET=${custom_secret}' >/dev/null"
+remote "valpo service env unset '${web_service}' SMOKE_SECRET --project '${project}' --timeout 180"
+remote "container=\$(docker ps --filter 'label=valpo.service_id=${web_service_id}' --format '{{.Names}}' | head -n 1); if docker inspect \"\$container\" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -F 'SMOKE_SECRET=' >/dev/null; then echo 'Removed custom environment remains in container' >&2; exit 1; fi"
 
 echo "[smoke] verifying automatic domain"
 remote "valpo domain list '${web_service}' --project '${project}' | grep -F '${domain}'"

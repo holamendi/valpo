@@ -11,15 +11,15 @@ module Valpo
           project_option
           wait_options
 
-          def call(app_service:, managed_service:, wait:, timeout:, api_url:, project: nil, config: nil, json: false, args: nil, **)
-            dependency_operation(:post, app_service, managed_service, project:, wait:, timeout:, api_url:, config:, json:, args:)
+          def call(app_service:, managed_service:, wait:, timeout:, api_url:, project: nil, json: false, args: nil, **)
+            dependency_operation(:post, app_service, managed_service, project:, wait:, timeout:, api_url:, json:, args:)
           end
 
           private
 
-          def dependency_operation(method, app_service, managed_service, project:, wait:, timeout:, api_url:, config:, json:, args:)
+          def dependency_operation(method, app_service, managed_service, project:, wait:, timeout:, api_url:, json:, args:)
             reject_extra_arguments!(args)
-            current = context(api_url:, config:, json:)
+            current = context(api_url:, json:)
             app_id = current.resolver.service_id(app_service, project:)
             dependency_id = current.resolver.service_id(managed_service, project:)
             path = "/v1/services/#{app_id}/dependencies"

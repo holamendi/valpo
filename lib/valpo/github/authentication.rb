@@ -3,21 +3,21 @@
 module Valpo
   module GitHub
     class Authentication
-      def initialize(config:, credentials: nil, client: nil)
-        @config = config
-        @credentials = credentials || Credentials.new(config.github_app_credentials_path)
+      def initialize(credentials: nil, personal_access_token: nil, client: nil)
+        @credentials = credentials || Credentials.new
+        @personal_access_token = personal_access_token || PersonalAccessToken.new
         @client = client || Client.new(credentials: @credentials)
       end
 
       def token_for(repository)
         return client.installation_token(repository) if credentials.configured?
 
-        config.github_token
+        personal_access_token.read
       end
 
       private
 
-      attr_reader :config, :credentials, :client
+      attr_reader :credentials, :personal_access_token, :client
     end
   end
 end

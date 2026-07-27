@@ -7,9 +7,9 @@ module Valpo
         class Status < BaseCommand
           desc "Check API health and client/server version compatibility"
 
-          def call(api_url:, config: nil, json: false, args: nil, **)
+          def call(api_url:, json: false, args: nil, **)
             reject_extra_arguments!(args)
-            current = context(api_url:, config:, json:)
+            current = context(api_url:, json:)
             health = current.request(:get, "/health")
             server_version = health.fetch("version")
             compatible = server_version == Valpo::VERSION

@@ -57,8 +57,8 @@ module Valpo
           table(value.fetch("env"), [
             ["NAME", -> { it["name"] }],
             ["VALUE", -> { it["value"] }],
-            ["SOURCE", -> { it["service_name"] }]
-          ], empty: "No managed environment variables.")
+            ["SOURCE", -> { (it["origin"] == "service") ? "service" : it["service_name"] }]
+          ], empty: "No environment variables.")
         end
 
         def logs(value, aggregate: false)

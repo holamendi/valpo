@@ -245,22 +245,24 @@ class ValpoCLITest < Minitest::Test
     assert_equal({"ref" => "release"}, request.fetch(:payload))
   end
 
-  def test_auth_login_reads_token_stdin_and_writes_a_private_file
-    token_path = File.join(VALPO_TEST_DIR, "credentials", "github-token")
-    config_path = File.join(VALPO_TEST_DIR, "github-token-config.yml")
-    File.write(config_path, "github_token_path: #{token_path}\n")
-
+  def test_auth_login_reads_token_stdin_and_stores_it_through_the_api
+    client = FakeAPIClient.new(
+      "authenticated" => true,
+      "provider" => "github",
+      "mode" => "pat",
+      "account" => "octocat"
+    )
     status, stdout, stderr = run_cli(
-      FakeAPIClient.new([]),
-      ["auth", "login", "github", "--with-token", "--config", config_path, "--json"],
+      client,
+      ["auth", "login", "github", "--with-token", "--json"],
       input: StringIO.new("github_pat_secret\n")
     )
 
     assert_equal 0, status
-    assert_equal "github_pat_secret\n", File.read(token_path)
-    assert_equal 0o600, File.stat(token_path).mode & 0o777
     assert_equal true, JSON.parse(stdout).fetch("authenticated")
     assert_equal "octocat", JSON.parse(stdout).fetch("account")
+    assert_equal "/v1/auth/github/pat", client.requests.first.fetch(:path)
+    assert_equal "github_pat_secret", client.requests.first.fetch(:payload).fetch("token")
     refute_includes stdout, "github_pat_secret"
     refute_includes stderr, "github_pat_secret"
   end
@@ -278,26 +280,20 @@ class ValpoCLITest < Minitest::Test
     refute_includes stderr, "github_pat_secret"
   end
 
-  def test_auth_status_and_logout_manage_the_stored_token
-    token_path = File.join(VALPO_TEST_DIR, "auth-lifecycle", "github-token")
-    config_path = File.join(VALPO_TEST_DIR, "auth-lifecycle.yml")
-    File.write(config_path, "github_token_path: #{token_path}\n")
-    Valpo::Credentials::FileStore.new(token_path).write("github_pat_secret")
-
+  def test_auth_status_and_logout_use_server_side_credentials
     status, stdout, = run_cli(
-      FakeAPIClient.new("authenticated" => false, "provider" => "github"),
-      ["auth", "status", "github", "--config", config_path, "--json"]
+      FakeAPIClient.new("authenticated" => true, "provider" => "github", "mode" => "pat"),
+      ["auth", "status", "github", "--json"]
     )
     assert_equal 0, status
     assert_equal true, JSON.parse(stdout).fetch("authenticated")
 
     status, stdout, = run_cli(
-      FakeAPIClient.new("authenticated" => false, "provider" => "github", "removed" => false),
-      ["auth", "logout", "github", "--config", config_path, "--json"]
+      FakeAPIClient.new("authenticated" => false, "provider" => "github", "removed" => true),
+      ["auth", "logout", "github", "--json"]
     )
     assert_equal 0, status
     assert_equal true, JSON.parse(stdout).fetch("removed")
-    refute_path_exists token_path
   end
 
   def test_auth_login_prints_the_one_time_github_app_setup_url
@@ -316,14 +312,12 @@ class ValpoCLITest < Minitest::Test
   end
 
   def test_auth_login_does_not_store_a_token_rejected_by_github
-    token_path = File.join(VALPO_TEST_DIR, "auth-invalid", "github-token")
-    config_path = File.join(VALPO_TEST_DIR, "auth-invalid.yml")
-    File.write(config_path, "github_token_path: #{token_path}\n")
     validator = FakeGitHubValidator.new(error: Valpo::ValidationError.new("GitHub rejected the PAT"))
+    client = FakeAPIClient.new([])
 
     status, stdout, stderr = run_cli(
-      FakeAPIClient.new([]),
-      ["auth", "login", "github", "--with-token", "--config", config_path],
+      client,
+      ["auth", "login", "github", "--with-token"],
       input: StringIO.new("github_pat_invalid\n"),
       github_validator: validator
     )
@@ -331,8 +325,48 @@ class ValpoCLITest < Minitest::Test
     assert_equal 1, status
     assert_empty stdout
     assert_includes stderr, "GitHub rejected"
-    refute File.exist?(token_path)
+    assert_empty client.requests
     refute_includes stderr, "github_pat_invalid"
+  end
+
+  def test_service_environment_set_reads_stdin_and_never_uses_a_value_argument
+    response = {
+      "variable" => {"id" => "env_1", "name" => "API_KEY", "value" => "********"},
+      "job" => {"id" => job_id, "status" => "queued"}
+    }
+    client = FakeAPIClient.new(response)
+
+    status, stdout, stderr = run_cli(
+      client,
+      ["service", "env", "set", service_id, "API_KEY", "--no-wait", "--json"],
+      input: StringIO.new("secret-value\n")
+    )
+
+    assert_equal 0, status
+    assert_equal job_id, JSON.parse(stdout).dig("job", "id")
+    request = client.requests.first
+    assert_equal :put, request.fetch(:method)
+    assert_equal "/v1/services/#{service_id}/env/API_KEY", request.fetch(:path)
+    assert_equal({"value" => "secret-value", "sensitive" => true}, request.fetch(:payload))
+    refute_includes stdout, "secret-value"
+    refute_includes stderr, "secret-value"
+  end
+
+  def test_api_token_create_prints_the_raw_token_once
+    client = FakeAPIClient.new(
+      "id" => "acr_1",
+      "name" => "operator",
+      "scopes" => ["admin"],
+      "token" => "valpo_secret"
+    )
+
+    status, stdout, stderr = run_cli(client, %w[auth token create operator])
+
+    assert_equal 0, status
+    assert_includes stdout, "valpo_secret"
+    assert_includes stdout, "will not be shown again"
+    assert_empty stderr
+    assert_equal({"name" => "operator"}, client.requests.first.fetch(:payload))
   end
 
   def test_wait_timeout_exits_one
@@ -471,7 +505,7 @@ class ValpoCLITest < Minitest::Test
   def run_cli(client, arguments, clock: -> { 0 }, input: StringIO.new, github_validator: FakeGitHubValidator.new)
     stdout = StringIO.new
     stderr = StringIO.new
-    factory = lambda do |api_url:, config:, json:, out:, err:|
+    factory = lambda do |api_url:, json:, out:, err:|
       presenter = Valpo::CLI::Presenter.new(out:, err:, json:)
       waiter = Valpo::CLI::JobWaiter.new(client:, err:, clock:, sleeper: ->(_duration) {})
       Valpo::CLI::Context.new(client:, presenter:, waiter:)

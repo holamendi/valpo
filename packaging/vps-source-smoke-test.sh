@@ -9,9 +9,9 @@ Installs the current checkout and tests a manifest-free GitHub source deployment
 in a unique project. The test omits ref, build strategy, Dockerfile, context,
 and port so it exercises remote HEAD and automatic source-build defaults.
 
-The existing GitHub PAT must already be configured. Its file digest and
-authentication status are checked before and after the test; the script never
-logs out of GitHub or removes the credential.
+GitHub App or PAT authentication must already be configured. Its encrypted
+database record and public authentication status are checked before and after
+the test; the script never logs out of GitHub or removes the credential.
 
 Options:
   --repository OWNER/REPO  Repository to deploy. Default: holamendi/smol-roda.
@@ -96,7 +96,7 @@ domain="${project}.${domain_suffix}"
 service="web"
 service_id=""
 project_id=""
-token_digest_before=""
+credential_digest_before=""
 cleanup_started=0
 
 remote() {
@@ -129,7 +129,7 @@ assert_github_auth() {
 }
 
 credential_digest() {
-  remote "test -f /var/lib/valpo/secrets/github-token && sha256sum /var/lib/valpo/secrets/github-token | cut -d ' ' -f 1"
+  remote "cd /opt/valpo && VALPO_ENV=production /var/lib/valpo/.local/bin/mise x ruby@4.0.5 -- bundle exec ruby -e 'require \"digest\"; require \"sqlite3\"; row = SQLite3::Database.new(\"/var/lib/valpo/valpo.db\").get_first_row(\"SELECT provider, kind, encrypted_payload, public_metadata_json FROM provider_credentials WHERE provider = ? ORDER BY kind LIMIT 1\", \"github\"); abort \"GitHub credential is missing\" unless row; puts Digest::SHA256.hexdigest(row.join(\"\\0\"))'"
 }
 
 cleanup() {
@@ -160,7 +160,7 @@ cleanup() {
   if ! assert_github_auth; then
     echo "[source-smoke] GitHub authentication is no longer configured" >&2
     cleanup_failed=1
-  elif [[ "$(credential_digest)" != "$token_digest_before" ]]; then
+  elif [[ "$(credential_digest)" != "$credential_digest_before" ]]; then
     echo "[source-smoke] GitHub credential changed during the test" >&2
     cleanup_failed=1
   fi
@@ -178,7 +178,7 @@ echo "[source-smoke] repository=${repository}"
 echo "[source-smoke] domain=${domain}"
 
 assert_github_auth
-token_digest_before="$(credential_digest)"
+credential_digest_before="$(credential_digest)"
 
 if [[ "$install_mode" != "none" ]]; then
   echo "[source-smoke] copying and installing current checkout"

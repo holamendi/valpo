@@ -63,6 +63,13 @@ module Valpo
           end
         end
 
+        class SetEnvironmentVariableContract < Contract
+          json do
+            required(:value).value(:string)
+            optional(:sensitive).filled(:bool)
+          end
+        end
+
         class ListQueryContract < Contract
           params do
             optional(:project).filled(:string, format?: NONEMPTY)
@@ -120,6 +127,14 @@ module Valpo
         def render_dependency(dependency)
           Fields.call(
             dependency, :id, :service_id, :dependency_service_id, :status, :created_at, :updated_at
+          )
+        end
+
+        def render_environment_variable(variable, reveal: false)
+          redacted = variable.sensitive && !reveal
+          Fields.call(variable, :id, :service_id, :name, :sensitive, :created_at, :updated_at).merge(
+            value: redacted ? "********" : variable.value,
+            redacted:
           )
         end
 

@@ -5,6 +5,16 @@ module Valpo
     class App
       hash_branch("/v1", "auth") do |r|
         r.on "github" do
+          r.on "pat" do
+            # POST /v1/auth/github/pat — validate and store an encrypted fallback PAT.
+            r.post true do
+              validate_query
+              payload = validate_body(V1::GitHub::StorePersonalAccessTokenContract)
+              response.status = 201
+              github_setup.login_with_token(payload.fetch(:token))
+            end
+          end
+
           # GET /v1/auth/github — show GitHub App authentication status.
           r.get true do
             validate_query
@@ -20,7 +30,7 @@ module Valpo
           end
 
           if r.delete?
-            # DELETE /v1/auth/github — remove the local GitHub App credentials.
+            # DELETE /v1/auth/github — remove all stored GitHub credentials.
             r.is do
               validate_query
               removed = github_setup.logout

@@ -8,9 +8,9 @@ module Valpo
           desc "Regenerate runtime state from Valpo records"
           wait_options
 
-          def call(wait:, timeout:, api_url:, config: nil, json: false, args: nil, **)
+          def call(wait:, timeout:, api_url:, json: false, args: nil, **)
             reject_extra_arguments!(args)
-            current = context(api_url:, config:, json:)
+            current = context(api_url:, json:)
             response = current.request(:post, "/v1/system/repair")
             current.presenter.operation(current.finish_operation(response, wait:, timeout:))
           end

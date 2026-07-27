@@ -10,7 +10,7 @@ module Valpo
           if value.is_a?(Hash) && value["service"] && !value["job"]
             service(value.fetch("service"))
           elsif value.is_a?(Hash) && value["job"]
-            resource = value["service"] || value["domain"] || value["app_domain"]
+            resource = value["service"] || value["domain"] || value["app_domain"] || value["variable"]
             details({
               "resource" => resource && (resource["name"] || resource["hostname"] || resource["id"]),
               "job" => value.dig("job", "id"),

@@ -12,11 +12,10 @@ class ValpoServiceDependencyTest < Minitest::Test
     dependency = Valpo::ServiceDependency.create(
       service_id: app.id,
       dependency_service_id: database.id,
-      status: "active",
-      env_json: JSON.generate("DATABASE_URL" => "postgres://example")
+      status: "active"
     )
 
-    assert_equal({"DATABASE_URL" => "postgres://example"}, dependency.env)
+    assert_equal database.id, dependency.dependency_service_id
     assert_match(/\Adep_[0-9a-f]{32}\z/, dependency.id)
     assert_raises(Sequel::ValidationFailed) { dependency.update(status: "unknown") }
   end

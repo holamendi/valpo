@@ -11,16 +11,10 @@ module Valpo
           desc "Show source-provider authentication status"
           argument :provider, required: true, desc: "Source provider (github)"
 
-          def call(provider:, api_url:, config: nil, json: false, args: nil, **)
+          def call(provider:, api_url:, json: false, args: nil, **)
             reject_extra_arguments!(args)
-            provider = github!(provider)
-            store, path = credential_store(config)
-            app_result = context(api_url:, config:, json:).request(:get, "/v1/auth/github")
-            result = if app_result.fetch("authenticated") || !store.read
-              app_result
-            else
-              {"authenticated" => true, "provider" => provider, "mode" => "pat", "path" => path}
-            end
+            github!(provider)
+            result = context(api_url:, json:).request(:get, "/v1/auth/github")
             if json
               @out.puts JSON.generate(result)
             else

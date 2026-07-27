@@ -45,7 +45,7 @@ module Valpo
           docker:,
           dependency_manager:
         )
-        github_authentication = Valpo::GitHub::Authentication.new(config:)
+        github_authentication = Valpo::GitHub::Authentication.new
         source_fetcher = Valpo::Sources::Fetcher.new(
           adapters: {"github" => Valpo::Sources::GitHub.new(token: -> {
             github_authentication.token_for(it)
@@ -146,6 +146,9 @@ module Valpo
           ),
           "stop_service" => service_operation(deployment, managed, :stop_service),
           "restart_service" => service_operation(deployment, managed, :restart_service),
+          "reconcile_service_environment" => Handlers::ReconcileEnvironment.new(
+            manager: Valpo::Services::EnvironmentManager.new(deployment_lifecycle: deployment)
+          ),
           "delete_service" => service_operation(deployment, managed, :delete_service),
           "apply_project_manifest" => Handlers::ApplyProjectManifest.new(
             reconciler: Valpo::Manifests::Reconciler.new(

@@ -6,7 +6,6 @@ module Valpo
   module CLI
     class BaseCommand < Dry::CLI::Command
       option :api_url, default: ENV.fetch("VALPO_API_URL", DEFAULT_API_URL), desc: "Valpo API URL"
-      option :config, default: ENV["VALPO_CONFIG"], desc: "Path to Valpo configuration"
       option :json, type: :boolean, default: false, desc: "Emit one JSON document"
 
       class << self
@@ -22,8 +21,8 @@ module Valpo
 
       private
 
-      def context(api_url:, config:, json:, **)
-        @context ||= CLI.context_factory.call(api_url:, config:, json:, out: @out, err: @err)
+      def context(api_url:, json:, **)
+        @context ||= CLI.context_factory.call(api_url:, json:, out: @out, err: @err)
       rescue Valpo::API::Client::Error, Valpo::ValidationError => e
         raise OperationalError, e.message
       end

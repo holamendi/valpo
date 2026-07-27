@@ -28,6 +28,7 @@ module Valpo
         unbind_service
         stop_service
         restart_service
+        reconcile_service_environment
         update_app_service
         delete_service
       ].freeze

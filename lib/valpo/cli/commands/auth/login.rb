@@ -13,11 +13,11 @@ module Valpo
           option :organization, desc: "Create the GitHub App under this organization"
           option :with_token, type: :boolean, default: false, desc: "Read a temporary fallback PAT from stdin"
 
-          def call(provider:, with_token:, api_url:, organization: nil, config: nil, json: false, args: nil, **)
+          def call(provider:, with_token:, api_url:, organization: nil, json: false, args: nil, **)
             reject_secret_arguments!(args)
             provider = github!(provider)
             unless with_token
-              result = context(api_url:, config:, json:).request(
+              result = context(api_url:, json:).request(
                 :post,
                 "/v1/auth/github",
                 {"organization" => organization}.compact
@@ -26,11 +26,14 @@ module Valpo
             end
             raise UsageError, "--organization cannot be used with --with-token" if organization
 
-            store, path = credential_store(config)
             token = read_token
-            account = Valpo::CLI.github_validator.validate(token)
-            store.write(token)
-            render({"account" => account, "authenticated" => true, "provider" => provider, "path" => path}, json:)
+            Valpo::CLI.github_validator.validate(token)
+            result = context(api_url:, json:).request(
+              :post,
+              "/v1/auth/github/pat",
+              {"token" => token}
+            )
+            render(result, json:)
           end
 
           private

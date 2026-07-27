@@ -8,9 +8,9 @@ module Valpo
           desc "List events for a background job"
           argument :id, required: true, desc: "Job ID"
 
-          def call(id:, api_url:, config: nil, json: false, args: nil, **)
+          def call(id:, api_url:, json: false, args: nil, **)
             reject_extra_arguments!(args)
-            current = context(api_url:, config:, json:)
+            current = context(api_url:, json:)
             current.presenter.events(current.request(:get, "/v1/jobs/#{segment(id)}/events"))
           end
         end

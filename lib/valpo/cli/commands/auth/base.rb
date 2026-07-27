@@ -15,11 +15,6 @@ module Valpo
 
             raise UsageError, "Unsupported authentication provider. Supported providers: github"
           end
-
-          def credential_store(config_path)
-            config = Valpo::Config.load(path: config_path)
-            [Valpo::Credentials::FileStore.new(config.github_token_path), config.github_token_path]
-          end
         end
       end
     end

@@ -12,8 +12,7 @@ class ValpoDeploymentsLifecycleTest < Minitest::Test
     Valpo::ServiceDependency.create(
       service_id: app.id,
       dependency_service_id: database.id,
-      status: "active",
-      env_json: JSON.generate("DATABASE_URL" => "postgres://example")
+      status: "active"
     )
     domain = create_domain(service: app)
     docker = ValpoTestSupport::FakeDocker.new
@@ -33,7 +32,8 @@ class ValpoDeploymentsLifecycleTest < Minitest::Test
     assert_equal "active", release.status
     assert_equal "running", app.refresh.status
     assert_equal "127.0.0.1:20000", domain.refresh.route_target
-    assert_equal "postgres://example", docker.run_requests.first.fetch(:env).fetch("DATABASE_URL")
+    expected_url = Valpo::Services::Registry.binding_environment(database).fetch("DATABASE_URL")
+    assert_equal expected_url, docker.run_requests.first.fetch(:env).fetch("DATABASE_URL")
     assert_equal "3000", docker.run_requests.first.fetch(:env).fetch("PORT")
     assert_equal app.id, docker.run_requests.first.fetch(:labels).fetch("valpo.service_id")
   end

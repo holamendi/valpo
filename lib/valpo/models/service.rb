@@ -17,6 +17,7 @@ module Valpo
     one_to_many :dependencies, class: "Valpo::ServiceDependency", key: :service_id
     one_to_many :dependents, class: "Valpo::ServiceDependency", key: :dependency_service_id
     one_to_many :releases
+    one_to_many :environment_variables, class: "Valpo::ServiceEnvironmentVariable", key: :service_id
     one_to_many :domains
     one_to_one :owned_source, class: "Valpo::Source", key: :owner_service_id
     one_to_one :owned_build_target, class: "Valpo::BuildTarget", key: :owner_service_id

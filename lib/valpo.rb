@@ -5,7 +5,7 @@ require_relative "valpo/version"
 
 module Valpo
   class << self
-    attr_accessor :config
+    attr_accessor :config, :secrets
   end
 
   def self.root
@@ -24,6 +24,8 @@ module Valpo
       )
       loader.inflector.inflect(
         "api" => "API",
+        "api_credential" => "APICredential",
+        "api_credentials" => "APICredentials",
         "cli" => "CLI",
         "github" => "GitHub",
         "github_app_setup" => "GitHubAppSetup",

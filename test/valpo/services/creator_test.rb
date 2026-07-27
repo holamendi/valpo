@@ -35,4 +35,13 @@ class ValpoServicesCreatorTest < Minitest::Test
 
     assert_empty Valpo::Domain.where(service_id: service.id)
   end
+
+  def test_managed_credentials_are_encrypted_at_rest
+    service = create_managed_service
+    config = service.managed_config
+    password = config.credentials.fetch("password")
+
+    refute_includes config.credentials_ciphertext, password
+    refute_includes config.credentials_ciphertext, "password"
+  end
 end

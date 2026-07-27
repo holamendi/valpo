@@ -9,9 +9,9 @@ module Valpo
           argument :project, required: true, desc: "Project name or ID"
           wait_options
 
-          def call(project:, wait:, timeout:, api_url:, config: nil, json: false, args: nil, **)
+          def call(project:, wait:, timeout:, api_url:, json: false, args: nil, **)
             reject_extra_arguments!(args)
-            current = context(api_url:, config:, json:)
+            current = context(api_url:, json:)
             response = current.request(:delete, "/v1/projects/#{segment(project)}")
             current.presenter.operation(current.finish_operation(response, wait:, timeout:))
           end

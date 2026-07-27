@@ -19,6 +19,7 @@ Sequel.migration do
       String :name, null: false
       String :kind, null: false
       String :status, null: false, default: "created"
+      Integer :environment_revision, null: false, default: 0
       DateTime :created_at, null: false
       DateTime :updated_at, null: false
 
@@ -76,7 +77,7 @@ Sequel.migration do
       String :volume_name
       String :internal_host
       Integer :internal_port
-      String :credentials_json, text: true, null: false
+      String :credentials_ciphertext, text: true, null: false
 
       index :container_name
     end
@@ -86,12 +87,23 @@ Sequel.migration do
       foreign_key :service_id, :services, type: String, size: 40, null: false, on_delete: :cascade
       foreign_key :dependency_service_id, :services, type: String, size: 40, null: false, on_delete: :restrict
       String :status, null: false, default: "binding"
-      String :env_json, text: true, null: false, default: "{}"
       DateTime :created_at, null: false
       DateTime :updated_at, null: false
 
       index [:service_id, :dependency_service_id], unique: true
       index [:service_id, :status]
+    end
+
+    create_table(:service_environment_variables) do
+      String :id, size: 40, primary_key: true
+      foreign_key :service_id, :services, type: String, size: 40, null: false, on_delete: :cascade
+      String :name, null: false
+      String :value_ciphertext, text: true, null: false
+      TrueClass :sensitive, null: false, default: true
+      DateTime :created_at, null: false
+      DateTime :updated_at, null: false
+
+      index [:service_id, :name], unique: true
     end
 
     create_table(:releases) do
@@ -106,6 +118,7 @@ Sequel.migration do
       String :build_strategy
       String :build_metadata_json, text: true, null: false, default: "{}"
       String :status, null: false, default: "pending"
+      Integer :environment_revision, null: false, default: 0
       Integer :internal_port
       String :healthcheck_path
       String :container_name
@@ -116,6 +129,35 @@ Sequel.migration do
       index [:service_id, :version], unique: true
       index [:service_id, :status]
       index :container_name
+    end
+
+    create_table(:provider_credentials) do
+      String :id, size: 40, primary_key: true
+      String :provider, null: false
+      String :kind, null: false
+      String :encrypted_payload, text: true, null: false
+      String :public_metadata_json, text: true, null: false, default: "{}"
+      DateTime :created_at, null: false
+      DateTime :updated_at, null: false
+
+      index [:provider, :kind], unique: true
+    end
+
+    create_table(:api_credentials) do
+      String :id, size: 40, primary_key: true
+      String :name, null: false
+      String :token_prefix, null: false
+      String :token_digest, size: 64, null: false
+      String :scopes_json, text: true, null: false
+      DateTime :last_used_at
+      DateTime :expires_at
+      DateTime :revoked_at
+      DateTime :created_at, null: false
+      DateTime :updated_at, null: false
+
+      index :name, unique: true
+      index :token_prefix
+      index :token_digest, unique: true
     end
 
     create_table(:platform_domains) do

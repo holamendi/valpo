@@ -12,9 +12,8 @@ module Valpo
       DEFAULT_READ_TIMEOUT = 60
       MAX_ERROR_BODY_BYTES = 4096
 
-      def initialize(base_url:, config_path: nil, http_factory: nil)
+      def initialize(base_url:, http_factory: nil)
         @base_uri = parse_base_uri(base_url)
-        @config_path = config_path
         @http_factory = http_factory || -> { Net::HTTP.new(it.host, it.port) }
       end
 
@@ -22,7 +21,7 @@ module Valpo
         uri = build_uri(path, query)
         request = request_class(method).new(uri)
         request["Content-Type"] = "application/json"
-        token = resolved_api_token
+        token = blank_to_nil(ENV["VALPO_API_TOKEN"])
         request["Authorization"] = "Bearer #{token}" if token
         request.body = JSON.generate(payload) if payload
 
@@ -37,7 +36,7 @@ module Valpo
 
       private
 
-      attr_reader :base_uri, :config_path, :http_factory
+      attr_reader :base_uri, :http_factory
 
       def perform(uri, request)
         http = http_factory.call(uri)
@@ -55,14 +54,6 @@ module Valpo
         return nil if response.code.to_i >= 400
 
         raise Error, "API returned invalid JSON: #{bounded_body(response.body)}"
-      end
-
-      def resolved_api_token
-        blank_to_nil(ENV["VALPO_API_TOKEN"]) || api_config.api_token
-      end
-
-      def api_config
-        @api_config ||= Valpo::Config.load(path: config_path)
       end
 
       def blank_to_nil(value)

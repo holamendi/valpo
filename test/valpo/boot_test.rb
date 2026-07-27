@@ -3,18 +3,21 @@
 require "test_helper"
 
 class ValpoBootTest < Minitest::Test
-  def test_non_local_api_host_requires_token
-    config = config_with(api_host: "0.0.0.0", api_token: nil)
+  include ValpoTestDatabase
+
+  def test_non_local_api_host_requires_an_active_api_credential
+    config = config_with(api_host: "0.0.0.0")
 
     error = assert_raises Valpo::ValidationError do
       validate_api_binding(config)
     end
 
-    assert_match "api_token is required", error.message
+    assert_match "active API credential", error.message
   end
 
-  def test_non_local_api_host_allows_token
-    config = config_with(api_host: "0.0.0.0", api_token: "secret")
+  def test_non_local_api_host_allows_an_active_api_credential
+    Valpo::APICredential.issue(name: "operator")
+    config = config_with(api_host: "0.0.0.0")
 
     assert_silent { validate_api_binding(config) }
   end
@@ -25,14 +28,13 @@ class ValpoBootTest < Minitest::Test
     Valpo::Boot.validate_config!(config)
   end
 
-  def config_with(api_host:, api_token:)
+  def config_with(api_host:)
     Valpo::Config.new(
       env: "test",
       root: Valpo.root,
       database_path: VALPO_TEST_CONFIG.database_path,
       api_host:,
       api_port: VALPO_TEST_CONFIG.api_port,
-      api_token:,
       caddy_config_path: VALPO_TEST_CONFIG.caddy_config_path,
       caddy_reload_config_path: VALPO_TEST_CONFIG.caddy_reload_config_path,
       docker_network: VALPO_TEST_CONFIG.docker_network,

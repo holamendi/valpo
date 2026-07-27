@@ -26,7 +26,7 @@ module Valpo
             "web --project acme --clear-port"
           ]
 
-          def call(service:, wait:, timeout:, api_url:, project: nil, source: nil, ref: nil, build_strategy: nil, dockerfile: nil, context: nil, command: nil, port: nil, healthcheck_path: nil, clear_command: false, clear_healthcheck: false, clear_port: false, deploy: false, config: nil, json: false, args: nil, **)
+          def call(service:, wait:, timeout:, api_url:, project: nil, source: nil, ref: nil, build_strategy: nil, dockerfile: nil, context: nil, command: nil, port: nil, healthcheck_path: nil, clear_command: false, clear_healthcheck: false, clear_port: false, deploy: false, json: false, args: nil, **)
             reject_extra_arguments!(args)
             payload = PayloadBuilders::ServiceUpdate.call(
               source:,
@@ -43,7 +43,7 @@ module Valpo
               deploy:
             )
 
-            current = context(api_url:, config:, json:)
+            current = context(api_url:, json:)
             path = current.service_path(service, project:)
             response = current.request(:patch, path, payload)
             operation = current.finish_operation(response, wait:, timeout:)

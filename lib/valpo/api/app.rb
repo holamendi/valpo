@@ -29,6 +29,8 @@ module Valpo
           [400, "invalid_request", it.message]
         when PayloadTooLarge
           [413, "payload_too_large", it.message]
+        when Valpo::ForbiddenError
+          [403, "forbidden", it.message]
         when Valpo::ValidationError, Sequel::ValidationFailed
           [422, "validation_failed", it.message]
         when Valpo::ConflictError, Sequel::UniqueConstraintViolation
@@ -99,6 +101,10 @@ module Valpo
 
       def manifest_planner
         Valpo::Manifests::Planner.new
+      end
+
+      def environment_manager
+        Valpo::Services::EnvironmentManager.new
       end
 
       def services_for_project(project)

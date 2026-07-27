@@ -10,9 +10,9 @@ module Valpo
           option :service, desc: "Only include one service name"
           option :tail, desc: "Maximum lines per service"
 
-          def call(project:, api_url:, service: nil, tail: nil, config: nil, json: false, args: nil, **)
+          def call(project:, api_url:, service: nil, tail: nil, json: false, args: nil, **)
             reject_extra_arguments!(args)
-            current = context(api_url:, config:, json:)
+            current = context(api_url:, json:)
             query = {"service" => service, "tail" => optional_positive_integer(tail, "tail")}.compact
             current.presenter.logs(current.request(:get, "/v1/projects/#{segment(project)}/logs", query:), aggregate: true)
           end

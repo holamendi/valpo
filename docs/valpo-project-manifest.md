@@ -78,17 +78,17 @@ valpo auth status github
 valpo auth logout github
 ```
 
-On a packaged host, the callback atomically writes `/var/lib/valpo/secrets/github-app.json` with mode `0600`. Each checkout looks up the App installation for the repository and mints a short-lived Contents-read token. The private key, webhook secret, and installation tokens never enter the project manifest, SQLite, API request bodies, jobs, Git remotes, logs, or process arguments.
+The callback stores App identity as non-secret metadata and encrypts the private key and webhook secret in SQLite with the host keyring. Each checkout looks up the App installation for the repository and mints a short-lived Contents-read token. The private key, webhook secret, and installation tokens never enter the project manifest, API request bodies, jobs, Git remotes, logs, or process arguments.
 
 For a manifest source with `auto_deploy = true`, a signed push to its configured branch enqueues an exact-commit deployment. `ref = "HEAD"` follows the repository's default branch. Webhook delivery IDs are persisted for replay protection; a push is skipped for a service that already has an active operation.
 
-The fine-grained PAT path remains temporarily available for migration and source smoke tests. It must be piped explicitly, so the token does not enter shell history or process arguments:
+The fine-grained PAT fallback must be piped explicitly, so the token does not enter shell history or process arguments. After GitHub validation, it is encrypted in SQLite:
 
 ```bash
 op read op://vault/github-pat | valpo auth login github --with-token
 ```
 
-The App path takes precedence when both credential files exist. `auth logout` removes local credentials only; uninstall or delete the App separately in GitHub when retiring it.
+The App path takes precedence when both App and PAT records exist. `auth logout` removes local credentials only; uninstall or delete the App separately in GitHub when retiring it.
 
 Then deploy the configured ref, or override it for one deployment:
 

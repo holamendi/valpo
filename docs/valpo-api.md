@@ -6,17 +6,17 @@ The complete machine-readable contract is [openapi.yaml](./openapi.yaml). Named 
 
 ## Authentication
 
-When `api_token` is configured, every endpoint requires:
+API credentials are scoped, revocable database records. The raw bearer value is returned only when a credential is created; Valpo stores its SHA-256 digest rather than an encrypted recoverable copy. Once any active credential exists, every control-plane endpoint requires:
 
 ```http
 Authorization: Bearer TOKEN
 ```
 
-The API binds to localhost by default. Non-local binding requires an API token. SSH tunnels or a private network remain the preferred access path; the current bearer token is host-wide and is not yet scoped or revocable.
+Create the first credential from the local host with `valpo auth token create NAME`. The bootstrap credential must have `admin` scope. Credentials may have `admin`, `read`, or `write` scopes; only an admin credential can issue, list, or revoke them through `/v1/api-credentials`, so `write` cannot be escalated into `admin`. A fresh installation with no credentials accepts requests only so it can be bootstrapped locally. The API binds to localhost by default and refuses a non-local binding until an active credential exists. Supply a token to the CLI through `VALPO_API_TOKEN`.
 
 The verified default app domain creates one narrow public exception at `github.<app-domain>/integrations/github`. Caddy proxies only that prefix to the otherwise-local API. The setup form and callback require a one-time state value, installation redirects are checked against the authenticated GitHub App, and the webhook requires GitHub's `X-Hub-Signature-256` HMAC. Other API paths remain private and continue to require the bearer token when configured.
 
-`POST /v1/auth/github` creates the one-hour setup URL used by `valpo auth login github`; its optional `organization` field selects organization ownership instead of the current user's personal account. `GET /v1/auth/github` returns only non-secret App identity, and `DELETE /v1/auth/github` removes the local credential file without deleting the App on GitHub.
+`POST /v1/auth/github` creates the one-hour setup URL used by `valpo auth login github`; its optional `organization` field selects organization ownership instead of the current user's personal account. `POST /v1/auth/github/pat` validates and stores an encrypted fallback PAT. `GET /v1/auth/github` returns only non-secret identity, and `DELETE /v1/auth/github` removes all local GitHub credential records without deleting the App on GitHub.
 
 The GitHub App callback and webhook URLs contain the default app domain. Valpo therefore blocks app-domain replacement while App credentials are configured. Remove the local authentication, replace the domain, create the new App, and delete the retired App in GitHub.
 
@@ -39,7 +39,7 @@ Shape and type failures return `400 invalid_request`. Cross-field or stateful ru
 
 Source-backed app requests accept `build.strategy` as `auto`, `dockerfile`, or `buildpack`. It defaults to `auto`; supplying `build.dockerfile` without a strategy selects `dockerfile`, while combining a Dockerfile with `auto` or `buildpack` is rejected. `auto` resolves to Dockerfile only when `<context>/Dockerfile` exists, otherwise it resolves to buildpacks. Release responses expose the resolved strategy under `build`; Dockerfile releases include the path, while buildpack releases may include builder, buildpack, and process metadata. Registry releases return `"build": null`.
 
-Service records retain `kind` internally, but every public service and project-log response exposes that field as `type`. Managed-service responses have no `plan` field. Environment entries include `name`, `value`, `redacted`, `service_id`, `service_name`, `service_type`, and `dependency_id`.
+Service records retain `kind` internally, but every public service and project-log response exposes that field as `type`. Managed-service responses have no `plan` field. Effective environment entries identify whether they originate from a custom service variable or a managed dependency. Custom values are encrypted, sensitive by default, and redacted unless `reveal=true`; managed binding values are derived from encrypted managed credentials rather than persisted as a second copy.
 
 ## Bounded Lists And Logs
 
@@ -75,6 +75,7 @@ Error envelopes are flat and stable:
 | --- | --- | --- |
 | `400` | `invalid_request` | Transport, body/query shape, type, or range failure |
 | `401` | `unauthorized` | Missing or invalid bearer token |
+| `403` | `forbidden` | Valid bearer credential lacks the required scope |
 | `404` | `not_found` | Unknown resource, path, or trailing segment |
 | `409` | `conflict` | Valid operation conflicts with current state |
 | `413` | `payload_too_large` | Request body exceeds the supported limit |

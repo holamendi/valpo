@@ -1,27 +1,24 @@
 # frozen_string_literal: true
 
-require "rack/utils"
-
 module Valpo
   module API
     module Authentication
       private
 
       def authenticate_request
-        token = api_token
-        return nil if token.nil?
+        return nil if Valpo::APICredential.active.empty?
 
-        expected = "Bearer #{token}"
         provided = request.env["HTTP_AUTHORIZATION"].to_s
-        return nil if provided.bytesize == expected.bytesize && Rack::Utils.secure_compare(provided, expected)
+        scheme, token = provided.split(" ", 2)
+        credential = Valpo::APICredential.authenticate(token) if scheme == "Bearer"
+        request.env["valpo.api_credential"] = credential if credential
+        return nil if credential&.allows?(request.request_method)
 
-        response.status = 401
+        response.status = credential ? 403 : 401
         response["WWW-Authenticate"] = "Bearer"
-        {error: "unauthorized", message: "Unauthorized"}
-      end
-
-      def api_token
-        (Valpo.config || Valpo::Config.load).api_token
+        credential ?
+          {error: "forbidden", message: "Credential scope does not allow this operation"} :
+          {error: "unauthorized", message: "Unauthorized"}
       end
     end
   end

@@ -28,7 +28,7 @@ module Valpo
             "cache --project acme --type redis --version 8"
           ]
 
-          def call(name:, wait:, timeout:, api_url:, project: nil, type: nil, version: nil, command: nil, port: nil, healthcheck_path: nil, source: nil, ref: nil, build_strategy: nil, dockerfile: nil, context: nil, deploy: false, config: nil, json: false, args: nil, **)
+          def call(name:, wait:, timeout:, api_url:, project: nil, type: nil, version: nil, command: nil, port: nil, healthcheck_path: nil, source: nil, ref: nil, build_strategy: nil, dockerfile: nil, context: nil, deploy: false, json: false, args: nil, **)
             reject_extra_arguments!(args)
             project = required_option!(project, "--project")
             name = service_name(name)
@@ -47,7 +47,7 @@ module Valpo
               context:,
               deploy:
             )
-            current = context(api_url:, config:, json:)
+            current = context(api_url:, json:)
             response = current.request(:post, "/v1/projects/#{segment(project)}/services", payload)
             operation = current.finish_operation(response, wait:, timeout:)
             if source && wait

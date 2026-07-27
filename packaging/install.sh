@@ -257,7 +257,9 @@ ensure_caddy_import() {
   local start_marker="# BEGIN VALPO"
   local end_marker="# END VALPO"
   local import_line="import ${CADDY_GENERATED_PATH}"
+  local formatted
   local tmp
+  formatted="$(mktemp)"
   tmp="$(mktemp)"
 
   if [[ ! -f "$CADDY_RELOAD_CONFIG_PATH" ]]; then
@@ -282,8 +284,35 @@ ensure_caddy_import() {
     printf '\n%s\n%s\n%s\n' "$start_marker" "$import_line" "$end_marker" >> "$tmp"
   fi
 
+  awk -v start="$start_marker" '
+    /^[[:space:]]*$/ {
+      pending_blanks = pending_blanks $0 ORS
+      next
+    }
+    $0 == start {
+      if (saw_content) {
+        print ""
+        print ""
+      }
+      pending_blanks = ""
+      print
+      saw_content = 1
+      next
+    }
+    {
+      printf "%s", pending_blanks
+      pending_blanks = ""
+      print
+      saw_content = 1
+    }
+    END {
+      printf "%s", pending_blanks
+    }
+  ' "$tmp" > "$formatted"
+  mv "$formatted" "$tmp"
+
   install -m 0644 "$tmp" "$CADDY_RELOAD_CONFIG_PATH"
-  rm -f "$tmp"
+  rm -f "$tmp" "$formatted"
 }
 
 install_systemd_units() {

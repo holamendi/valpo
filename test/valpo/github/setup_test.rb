@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require "fileutils"
 require "openssl"
 require "test_helper"
 require "uri"
@@ -10,8 +9,7 @@ class ValpoGitHubSetupTest < Minitest::Test
 
   def test_creates_a_one_time_manifest_and_persists_the_conversion
     create_platform_domain
-    path = File.join(VALPO_TEST_DIR, "github-setup", "app.json")
-    credentials = Valpo::GitHub::Credentials.new(path)
+    credentials = Valpo::GitHub::Credentials.new
     client = FakeClient.new(converted_credentials)
     now = Time.utc(2026, 7, 26, 12)
     setup = Valpo::GitHub::Setup.new(
@@ -37,8 +35,6 @@ class ValpoGitHubSetupTest < Minitest::Test
     assert_equal "apps.example.com", credentials.read.fetch("app_domain")
     assert_equal "https://github.com/apps/valpo-test/installations/new", completed.fetch("install_url")
     assert_equal "completed", Valpo::GitHubAppSetup.first.status
-  ensure
-    FileUtils.rm_f(path) if path
   end
 
   def test_requires_a_verified_app_domain_and_rejects_expired_state

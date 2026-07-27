@@ -17,17 +17,17 @@ class ValpoCaddyRendererTest < Minitest::Test
       }
     ])
 
-    assert_includes output, "hello.example.com {\n  reverse_proxy valpo-hello:3000\n}"
-    assert_includes output, "verify.example.com {\n  respond /.well-known/valpo-verification/abc123 \"abc123\" 200\n}"
-    assert_includes output, <<~CADDY.chomp
-      github.apps.example.com {
-        route {
-          @allowed path /integrations/github /integrations/github/*
-          reverse_proxy @allowed 127.0.0.1:7092
-          respond 404
-        }
-      }
-    CADDY
+    assert_includes output, "hello.example.com {\n\treverse_proxy valpo-hello:3000\n}"
+    assert_includes output, "verify.example.com {\n\trespond /.well-known/valpo-verification/abc123 \"abc123\" 200\n}"
+    assert_includes output, [
+      "github.apps.example.com {",
+      "\troute {",
+      "\t\t@allowed path /integrations/github /integrations/github/*",
+      "\t\treverse_proxy @allowed 127.0.0.1:7092",
+      "\t\trespond 404",
+      "\t}",
+      "}"
+    ].join("\n")
   end
 
   def test_empty_routes_render_valid_generated_file

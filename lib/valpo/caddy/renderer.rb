@@ -18,23 +18,23 @@ module Valpo
         case kind
         when "container"
           upstream = route.fetch(:upstream)
-          "#{hostname} {\n  reverse_proxy #{upstream}\n}"
+          "#{hostname} {\n\treverse_proxy #{upstream}\n}"
         when "verification"
           token = route.fetch(:token)
           path = Valpo::Domains::ReachabilityVerifier.challenge_path(token)
-          "#{hostname} {\n  respond #{path} \"#{token}\" 200\n}"
+          "#{hostname} {\n\trespond #{path} \"#{token}\" 200\n}"
         when "restricted_proxy"
           upstream = route.fetch(:upstream)
           path = route.fetch(:path)
-          <<~CADDY.chomp
-            #{hostname} {
-              route {
-                @allowed path #{path} #{path}/*
-                reverse_proxy @allowed #{upstream}
-                respond 404
-              }
-            }
-          CADDY
+          [
+            "#{hostname} {",
+            "\troute {",
+            "\t\t@allowed path #{path} #{path}/*",
+            "\t\treverse_proxy @allowed #{upstream}",
+            "\t\trespond 404",
+            "\t}",
+            "}"
+          ].join("\n")
         else
           raise Valpo::ValidationError, "Unsupported Caddy route kind: #{kind}"
         end

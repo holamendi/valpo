@@ -3,10 +3,15 @@
 module Valpo
   module Boot
     def self.run(config: Valpo::Config.load, migrate: false)
-      validate_config!(config)
       Valpo.config = config
+      keyring = Valpo::Secrets::Keyring.new(config.encryption_key_path)
+      keyring.active_version
+      Valpo.secrets = Valpo::Secrets::Cipher.new(
+        keyring:
+      )
       Valpo::Database.connect(config)
       Valpo::Migrator.run if migrate
+      validate_config!(config)
       Valpo::Database.connection
     end
 
@@ -16,9 +21,9 @@ module Valpo
 
     def self.validate_api_binding!(config)
       return if local_api_host?(config.api_host)
-      return unless config.api_token.nil?
+      return if Valpo::APICredential.active.count.positive?
 
-      raise Valpo::ValidationError, "VALPO_API_TOKEN or api_token is required when api_host is not local"
+      raise Valpo::ValidationError, "At least one active API credential is required when api_host is not local"
     end
     private_class_method :validate_api_binding!
 

@@ -36,6 +36,14 @@ module Valpo
         response.status = 404
         {error: "not_found", message:}
       end
+
+      def require_admin_credential!(bootstrap_scopes: nil)
+        credential = request.env["valpo.api_credential"]
+        return if credential&.admin?
+        return if Valpo::APICredential.active.empty? && Array(bootstrap_scopes).include?("admin")
+
+        raise Valpo::ForbiddenError, "An admin API credential is required"
+      end
     end
   end
 end

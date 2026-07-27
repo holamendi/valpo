@@ -285,6 +285,8 @@ class ValpoPackagingInstallScriptTest < Minitest::Test
 
     assert_includes script, "CADDY_GENERATED_PATH=\"${STATE_DIR}/caddy/valpo.caddy\""
     assert_includes script, "import ${CADDY_GENERATED_PATH}"
+    assert_includes script, 'awk -v start="$start_marker"'
+    assert_includes File.read(UNINSTALL_SCRIPT), "pending_blanks"
     assert_includes config, "caddy_config_path: /var/lib/valpo/caddy/valpo.caddy"
     assert_includes config, "caddy_reload_config_path: /etc/caddy/Caddyfile"
   end
@@ -315,32 +317,34 @@ class ValpoPackagingInstallScriptTest < Minitest::Test
     end
   end
 
-  def test_installer_creates_private_github_credential_storage
+  def test_installer_creates_private_encryption_key_storage
     script = File.read(INSTALL_SCRIPT)
     config = File.read(EXAMPLE_CONFIG)
 
     assert_includes script, 'install -d -o "$VALPO_USER" -g "$VALPO_GROUP" -m 0700 "${STATE_DIR}/secrets"'
-    assert_includes config, "github_token_path: /var/lib/valpo/secrets/github-token"
+    assert_includes config, "encryption_key_path: /var/lib/valpo/secrets/master.key"
   end
 
   def test_source_smoke_test_preserves_the_github_credential
     script = File.read(SOURCE_SMOKE_SCRIPT)
 
     assert_includes script, "valpo auth status github --json"
-    assert_includes script, "sha256sum /var/lib/valpo/secrets/github-token"
+    assert_includes script, "provider_credentials"
     refute_includes script, "auth logout"
-    refute_match(/rm\s+[^\n]*github-token/, script)
     assert_includes script, "--source 'github:${repository}' --deploy"
   end
 
   def test_primary_smoke_test_never_reveals_managed_secrets
     script = File.read(File.expand_path("../../packaging/vps-smoke-test.sh", __dir__))
 
-    assert_includes script, "environment_output=\"$(remote \"valpo service env '${web_service}' --project '${project}'\")\""
+    assert_includes script, "environment_output=\"$(remote \"valpo service env list '${web_service}' --project '${project}'\")\""
+    assert_includes script, "valpo service env set"
+    assert_includes script, "Custom environment plaintext leaked into SQLite"
+    assert_includes script, "valpo service env unset"
     assert_includes script, "DATABASE_URL PGPASSWORD REDIS_URL REDIS_PASSWORD"
     assert_includes script, "grep -F '********'"
     assert_includes script, "postgres(ql)?://|redis://"
-    assert_includes script, "revealed_output=\\$(valpo service env '${web_service}' --project '${project}' --reveal)"
+    assert_includes script, "revealed_output=\\$(valpo service env list '${web_service}' --project '${project}' --reveal)"
     assert_includes script, "grep -F -- \\\"\\$secret_value\\\""
   end
 

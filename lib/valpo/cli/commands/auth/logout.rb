@@ -11,17 +11,10 @@ module Valpo
           desc "Remove source-provider authentication"
           argument :provider, required: true, desc: "Source provider (github)"
 
-          def call(provider:, api_url:, config: nil, json: false, args: nil, **)
+          def call(provider:, api_url:, json: false, args: nil, **)
             reject_extra_arguments!(args)
-            provider = github!(provider)
-            store, = credential_store(config)
-            app_result = context(api_url:, config:, json:).request(:delete, "/v1/auth/github")
-            removed_pat = store.delete
-            result = app_result.merge(
-              "authenticated" => false,
-              "provider" => provider,
-              "removed" => app_result.fetch("removed") || removed_pat
-            )
+            github!(provider)
+            result = context(api_url:, json:).request(:delete, "/v1/auth/github")
             if json
               @out.puts JSON.generate(result)
             else

@@ -59,7 +59,7 @@ class ValpoServicesManagedLifecycleTest < Minitest::Test
     app = create_app_service(project:)
     database = create_managed_service(project:)
     dependency = Valpo::ServiceDependency.create(
-      service_id: app.id, dependency_service_id: database.id, status: "active", env_json: "{}"
+      service_id: app.id, dependency_service_id: database.id, status: "active"
     )
     docker = ValpoTestSupport::FakeDocker.new
     assert_raises(Valpo::ValidationError) do
@@ -81,8 +81,7 @@ class ValpoServicesManagedLifecycleTest < Minitest::Test
       Valpo::ServiceDependency.create(
         service_id: it.id,
         dependency_service_id: database.id,
-        status: "active",
-        env_json: "{}"
+        status: "active"
       )
     end
     dependency_manager = FailingDependencyManager.new(fail_on_call: 2)
@@ -113,8 +112,7 @@ class ValpoServicesManagedLifecycleTest < Minitest::Test
     dependency = Valpo::ServiceDependency.create(
       service_id: app.id,
       dependency_service_id: database.id,
-      status: "active",
-      env_json: "{}"
+      status: "active"
     )
     docker = ValpoTestSupport::FakeDocker.new(fail_on: :stop)
 
@@ -140,8 +138,7 @@ class ValpoServicesManagedLifecycleTest < Minitest::Test
     dependency = Valpo::ServiceDependency.create(
       service_id: app.id,
       dependency_service_id: database.id,
-      status: "active",
-      env_json: "{}"
+      status: "active"
     )
     docker = ValpoTestSupport::FakeDocker.new(fail_on: :volume_rm)
 
@@ -168,8 +165,7 @@ class ValpoServicesManagedLifecycleTest < Minitest::Test
     dependency = Valpo::ServiceDependency.create(
       service_id: app.id,
       dependency_service_id: database.id,
-      status: "active",
-      env_json: "{}"
+      status: "active"
     )
     connection = Valpo::Database.connection
     connection.run(<<~SQL)

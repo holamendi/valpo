@@ -10,9 +10,9 @@ module Valpo
           project_option
           option :tail, desc: "Maximum lines"
 
-          def call(service:, api_url:, project: nil, tail: nil, config: nil, json: false, args: nil, **)
+          def call(service:, api_url:, project: nil, tail: nil, json: false, args: nil, **)
             reject_extra_arguments!(args)
-            current = context(api_url:, config:, json:)
+            current = context(api_url:, json:)
             response = current.request(:get, "#{current.service_path(service, project:)}/logs", query: {"tail" => optional_positive_integer(tail, "tail")}.compact)
             current.presenter.logs(response)
           end

@@ -142,18 +142,20 @@ Exit criteria:
 
 Goal: close the known security and operational gaps before expanding the product surface.
 
-Status: planned.
+Status: storage foundation implemented; operational rotation and recovery workflows remain.
 
 Deliverables:
 
-- Encrypt managed-service credential JSON at rest with a host-local key.
-- Define key generation, permissions, backup, rotation, and recovery behavior.
+- Encrypt managed-service credential JSON and per-service environment values at rest with a host-local key. Implemented.
+- Store GitHub App secrets and fallback PATs in the same encrypted credential store. Implemented.
+- Derive dependency environment from encrypted managed credentials instead of persisting duplicate secret JSON. Implemented.
+- Generate a private, versioned host keyring and document that it must be backed up with SQLite. Implemented.
 - Define credential migration behavior for future export/import.
-- Replace the single host-wide bearer token with scoped, revocable API credentials.
-- Add a safe token-rotation workflow for CLI and future dashboard clients.
+- Replace the single host-wide bearer token with scoped, revocable, digest-only API credentials. Implemented.
+- Add operator-facing host-key rotation, bulk re-encryption, recovery verification, and safe token-rollover workflows.
 - Keep dependency, deployment, domain, Caddy, and system repair boundaries covered by characterization tests as internals evolve.
 
-Current gap: generated managed credentials are plaintext in SQLite and protected only by host/filesystem access controls. Do not claim encryption at rest until this phase ships.
+The root keyring intentionally remains outside SQLite so possession of the database alone is insufficient to decrypt secrets. Backups must include both artifacts under separate access controls; losing the keyring makes encrypted records unrecoverable.
 
 ## Phase 3A: GitHub Integration And Source Deployments
 
@@ -161,9 +163,9 @@ Goal: connect repositories and build/deploy on demand or webhook push.
 
 Bootstrap implemented:
 
-- CLI-managed, file-backed fine-grained PAT authentication for GitHub HTTPS fetches.
+- CLI-managed, encrypted fine-grained PAT authentication for GitHub HTTPS fetches.
 - Per-server GitHub App creation through a one-time manifest flow on `github.<app-domain>`.
-- Private storage of the generated App key and webhook secret, with repository-scoped short-lived installation tokens for source fetches.
+- Encrypted database storage of the generated App key and webhook secret, with repository-scoped short-lived installation tokens for source fetches.
 - HMAC-verified, delivery-deduplicated push webhooks that enqueue matching `auto_deploy` source jobs.
 - Manifest-free source service creation and source/build/runtime updates through the public CLI.
 - Mandatory repository/ref/path preflight with exact commit resolution before configuration changes.
@@ -177,8 +179,8 @@ Bootstrap implemented:
 Remaining deliverables:
 
 - Multi-App credentials for servers that deploy repositories belonging to more than one GitHub account or organization.
-- Host-key-backed encryption and rotation for the GitHub App private key and webhook secret.
-- Removal of the file-backed PAT fallback after existing-host migration behavior and the source smoke test use the GitHub App path.
+- Multi-record key rotation and bulk re-encryption tooling.
+- A product decision on whether the encrypted PAT fallback remains supported after the GitHub App path is proven across installations.
 
 Current build constraint:
 

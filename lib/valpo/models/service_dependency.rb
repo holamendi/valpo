@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require "json"
 require "sequel/model"
 require "time"
 
@@ -10,14 +9,6 @@ module Valpo
 
     many_to_one :service
     many_to_one :dependency_service, class: "Valpo::Service", key: :dependency_service_id
-
-    def env
-      JSON.parse(env_json || "{}")
-    end
-
-    def env=(value)
-      self.env_json = JSON.generate(value || {})
-    end
 
     def before_validation
       self.status ||= "binding"

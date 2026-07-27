@@ -61,7 +61,7 @@ REDIS_PORT
 REDIS_PASSWORD
 ```
 
-An app with an active release is restarted after a binding changes so its generated environment reflects the new dependency set. `valpo service env SERVICE --project PROJECT` redacts secret values; `--reveal` displays them on the host.
+An app with an active release is restarted after a binding changes so its effective environment reflects the new dependency set. Binding values are derived from the managed service's encrypted credentials instead of being stored on the dependency record. `valpo service env list SERVICE --project PROJECT` redacts secret values; `--reveal` displays them on the host.
 
 ### CLI And Manifest Surface
 
@@ -69,16 +69,17 @@ An app with an active release is restarted after a binding changes so its genera
 valpo service create database --project myapp --type postgres --version 18
 valpo service create cache --project myapp --type redis --version 8
 valpo service bind web database --project myapp
-valpo service env web --project myapp
+printf %s "$VALUE" | valpo service env set web FEATURE_FLAG --project myapp --plain
+valpo service env list web --project myapp
 valpo service restart database --project myapp
 valpo service delete database --project myapp --force
 ```
 
 The unchanged `valpo.toml` schema can declare Postgres and Redis services and app `depends_on` edges. `Manifests::Planner` previews changes without mutation; `Manifests::Reconciler` applies add/update-only changes through the same creator and lifecycle collaborators used elsewhere.
 
-## Current Security Gap
+### Encrypted Credentials And Environment
 
-Managed credentials are generated with cryptographically secure randomness and written to the local SQLite database, but they are not encrypted at rest. Filesystem permissions and host access are the present protection. Host-key-backed encryption, key rotation, and migration behavior are near-term security work tracked in the [roadmap](./valpo-roadmap.md); documentation must not claim encrypted storage until that work ships.
+Managed credentials and custom per-service environment values are encrypted with AES-256-GCM before SQLite persistence. Each envelope is bound to its record and field with authenticated additional data. The only durable secret file is the host keyring, which must be backed up with the database and kept access-restricted; losing it makes encrypted records unrecoverable. The envelope records a key version so old keys can remain readable during rotation, though an operator-facing re-encryption workflow remains future work.
 
 ## Future Work
 
@@ -87,7 +88,7 @@ The following are intentionally not implemented:
 - MariaDB, MySQL, and additional managed definitions;
 - backup, restore, and retention scheduling;
 - project export/import of dumps, snapshots, credentials, and dependency metadata;
-- credential rotation;
+- managed credential rotation and an operator-facing host-key re-encryption workflow;
 - descriptive or enforced resource plans;
 - storage resizing and first-class volume resources;
 - public database exposure;
@@ -95,4 +96,4 @@ The following are intentionally not implemented:
 - automatic app binding at creation time;
 - dashboard service-management flows.
 
-MariaDB, backups, exports, and encrypted managed credentials are roadmap work, not “v1 behavior.” New definitions should be added only after their lifecycle, readiness, binding, deletion, repair, and eventual backup semantics can be supported coherently.
+MariaDB, backups, and exports are roadmap work, not “v1 behavior.” New definitions should be added only after their lifecycle, readiness, binding, deletion, repair, and eventual backup semantics can be supported coherently.

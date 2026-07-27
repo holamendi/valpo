@@ -58,12 +58,13 @@ module Valpo
       def create_managed_config(service, version:)
         definition = Registry.fetch(service.kind)
         normalized_version = Registry.normalize_version(service.kind, version)
-        Valpo::ManagedServiceConfig.create(
+        config = Valpo::ManagedServiceConfig.new(
           service_id: service.id,
           version: normalized_version,
-          image: definition.image(normalized_version),
-          credentials_json: JSON.generate(definition.credentials)
+          image: definition.image(normalized_version)
         )
+        config.credentials = definition.credentials
+        config.save
       end
 
       def create_app_config(service, build_target_id:, command:, internal_port:, healthcheck_path:)

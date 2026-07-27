@@ -16,6 +16,12 @@ module Valpo
           end
         end
 
+        class StorePersonalAccessTokenContract < Contract
+          json do
+            required(:token).filled(:string, format?: NONEMPTY)
+          end
+        end
+
         class CallbackQueryContract < Contract
           params do
             required(:code).filled(:string, format?: NONEMPTY)

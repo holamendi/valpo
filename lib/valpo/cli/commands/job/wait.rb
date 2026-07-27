@@ -9,9 +9,9 @@ module Valpo
           argument :id, required: true, desc: "Job ID"
           option :timeout, default: DEFAULT_TIMEOUT, desc: "Maximum wait in seconds"
 
-          def call(id:, timeout:, api_url:, config: nil, json: false, args: nil, **)
+          def call(id:, timeout:, api_url:, json: false, args: nil, **)
             reject_extra_arguments!(args)
-            current = context(api_url:, config:, json:)
+            current = context(api_url:, json:)
             current.presenter.operation(current.waiter.wait(id, timeout:))
           end
         end

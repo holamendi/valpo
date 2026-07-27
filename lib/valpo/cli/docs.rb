@@ -43,6 +43,18 @@ module Valpo
 
           `command` is valid for `web` and `worker`. `port` and `healthcheck-path` are valid only for `web`. `version` is valid only for `postgres` and `redis`. Incompatible options are rejected rather than ignored. Managed service images are selected by Valpo and cannot be overridden.
 
+          ## Service Environment
+
+          Custom environment variables belong to an app service and are encrypted in the Valpo database. Values are read from standard input so secrets do not appear in command arguments:
+
+          ```bash
+          printf %s "$DATABASE_URL" | valpo service env set web DATABASE_URL --project acme
+          valpo service env list web --project acme
+          valpo service env unset web DATABASE_URL --project acme
+          ```
+
+          Values are sensitive and redacted by default. Use `--plain` on `env set` for non-secret configuration and `--reveal` on `env list` when plaintext output is explicitly required. Managed-service bindings remain derived by Valpo and cannot be overridden by a custom variable; `PORT` is reserved for runtime port injection. Setting or removing a variable increments the service environment revision and reconciles a running release through the job queue.
+
           ## Domains And Web Activation
 
           Domain configuration happens after Valpo is installed. To use generated app hostnames, point a wildcard such as `*.apps.example.com` at the host, then set and verify its base name:
@@ -118,9 +130,9 @@ module Valpo
           valpo auth login github --organization acme
           ```
 
-          GitHub returns the App ID, private key, and webhook secret directly to the server callback. Packaged hosts store them in `/var/lib/valpo/secrets/github-app.json` with mode `0600`. Source fetches mint short-lived installation tokens for the requested repository; private keys, webhook secrets, and installation tokens never enter manifests, API payloads, jobs, Git remotes, logs, or process arguments.
+          GitHub returns the App ID, private key, and webhook secret directly to the server callback. Valpo stores the private key and webhook secret encrypted in SQLite and retains only non-secret App identity as plaintext metadata. Source fetches mint short-lived installation tokens for the requested repository; private keys, webhook secrets, and installation tokens never enter manifests, API payloads, jobs, Git remotes, logs, or process arguments.
 
-          The fine-grained PAT path remains as a temporary migration fallback. Pipe one token line explicitly with `--with-token`; there is intentionally no token-value option because command arguments can leak through shell history and process listings.
+          A fine-grained PAT is available as a fallback when a GitHub App cannot be used. Pipe one token line explicitly with `--with-token`; there is intentionally no token-value option because command arguments can leak through shell history and process listings. The validated PAT is encrypted in the database.
 
           ```bash
           op read op://vault/github-pat | valpo auth login github --with-token
@@ -153,13 +165,21 @@ module Valpo
 
           ## Configuration
 
-          The API URL defaults to `#{DEFAULT_API_URL}` and can be set with `--api-url` or `VALPO_API_URL`. Use `--config PATH` or `VALPO_CONFIG` to load a Valpo configuration file. API authentication is read from `VALPO_API_TOKEN` first, then `api_token` in the configuration file.
+          The API URL defaults to `#{DEFAULT_API_URL}` and can be set with `--api-url` or `VALPO_API_URL`. API bearer credentials are issued by the server, stored as one-way digests, and supplied to the CLI through `VALPO_API_TOKEN`:
+
+          ```bash
+          valpo auth token create operator --scope admin
+          export VALPO_API_TOKEN=valpo_...
+          valpo auth token list
+          ```
+
+          The raw token is returned only when it is created. A new local installation with no API credentials accepts local requests so the first admin credential can be issued. Only admin credentials can issue, list, or revoke credentials. Once any active credential exists, all API requests require one; Valpo refuses to bind the API to a non-local address until a credential has been created.
 
           Global options may appear before or after the resource command:
 
           ```bash
           valpo --api-url http://127.0.0.1:7092 project list
-          valpo project list --config /etc/valpo/valpo.yml
+          valpo project list --api-url https://valpo.example.com
           ```
 
           `valpo version` is fully offline. `valpo system status` calls `/health` and reports whether the client and server versions match.

@@ -25,7 +25,7 @@ The installer:
 - stores Valpo state under `/var/lib/valpo`
 - copies the production config template to `/etc/valpo/valpo.yml` on the first install
 - preserves the existing config byte-for-byte on later compatible installs
-- creates the private credential directory at `/var/lib/valpo/secrets`
+- creates the private host-key directory at `/var/lib/valpo/secrets`
 - writes Valpo-generated Caddy routes to `/var/lib/valpo/caddy/valpo.caddy`
 - ensures `/etc/caddy/Caddyfile` imports the generated Valpo Caddy file
 - installs systemd units and starts `valpo-api` and `valpo-worker`
@@ -77,9 +77,14 @@ valpo domain add web hello.example.com --project hello
 
 ## API Binding And Auth
 
-The installer binds `valpo-api` to `127.0.0.1` by default. `/etc/valpo/valpo.yml` is owned by `root:valpo` with mode `0640` because it may contain the API bearer token. If you change `api_host` to a non-local address, configure `api_token` in that file or set `VALPO_API_TOKEN`; Valpo refuses to boot a non-local API without a token.
+The installer binds `valpo-api` to `127.0.0.1` by default. API credentials are scoped, revocable records whose raw values are returned only once and stored as one-way digests. Create the first credential while the API is local:
 
-CLI calls use `VALPO_API_TOKEN` first, then the `api_token` in the loaded config file. The CLI intentionally has no token command-line flag so credentials do not leak through process listings or shell history.
+```bash
+valpo auth token create operator --scope admin
+export VALPO_API_TOKEN=valpo_...
+```
+
+After the first active credential is created, all API calls require one. Supply it to the CLI with `VALPO_API_TOKEN`; there is intentionally no token command-line flag or config-file value. Valpo refuses to boot on a non-local `api_host` until the database contains an active credential.
 
 The packaged wrapper and systemd units set `VALPO_ENV=production`. When running an executable directly from a development checkout with an environment-keyed config file, set both variables explicitly:
 
@@ -106,17 +111,17 @@ Private Apps can only be installed on the account that owns them. For organizati
 valpo auth login github --organization acme
 ```
 
-The manifest creates a private App with read-only Contents permission, the `push` event, a signed webhook, and server callback URLs. GitHub returns the generated private key and webhook secret to the callback. Valpo atomically stores them in `/var/lib/valpo/secrets/github-app.json` with mode `0600`, verifies installation redirects against GitHub, and mints short-lived installation tokens for each source fetch.
+The manifest creates a private App with read-only Contents permission, the `push` event, a signed webhook, and server callback URLs. GitHub returns the generated private key and webhook secret to the callback. Valpo encrypts them in SQLite with the host keyring, verifies installation redirects against GitHub, and mints short-lived installation tokens for each source fetch.
 
 `auto_deploy = true` sources deploy matching branch pushes. A source using `HEAD` follows pushes to the repository's default branch. Delivery IDs are deduplicated, and a service with an active operation is skipped instead of receiving a second deployment job.
 
-The file-backed PAT remains a temporary migration fallback for existing hosts and smoke tests:
+An encrypted fine-grained PAT remains available as a fallback:
 
 ```bash
 op read op://vault/github-pat | valpo auth login github --with-token
 ```
 
-Do not put GitHub App credentials, PATs, or installation tokens in `valpo.yml` or `valpo.toml`. `valpo auth logout github` removes local credentials; remove the installation or App separately in GitHub when retiring it.
+Do not put GitHub App credentials, PATs, or installation tokens in `valpo.yml` or `valpo.toml`. `valpo auth logout github` removes the encrypted local credential records; remove the installation or App separately in GitHub when retiring it.
 
 Because the App callback and webhook URLs contain the default app domain, Valpo will not replace that domain while App credentials are configured. Log out locally, change the domain, run the App setup again, and delete the old App in GitHub.
 
@@ -146,7 +151,10 @@ The installed services use:
 - Ruby 4.0.5 installed through mise under `/var/lib/valpo`;
 - Bundler dependencies under `/var/lib/valpo/bundle`;
 - production config at `/etc/valpo/valpo.yml`;
-- state under `/var/lib/valpo`.
+- state under `/var/lib/valpo`;
+- the versioned encryption keyring at `/var/lib/valpo/secrets/master.key`.
+
+The keyring is the only durable secret stored outside SQLite. It is generated with mode `0600` and is required to decrypt managed credentials, service environment values, and provider credentials. Back up the database and keyring together under separate access controls; losing the keyring makes the encrypted rows unrecoverable.
 
 `valpo-migrate.service` is a one-shot unit that runs before the API and worker. Keep migrations owned by that unit instead of adding `--migrate` to both long-running services.
 
@@ -201,7 +209,7 @@ Run the repeatable VPS smoke test from a local checkout against a dedicated test
 packaging/vps-smoke-test.sh root@SERVER_IP apps.example.com --reboot
 ```
 
-By default the smoke test copies the current checkout to `/tmp/valpo-src`, runs the full installer, sets the host-wide app domain, deploys `nginx:alpine`, verifies HTTPS, releases, logs, optional reboot recovery, and then deletes the project. It does not restore a previous app domain, so do not run it against a host serving unrelated projects. Use `--skip-deps` only when intentionally testing a schema-compatible development update on a host whose dependencies are already installed.
+By default the smoke test copies the current checkout to `/tmp/valpo-src`, runs the full installer, verifies the private host key, sets the host-wide app domain, deploys `nginx:alpine`, exercises encrypted set/list/reveal/unset service environment behavior, verifies HTTPS, releases, logs, optional reboot recovery, and then deletes the project. It also checks that a custom plaintext value does not occur in the SQLite files. It does not restore a previous app domain, so do not run it against a host serving unrelated projects. Use `--skip-deps` only when intentionally testing a schema-compatible development update on a host whose dependencies are already installed.
 
 To prove installation from a clean Valpo state, use the guarded destructive wrapper. It runs the uninstaller, verifies the absence of label-owned runtime resources and host state, then runs the full smoke test from the local checkout. Docker images, unlabeled Docker resources, Docker, Caddy, and other shared host packages remain installed.
 
@@ -209,10 +217,10 @@ To prove installation from a clean Valpo state, use the guarded destructive wrap
 packaging/vps-clean-install-smoke-test.sh root@SERVER_IP apps.example.com --confirm-destroy-valpo
 ```
 
-Use the source smoke test on a host whose GitHub PAT is already configured:
+Use the source smoke test on a host whose GitHub App or fallback PAT is already configured:
 
 ```bash
 packaging/vps-source-smoke-test.sh root@SERVER_IP apps.example.com
 ```
 
-It installs the current checkout, creates a unique project without a manifest, and deploys `holamendi/smol-roda` while omitting ref, build strategy, Dockerfile, context, and port. It verifies automatic Dockerfile selection, the resolved commit, port `3000`, injected `PORT`, HTTPS, and release metadata, then removes only the generated project/runtime resources. The script checks the GitHub credential file digest and `auth status github` before and after; it never logs out or deletes the stored PAT. Use `--repository OWNER/REPO` for another repository or `--skip-install` to test the already-installed version.
+It installs the current checkout, creates a unique project without a manifest, and deploys `holamendi/smol-roda` while omitting ref, build strategy, Dockerfile, context, and port. It verifies automatic Dockerfile selection, the resolved commit, port `3000`, injected `PORT`, HTTPS, and release metadata, then removes only the generated project/runtime resources. The script checks the encrypted GitHub credential record and `auth status github` before and after; it never logs out or deletes the credential. Use `--repository OWNER/REPO` for another repository or `--skip-install` to test the already-installed version.

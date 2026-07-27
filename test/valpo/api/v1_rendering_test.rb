@@ -67,8 +67,7 @@ class ValpoAPIV1ResourceRenderingTest < Minitest::Test
     dependency = Valpo::ServiceDependency.create(
       service_id: app.id,
       dependency_service_id: database.id,
-      status: "active",
-      env_json: "{}"
+      status: "active"
     )
     create_release(service: app, status: "active", internal_port: 4000)
 
@@ -90,8 +89,7 @@ class ValpoAPIV1ResourceRenderingTest < Minitest::Test
     dependency = Valpo::ServiceDependency.create(
       service_id: app.id,
       dependency_service_id: database.id,
-      status: "active",
-      env_json: "{}"
+      status: "active"
     )
 
     managed = Valpo::API::V1::Services.render(database).fetch(:managed)

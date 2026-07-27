@@ -95,6 +95,8 @@ module Valpo
           job_id:,
           retire: [current]
         )
+        target.update(environment_revision: service.environment_revision)
+        target.refresh
       rescue
         runtime&.cleanup_container(new_container)
         target&.refresh
@@ -144,6 +146,7 @@ module Valpo
           )
         end
         retire_container_safely(old_container, runtime, queue:, job_id:) if old_container && old_container != new_container
+        release.update(environment_revision: service.environment_revision)
         release.refresh
       rescue
         runtime&.cleanup_container(new_container)
@@ -265,6 +268,7 @@ module Valpo
           image_digest: digest,
           build_strategy:,
           build_metadata_json: JSON.generate(build_metadata),
+          environment_revision: service.environment_revision,
           internal_port: port,
           healthcheck_path: blank_to_nil(healthcheck_path) || app_config&.healthcheck_path
         )

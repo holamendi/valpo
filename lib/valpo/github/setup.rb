@@ -13,12 +13,15 @@ module Valpo
       ORGANIZATION_PATTERN = /\A[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?\z/
 
       def initialize(
-        config: Valpo.config || Valpo::Config.load,
         credentials: nil,
+        personal_access_token: nil,
+        validator: nil,
         client: nil,
         clock: -> { Time.now.utc }
       )
-        @credentials = credentials || Credentials.new(config.github_app_credentials_path)
+        @credentials = credentials || Credentials.new
+        @personal_access_token = personal_access_token || PersonalAccessToken.new
+        @validator = validator || Valpo::Sources::GitHub::Validator.new
         @client = client || Client.new(credentials: @credentials)
         @clock = clock
       end
@@ -80,11 +83,22 @@ module Valpo
 
       def status
         values = credentials.public_values
-        {"authenticated" => !values.nil?, "provider" => "github"}.merge(values || {})
+        return {"authenticated" => true, "provider" => "github", "mode" => "app"}.merge(values) if values
+
+        pat_values = personal_access_token.public_values
+        return {"authenticated" => true, "provider" => "github", "mode" => "pat"}.merge(pat_values) if pat_values
+
+        {"authenticated" => false, "provider" => "github"}
+      end
+
+      def login_with_token(token)
+        account = validator.validate(token)
+        personal_access_token.write(token, account:)
+        {"authenticated" => true, "provider" => "github", "mode" => "pat", "account" => account}
       end
 
       def logout
-        credentials.delete
+        credentials.delete | personal_access_token.delete
       end
 
       def self.hostname(app_domain)
@@ -97,7 +111,7 @@ module Valpo
 
       private
 
-      attr_reader :credentials, :client, :clock
+      attr_reader :credentials, :personal_access_token, :validator, :client, :clock
 
       def base_url(app_domain)
         "https://#{self.class.hostname(app_domain)}#{INTEGRATION_PREFIX}"

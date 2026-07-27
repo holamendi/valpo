@@ -31,6 +31,7 @@ class ValpoJobsHandlerRegistryTest < Minitest::Test
       "unbind_service" => Valpo::Jobs::Handlers::BindDependency,
       "stop_service" => Valpo::Jobs::Handlers::ServiceOperation,
       "restart_service" => Valpo::Jobs::Handlers::ServiceOperation,
+      "reconcile_service_environment" => Valpo::Jobs::Handlers::ReconcileEnvironment,
       "delete_service" => Valpo::Jobs::Handlers::ServiceOperation,
       "apply_project_manifest" => Valpo::Jobs::Handlers::ApplyProjectManifest
     }

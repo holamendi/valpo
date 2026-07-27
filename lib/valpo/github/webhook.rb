@@ -15,7 +15,7 @@ module Valpo
         credentials: nil,
         queue: Valpo::Jobs::Queue.new
       )
-        @credentials = credentials || Credentials.new(config.github_app_credentials_path)
+        @credentials = credentials || Credentials.new
         @queue = queue
       end
 

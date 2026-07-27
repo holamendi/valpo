@@ -92,7 +92,7 @@ Each definition declares its supported options. Managed definitions also declare
 
 ### Sources, Builds, And Manifests
 
-GitHub HTTPS fetches prefer short-lived, repository-scoped installation tokens minted by a per-server GitHub App behind `Sources::Fetcher`; the file-backed fine-grained PAT remains a temporary migration fallback. Repository/ref/strategy/context preflight resolves an exact commit and chooses Dockerfile or buildpack execution before source-backed configuration mutates. `Builds::Orchestrator` serializes builds per target and dispatches to a Dockerfile or Cloud Native Buildpacks backend. Both backends stream output, share a build timeout, and produce release build metadata.
+GitHub HTTPS fetches prefer short-lived, repository-scoped installation tokens minted by a per-server GitHub App behind `Sources::Fetcher`; an encrypted fine-grained PAT remains available as a fallback. Repository/ref/strategy/context preflight resolves an exact commit and chooses Dockerfile or buildpack execution before source-backed configuration mutates. `Builds::Orchestrator` serializes builds per target and dispatches to a Dockerfile or Cloud Native Buildpacks backend. Both backends stream output, share a build timeout, and produce release build metadata.
 
 The App is created through GitHub's manifest flow. After wildcard app-domain verification, Caddy reserves `github.<app-domain>` and proxies only `/integrations/github` to the local API. One-time setup state protects the manifest callback, the generated private key and webhook secret are stored in a mode-`0600` file, and installation redirects are checked with an App JWT. Signed `push` events are deduplicated by delivery ID and enqueue exact-commit deploy jobs for matching `auto_deploy` sources.
 
@@ -129,9 +129,12 @@ services
 app_service_configs
 managed_service_configs
 service_dependencies
+service_environment_variables
 releases
 platform_domains
 domains
+provider_credentials
+api_credentials
 github_app_setups
 github_webhook_deliveries
 jobs
@@ -144,12 +147,16 @@ Important ownership and field conventions:
 - `Source` and `BuildTarget` belong to a project and may have an `owner_service_id` for CLI-owned configuration.
 - `Service.kind` is `web`, `worker`, `postgres`, or `redis`; app/managed details live in one-to-one configuration tables.
 - `AppServiceConfig` stores `build_target_id`, command JSON, nullable `internal_port`, and nullable `healthcheck_path`.
-- `ManagedServiceConfig` stores version, image, runtime names/address, port, and plaintext credential JSON.
-- `ServiceDependency` links one app service to one managed service and stores generated environment JSON.
+- `ManagedServiceConfig` stores version, image, runtime names/address, port, and encrypted credential JSON.
+- `ServiceDependency` links one app service to one managed service; its environment is derived from the dependency at runtime.
+- `ServiceEnvironmentVariable` stores a custom app-service key, encrypted value, sensitivity flag, and timestamps.
+- `Service` and `Release` carry environment revisions so reconciliation can identify a stale running release.
 - `Release` stores source/artifact identity, resolved build strategy and metadata, runtime configuration, container/route identity, state, and activation time.
 - `Domain` stores custom or generated hostname verification and projected route state.
 - `PlatformDomain` stores the active or candidate wildcard base and verification state.
 - `GitHubAppSetup` stores expiring one-time setup state; `GitHubWebhookDelivery` stores delivery IDs and payload digests for replay protection.
+- `ProviderCredential` stores encrypted provider payloads plus non-secret public metadata.
+- `APICredential` stores a token prefix, one-way digest, scopes, revocation/expiry state, and usage timestamps.
 - `Job` stores type, payload, progress, error, lock, start, finish, and creation state; `JobEvent` stores stdout/stderr/system messages.
 
 Typed IDs (`prj_`, `svc_`, and related prefixes) are immutable identities. The CLI accepts service names scoped by project for people and IDs for unambiguous automation.
@@ -176,8 +183,7 @@ Implemented packaging uses the following durable roots:
 /var/lib/valpo/
   valpo.db
   secrets/
-    github-app.json
-    github-token
+    master.key
   caddy/
     valpo.caddy
 
@@ -187,31 +193,33 @@ Implemented packaging uses the following durable roots:
 
 The API, worker, and migration service log to the systemd journal. The packaging creates `/var/log/valpo` through `LogsDirectory`, but no current process writes `api.log` or `worker.log` files there.
 
-Build-target locks live beside the SQLite database. Buildpack build and launch caches are deterministic Docker volumes rather than host directories. Uploads, immutable static releases, backups, exports, and a host encryption key are proposed future directories. They must not be documented as implemented until their owning features exist.
+Build-target locks live beside the SQLite database. Buildpack build and launch caches are deterministic Docker volumes rather than host directories. Uploads, immutable static releases, backups, and exports are proposed future directories. They must not be documented as implemented until their owning features exist.
 
 ## Security: Implemented And Proposed
 
 Implemented today:
 
 - localhost API binding by default;
-- refusal to bind non-locally without a configured bearer token;
-- constant-time bearer comparison;
+- refusal to bind non-locally without an active API credential;
+- scoped, revocable API credentials stored as one-way SHA-256 digests and compared in constant time;
 - strict JSON/query validation and generic client-facing 500 errors;
 - private Docker networking for managed services;
-- a file-backed GitHub App key and webhook secret used for short-lived installation credentials;
+- AES-256-GCM encryption for managed credentials, per-service environment values, GitHub App secrets, and fallback PATs;
+- per-record authenticated additional data and versioned encryption envelopes;
+- a mode-`0600` host keyring outside SQLite, generated under the private secrets directory;
+- an encrypted GitHub App key and webhook secret used for short-lived installation credentials;
 - HMAC verification and delivery-ID deduplication for the public GitHub webhook;
-- a temporary file-backed GitHub PAT fallback kept out of API payloads, jobs, manifests, sources, builds, and releases;
-- redaction of generated secret environment values unless explicitly revealed.
+- an encrypted GitHub PAT fallback kept out of jobs, manifests, sources, builds, and releases;
+- redaction of sensitive custom and managed environment values unless explicitly revealed.
 
 Known gaps and proposed behavior:
 
-- API tokens are host-wide; scoped, revocable tokens are not implemented.
-- Managed credentials are plaintext JSON in SQLite. Host-key-backed encryption at rest and key rotation are near-term security work.
-- GitHub App credentials are plaintext JSON in a mode-`0600` host file. Host-key-backed encryption and key rotation are not implemented.
+- Operator-facing key rotation, bulk re-encryption, and recovery verification are not implemented.
+- The SQLite database and host keyring must be backed up together; no first-class backup workflow enforces that yet.
 - mTLS and first-class private-network/dashboard enrollment are not implemented.
 - Audit logs, role-based access control, and secret migration policies are future work.
 
-The architecture must distinguish these proposals from shipped guarantees. In particular, Valpo does not currently claim credential encryption at rest.
+The root key intentionally cannot be stored in the database it protects. Moving non-secret boot settings such as database path, API bind address, Docker network, and runtime timeouts into SQLite would also create a bootstrap cycle, so they remain in `/etc/valpo/valpo.yml`.
 
 ## Future Boundaries
 

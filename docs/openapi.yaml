@@ -28,6 +28,7 @@ paths:
                   version: {type: string}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '500': {$ref: '#/components/responses/InternalError'}
   /health:
     get:
@@ -48,6 +49,7 @@ paths:
                   version: {type: string}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '500': {$ref: '#/components/responses/InternalError'}
   /integrations/github:
     get:
@@ -183,6 +185,7 @@ paths:
               schema: {$ref: '#/components/schemas/GitHubAuthentication'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '500': {$ref: '#/components/responses/InternalError'}
     post:
       operationId: createGitHubAppSetup
@@ -200,6 +203,7 @@ paths:
               schema: {$ref: '#/components/schemas/GitHubAppSetup'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '409': {$ref: '#/components/responses/Conflict'}
         '422': {$ref: '#/components/responses/ValidationFailed'}
         '500': {$ref: '#/components/responses/InternalError'}
@@ -214,6 +218,79 @@ paths:
               schema: {$ref: '#/components/schemas/GitHubAuthenticationRemoval'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /v1/auth/github/pat:
+    post:
+      operationId: storeGitHubPersonalAccessToken
+      summary: Validate and store an encrypted fallback GitHub PAT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/StoreGitHubPersonalAccessTokenRequest'}
+      responses:
+        '201':
+          description: GitHub PAT authentication status
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/GitHubAuthentication'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /v1/api-credentials:
+    get:
+      operationId: listAPICredentials
+      summary: List API credentials
+      responses:
+        '200':
+          description: API credentials
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/APICredential'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '500': {$ref: '#/components/responses/InternalError'}
+    post:
+      operationId: createAPICredential
+      summary: Issue an API credential
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateAPICredentialRequest'}
+      responses:
+        '201':
+          description: Issued API credential; the token is returned only once
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/IssuedAPICredential'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /v1/api-credentials/{credential}:
+    parameters:
+      - {$ref: '#/components/parameters/APICredentialReference'}
+    delete:
+      operationId: revokeAPICredential
+      summary: Revoke an API credential
+      responses:
+        '200':
+          description: Revoked API credential
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RevokeAPICredentialResult'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
         '500': {$ref: '#/components/responses/InternalError'}
   /v1/projects:
     get:
@@ -223,6 +300,7 @@ paths:
         '200': {$ref: '#/components/responses/ProjectList'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '500': {$ref: '#/components/responses/InternalError'}
     post:
       operationId: createProject
@@ -236,6 +314,7 @@ paths:
         '201': {$ref: '#/components/responses/Project'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '409': {$ref: '#/components/responses/Conflict'}
         '422': {$ref: '#/components/responses/ValidationFailed'}
         '500': {$ref: '#/components/responses/InternalError'}
@@ -257,6 +336,7 @@ paths:
         '202': {$ref: '#/components/responses/Job'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '409': {$ref: '#/components/responses/Conflict'}
         '422': {$ref: '#/components/responses/ValidationFailed'}
         '500': {$ref: '#/components/responses/InternalError'}
@@ -270,6 +350,7 @@ paths:
         '200': {$ref: '#/components/responses/Project'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '500': {$ref: '#/components/responses/InternalError'}
     delete:
@@ -279,6 +360,7 @@ paths:
         '202': {$ref: '#/components/responses/Job'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/Conflict'}
         '422': {$ref: '#/components/responses/ValidationFailed'}
@@ -293,6 +375,7 @@ paths:
         '200': {$ref: '#/components/responses/ServiceList'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '500': {$ref: '#/components/responses/InternalError'}
     post:
@@ -308,6 +391,7 @@ paths:
         '202': {$ref: '#/components/responses/ServiceOperation'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/Conflict'}
         '422': {$ref: '#/components/responses/ValidationFailed'}
@@ -323,6 +407,7 @@ paths:
         '200': {$ref: '#/components/responses/Service'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '500': {$ref: '#/components/responses/InternalError'}
   /v1/projects/{project}/sources:
@@ -341,6 +426,7 @@ paths:
                 items: {$ref: '#/components/schemas/Source'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '500': {$ref: '#/components/responses/InternalError'}
   /v1/projects/{project}/logs:
@@ -362,6 +448,7 @@ paths:
               schema: {$ref: '#/components/schemas/ProjectLogs'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '422': {$ref: '#/components/responses/ValidationFailed'}
         '500': {$ref: '#/components/responses/InternalError'}
@@ -378,6 +465,7 @@ paths:
         '200': {$ref: '#/components/responses/ServiceList'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '500': {$ref: '#/components/responses/InternalError'}
   /v1/services/{service}:
@@ -390,6 +478,7 @@ paths:
         '200': {$ref: '#/components/responses/Service'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '500': {$ref: '#/components/responses/InternalError'}
     patch:
@@ -404,6 +493,7 @@ paths:
         '202': {$ref: '#/components/responses/Job'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/Conflict'}
         '422': {$ref: '#/components/responses/ValidationFailed'}
@@ -420,6 +510,7 @@ paths:
         '202': {$ref: '#/components/responses/Job'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/Conflict'}
         '422': {$ref: '#/components/responses/ValidationFailed'}
@@ -439,6 +530,7 @@ paths:
               schema: {$ref: '#/components/schemas/ServiceLogs'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '422': {$ref: '#/components/responses/ValidationFailed'}
         '500': {$ref: '#/components/responses/InternalError'}
@@ -452,6 +544,7 @@ paths:
         '202': {$ref: '#/components/responses/Job'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/Conflict'}
         '422': {$ref: '#/components/responses/ValidationFailed'}
@@ -466,6 +559,7 @@ paths:
         '202': {$ref: '#/components/responses/Job'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/Conflict'}
         '422': {$ref: '#/components/responses/ValidationFailed'}
@@ -485,6 +579,7 @@ paths:
         '202': {$ref: '#/components/responses/Job'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/Conflict'}
         '422': {$ref: '#/components/responses/ValidationFailed'}
@@ -500,6 +595,7 @@ paths:
         '202': {$ref: '#/components/responses/Job'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/Conflict'}
         '422': {$ref: '#/components/responses/ValidationFailed'}
@@ -519,6 +615,7 @@ paths:
         '202': {$ref: '#/components/responses/Job'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/Conflict'}
         '422': {$ref: '#/components/responses/ValidationFailed'}
@@ -539,6 +636,7 @@ paths:
                 items: {$ref: '#/components/schemas/Release'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '422': {$ref: '#/components/responses/ValidationFailed'}
         '500': {$ref: '#/components/responses/InternalError'}
@@ -552,6 +650,7 @@ paths:
         '202': {$ref: '#/components/responses/Job'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/Conflict'}
         '422': {$ref: '#/components/responses/ValidationFailed'}
@@ -575,7 +674,64 @@ paths:
               schema: {$ref: '#/components/schemas/ServiceEnvironment'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /v1/services/{service}/env/reconcile:
+    parameters:
+      - {$ref: '#/components/parameters/ServiceReference'}
+    post:
+      operationId: reconcileServiceEnvironment
+      summary: Apply the latest service environment revision
+      responses:
+        '202': {$ref: '#/components/responses/Job'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /v1/services/{service}/env/{name}:
+    parameters:
+      - {$ref: '#/components/parameters/ServiceReference'}
+      - {$ref: '#/components/parameters/EnvironmentVariableName'}
+    put:
+      operationId: setServiceEnvironmentVariable
+      summary: Set a custom service environment variable
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SetEnvironmentVariableRequest'}
+      responses:
+        '202':
+          description: Stored environment variable and reconciliation job
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/EnvironmentVariableOperation'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '500': {$ref: '#/components/responses/InternalError'}
+    delete:
+      operationId: deleteServiceEnvironmentVariable
+      summary: Remove a custom service environment variable
+      responses:
+        '202':
+          description: Removed environment variable and reconciliation job
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DeleteEnvironmentVariableResult'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
         '422': {$ref: '#/components/responses/ValidationFailed'}
         '500': {$ref: '#/components/responses/InternalError'}
   /v1/services/{service}/domains:
@@ -594,6 +750,7 @@ paths:
                 items: {$ref: '#/components/schemas/Domain'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '422': {$ref: '#/components/responses/ValidationFailed'}
         '500': {$ref: '#/components/responses/InternalError'}
@@ -609,6 +766,7 @@ paths:
         '202': {$ref: '#/components/responses/DomainOperation'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/Conflict'}
         '422': {$ref: '#/components/responses/ValidationFailed'}
@@ -624,6 +782,7 @@ paths:
         '202': {$ref: '#/components/responses/Job'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/Conflict'}
         '422': {$ref: '#/components/responses/ValidationFailed'}
@@ -643,6 +802,7 @@ paths:
               schema: {$ref: '#/components/schemas/DeleteDomainResult'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/Conflict'}
         '422': {$ref: '#/components/responses/ValidationFailed'}
@@ -655,6 +815,7 @@ paths:
         '200': {$ref: '#/components/responses/PlatformDomainState'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '500': {$ref: '#/components/responses/InternalError'}
     put:
       operationId: configurePlatformDomain
@@ -669,6 +830,7 @@ paths:
         '202': {$ref: '#/components/responses/PlatformDomainOperation'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '409': {$ref: '#/components/responses/Conflict'}
         '422': {$ref: '#/components/responses/ValidationFailed'}
         '500': {$ref: '#/components/responses/InternalError'}
@@ -680,6 +842,7 @@ paths:
         '202': {$ref: '#/components/responses/Job'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '409': {$ref: '#/components/responses/Conflict'}
         '422': {$ref: '#/components/responses/ValidationFailed'}
         '500': {$ref: '#/components/responses/InternalError'}
@@ -702,6 +865,7 @@ paths:
                 items: {$ref: '#/components/schemas/Job'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '500': {$ref: '#/components/responses/InternalError'}
   /v1/jobs/{job}:
     parameters:
@@ -713,6 +877,7 @@ paths:
         '200': {$ref: '#/components/responses/Job'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '500': {$ref: '#/components/responses/InternalError'}
   /v1/jobs/{job}/events:
@@ -740,6 +905,7 @@ paths:
                 items: {$ref: '#/components/schemas/JobEvent'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '500': {$ref: '#/components/responses/InternalError'}
 components:
@@ -748,6 +914,11 @@ components:
       type: http
       scheme: bearer
   parameters:
+    APICredentialReference:
+      name: credential
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/NonEmptyString'}
     ProjectReference:
       name: project
       in: path
@@ -773,6 +944,14 @@ components:
       in: path
       required: true
       schema: {$ref: '#/components/schemas/NonEmptyString'}
+    EnvironmentVariableName:
+      name: name
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^[A-Za-z_][A-Za-z0-9_]*$'
+        maxLength: 128
     Tail:
       name: tail
       in: query
@@ -788,6 +967,11 @@ components:
       description: Missing or invalid bearer token
       headers:
         WWW-Authenticate: {schema: {type: string}}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    Forbidden:
+      description: Bearer credential scope does not allow the operation
       content:
         application/json:
           schema: {$ref: '#/components/schemas/Error'}
@@ -887,7 +1071,7 @@ components:
       properties:
         error:
           type: string
-          enum: [invalid_request, unauthorized, not_found, conflict, validation_failed, payload_too_large, internal_error]
+          enum: [invalid_request, unauthorized, forbidden, not_found, conflict, validation_failed, payload_too_large, internal_error]
         message: {type: string}
         details:
           type: array
@@ -910,6 +1094,12 @@ components:
       additionalProperties: false
       properties:
         organization: {$ref: '#/components/schemas/NonEmptyString'}
+    StoreGitHubPersonalAccessTokenRequest:
+      type: object
+      additionalProperties: false
+      required: [token]
+      properties:
+        token: {$ref: '#/components/schemas/NonEmptyString'}
     GitHubAuthentication:
       type: object
       additionalProperties: false
@@ -917,6 +1107,8 @@ components:
       properties:
         authenticated: {type: boolean}
         provider: {type: string, const: github}
+        mode: {type: string, enum: [app, pat]}
+        account: {type: string}
         app_id: {type: string}
         app_domain: {type: string}
         client_id: {type: string}
@@ -946,6 +1138,55 @@ components:
         jobs:
           type: array
           items: {type: string}
+    CreateAPICredentialRequest:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: {$ref: '#/components/schemas/NonEmptyString'}
+        scopes:
+          type: array
+          items: {type: string, enum: [admin, read, write]}
+    APICredential:
+      type: object
+      additionalProperties: false
+      required: [id, name, token_prefix, scopes, last_used_at, expires_at, revoked_at, created_at, updated_at]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        token_prefix: {type: string}
+        scopes:
+          type: array
+          items: {type: string, enum: [admin, read, write]}
+        last_used_at: {$ref: '#/components/schemas/Timestamp'}
+        expires_at: {$ref: '#/components/schemas/Timestamp'}
+        revoked_at: {$ref: '#/components/schemas/Timestamp'}
+        created_at: {$ref: '#/components/schemas/Timestamp'}
+        updated_at: {$ref: '#/components/schemas/Timestamp'}
+    IssuedAPICredential:
+      type: object
+      additionalProperties: false
+      required: [id, name, token_prefix, scopes, last_used_at, expires_at, revoked_at, created_at, updated_at, token]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        token_prefix: {type: string}
+        scopes:
+          type: array
+          items: {type: string, enum: [admin, read, write]}
+        last_used_at: {$ref: '#/components/schemas/Timestamp'}
+        expires_at: {$ref: '#/components/schemas/Timestamp'}
+        revoked_at: {$ref: '#/components/schemas/Timestamp'}
+        created_at: {$ref: '#/components/schemas/Timestamp'}
+        updated_at: {$ref: '#/components/schemas/Timestamp'}
+        token: {type: string, writeOnly: true}
+    RevokeAPICredentialResult:
+      type: object
+      additionalProperties: false
+      required: [revoked, credential]
+      properties:
+        revoked: {type: boolean, const: true}
+        credential: {$ref: '#/components/schemas/APICredential'}
     SourceInput:
       type: object
       additionalProperties: false
@@ -1030,6 +1271,13 @@ components:
       required: [dependency_service_id]
       properties:
         dependency_service_id: {$ref: '#/components/schemas/NonEmptyString'}
+    SetEnvironmentVariableRequest:
+      type: object
+      additionalProperties: false
+      required: [value]
+      properties:
+        value: {type: string, maxLength: 65536}
+        sensitive: {type: boolean}
     CreateDomainRequest:
       type: object
       additionalProperties: false
@@ -1332,15 +1580,31 @@ components:
     EnvironmentEntry:
       type: object
       additionalProperties: false
-      required: [name, value, redacted, service_id, service_name, service_type, dependency_id]
+      required: [name, value, redacted, sensitive, origin, environment_variable_id, service_id, service_name, service_type, dependency_id]
       properties:
         name: {type: string}
         value: {type: string}
         redacted: {type: boolean}
+        sensitive: {type: boolean}
+        origin: {type: string, enum: [service, managed]}
+        environment_variable_id: {type: [string, 'null']}
+        service_id: {type: [string, 'null']}
+        service_name: {type: [string, 'null']}
+        service_type: {type: [string, 'null']}
+        dependency_id: {type: [string, 'null']}
+    ServiceEnvironmentVariable:
+      type: object
+      additionalProperties: false
+      required: [id, service_id, name, sensitive, created_at, updated_at, value, redacted]
+      properties:
+        id: {type: string}
         service_id: {type: string}
-        service_name: {type: string}
-        service_type: {type: string}
-        dependency_id: {type: string}
+        name: {type: string}
+        sensitive: {type: boolean}
+        created_at: {$ref: '#/components/schemas/Timestamp'}
+        updated_at: {$ref: '#/components/schemas/Timestamp'}
+        value: {type: string}
+        redacted: {type: boolean}
     ServiceEnvironment:
       type: object
       additionalProperties: false
@@ -1350,6 +1614,21 @@ components:
         env:
           type: array
           items: {$ref: '#/components/schemas/EnvironmentEntry'}
+    EnvironmentVariableOperation:
+      type: object
+      additionalProperties: false
+      required: [variable, job]
+      properties:
+        variable: {$ref: '#/components/schemas/ServiceEnvironmentVariable'}
+        job: {$ref: '#/components/schemas/Job'}
+    DeleteEnvironmentVariableResult:
+      type: object
+      additionalProperties: false
+      required: [deleted, name, job]
+      properties:
+        deleted: {type: boolean, const: true}
+        name: {type: string}
+        job: {$ref: '#/components/schemas/Job'}
     DeleteDomainResult:
       type: object
       additionalProperties: false

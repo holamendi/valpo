@@ -5,25 +5,21 @@ require "net/http"
 require "test_helper"
 
 class ValpoAPIClientTest < Minitest::Test
-  def test_request_uses_api_token_from_config_and_sets_timeouts
-    config_path = File.join(VALPO_TEST_DIR, "api-client-token.yml")
-    File.write(config_path, "api_token: config-secret\n")
+  def test_request_sets_timeouts_without_adding_authentication
     http = fake_http("200", JSON.generate([]))
 
-    client(http, config_path:).request(:get, "/v1/projects")
+    client(http).request(:get, "/v1/projects")
 
-    assert_equal "Bearer config-secret", http.last_request["Authorization"]
+    assert_nil http.last_request["Authorization"]
     assert_equal 5, http.open_timeout
     assert_equal 60, http.read_timeout
   end
 
-  def test_environment_token_overrides_config
-    config_path = File.join(VALPO_TEST_DIR, "api-client-env-token.yml")
-    File.write(config_path, "api_token: config-secret\n")
+  def test_environment_token_is_used_for_authentication
     http = fake_http("200", JSON.generate([]))
 
     with_env("VALPO_API_TOKEN", "env-secret") do
-      client(http, config_path:).request(:get, "/v1/projects")
+      client(http).request(:get, "/v1/projects")
     end
 
     assert_equal "Bearer env-secret", http.last_request["Authorization"]
@@ -81,10 +77,9 @@ class ValpoAPIClientTest < Minitest::Test
 
   private
 
-  def client(http, config_path: nil)
+  def client(http)
     Valpo::API::Client.new(
       base_url: "http://valpo.test",
-      config_path:,
       http_factory: ->(_uri) { http }
     )
   end

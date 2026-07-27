@@ -52,6 +52,7 @@ module Valpo
         event(queue, job_id, "Recreating runtime for #{service.name}")
         runtime.start_release_container(release)
         wait_for_release(release, queue:, job_id:)
+        release.update(environment_revision: service.environment_revision)
         service.update(status: desired_status)
       end
 

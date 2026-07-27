@@ -152,7 +152,7 @@ Implications:
 
 ## ADR 009: API Should Be Private By Default
 
-Status: Accepted; private binding and a host-wide bearer token are implemented, while scoped credentials remain deferred.
+Status: Accepted; private binding and scoped, revocable API credentials are implemented.
 
 Decision:
 
@@ -165,7 +165,8 @@ The API can control deployments, secrets, resources, and containers. It should n
 Implications:
 
 - Prefer SSH tunnel, localhost, WireGuard, Tailscale, or mTLS.
-- Use scoped, revocable tokens.
+- Store only token digests and return raw values once at issuance.
+- Refuse non-local binding until an active credential exists.
 - Keep dashboard-to-server authentication explicit.
 - Let Caddy expose only the callback paths a provider requires; protect setup with one-time state and webhooks with signed payload verification.
 

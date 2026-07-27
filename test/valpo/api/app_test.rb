@@ -29,6 +29,47 @@ class ValpoAPIAppTest < Minitest::Test
     end
   end
 
+  def test_api_credentials_are_issued_once_and_enforce_scopes
+    post_json "/v1/api-credentials", name: "operator"
+    assert_equal 201, last_response.status
+    token = json.fetch("token")
+    credential_id = json.fetch("id")
+    refute_equal token, Valpo::APICredential[credential_id].token_digest
+
+    get "/v1/api-credentials"
+    assert_equal 401, last_response.status
+    header "Authorization", "Bearer #{token}"
+    get "/v1/api-credentials"
+    assert_equal [credential_id], json.map { it.fetch("id") }
+    refute json.first.key?("token")
+
+    reader, reader_token = Valpo::APICredential.issue(name: "reader", scopes: ["read"])
+    header "Authorization", "Bearer #{reader_token}"
+    get "/v1/api-credentials"
+    assert_equal 403, last_response.status
+    post_json "/v1/projects", name: "forbidden"
+    assert_equal 403, last_response.status
+    assert_equal "forbidden", json.fetch("error")
+
+    _writer, writer_token = Valpo::APICredential.issue(name: "writer", scopes: ["write"])
+    header "Authorization", "Bearer #{writer_token}"
+    post_json "/v1/api-credentials", name: "escalated", scopes: ["admin"]
+    assert_equal 403, last_response.status
+    assert_equal "An admin API credential is required", json.fetch("message")
+
+    header "Authorization", "Bearer #{token}"
+    delete "/v1/api-credentials/#{reader.id}"
+    assert_equal 200, last_response.status
+    assert_equal true, json.fetch("revoked")
+  end
+
+  def test_first_api_credential_must_have_admin_scope
+    post_json "/v1/api-credentials", name: "reader", scopes: ["read"]
+
+    assert_equal 403, last_response.status
+    assert_equal 0, Valpo::APICredential.count
+  end
+
   def test_system_repair_enqueues_job
     post "/v1/system/repair"
 
@@ -213,6 +254,36 @@ class ValpoAPIAppTest < Minitest::Test
     assert_equal [], json.fetch("env")
   end
 
+  def test_service_environment_mutations_are_encrypted_redacted_and_job_safe
+    service = create_app_service
+    put(
+      "/v1/services/#{service.id}/env/API_KEY",
+      JSON.generate(value: "secret-value"),
+      "CONTENT_TYPE" => "application/json"
+    )
+
+    assert_equal 202, last_response.status
+    assert_equal "********", json.dig("variable", "value")
+    job = Valpo::Job[json.dig("job", "id")]
+    refute_includes job.payload_json, "secret-value"
+    variable = Valpo::ServiceEnvironmentVariable.where(service_id: service.id, name: "API_KEY").first
+    refute_includes variable.value_ciphertext, "secret-value"
+
+    queue = Valpo::Jobs::Queue.new
+    queue.lock_next("test-worker")
+    queue.succeed(job.id, worker_id: "test-worker")
+
+    get "/v1/services/#{service.id}/env"
+    assert_equal "********", json.fetch("env").first.fetch("value")
+    assert_equal "service", json.fetch("env").first.fetch("origin")
+    get "/v1/services/#{service.id}/env?reveal=true"
+    assert_equal "secret-value", json.fetch("env").first.fetch("value")
+
+    delete "/v1/services/#{service.id}/env/API_KEY"
+    assert_equal 202, last_response.status
+    assert_nil Valpo::ServiceEnvironmentVariable[variable.id]
+  end
+
   def test_source_deploy_uses_configured_build_target_and_accepts_ref_override
     project = create_project
     source = Valpo::Source.create(
@@ -306,7 +377,7 @@ class ValpoAPIAppTest < Minitest::Test
     app_service = create_app_service(project:)
     database = create_managed_service(project:)
     dependency = Valpo::ServiceDependency.create(
-      service_id: app_service.id, dependency_service_id: database.id, status: "active", env_json: "{}"
+      service_id: app_service.id, dependency_service_id: database.id, status: "active"
     )
     delete "/v1/services/#{app_service.id}/dependencies/#{database.id}"
     assert_equal 202, last_response.status
@@ -576,7 +647,7 @@ class ValpoAPIAppTest < Minitest::Test
   end
 
   def test_github_webhook_accepts_a_signed_ping_without_api_authentication
-    credentials = Valpo::GitHub::Credentials.new(Valpo.config.github_app_credentials_path)
+    credentials = Valpo::GitHub::Credentials.new
     credentials.write(
       "app_id" => "123",
       "app_domain" => "apps.example.com",
@@ -648,26 +719,15 @@ class ValpoAPIAppTest < Minitest::Test
   end
 
   def with_api_token(token)
-    previous = Valpo.config
-    Valpo.config = Valpo::Config.new(
-      env: previous.env,
-      root: previous.root,
-      database_path: previous.database_path,
-      api_host: previous.api_host,
-      api_port: previous.api_port,
-      api_token: token,
-      caddy_config_path: previous.caddy_config_path,
-      caddy_reload_config_path: previous.caddy_reload_config_path,
-      docker_network: previous.docker_network,
-      worker_poll_interval: previous.worker_poll_interval,
-      app_port_start: previous.app_port_start,
-      app_port_end: previous.app_port_end,
-      healthcheck_timeout: previous.healthcheck_timeout,
-      deploy_drain_delay: previous.deploy_drain_delay
+    credential = Valpo::APICredential.create(
+      name: "test-#{SecureRandom.hex(4)}",
+      token_prefix: token[0, 16],
+      token_digest: Valpo::APICredential.digest(token),
+      scopes_json: JSON.generate(["admin"])
     )
     yield
   ensure
-    Valpo.config = previous
+    credential&.destroy
     header "Authorization", nil
   end
 end

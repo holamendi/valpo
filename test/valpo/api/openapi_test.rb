@@ -9,13 +9,16 @@ class ValpoAPIOpenAPITest < Minitest::Test
   HTTP_METHODS = %w[get post put patch delete].freeze
   SPEC_PATH = File.join(Valpo.root, "docs", "openapi.yaml")
   BODY_CONTRACTS = {
+    Valpo::API::V1::APICredentials::CreateContract => "CreateAPICredentialRequest",
     Valpo::API::V1::GitHub::CreateSetupContract => "CreateGitHubAppSetupRequest",
+    Valpo::API::V1::GitHub::StorePersonalAccessTokenContract => "StoreGitHubPersonalAccessTokenRequest",
     Valpo::API::V1::Projects::ApplyContract => "ApplyProjectRequest",
     Valpo::API::V1::Projects::CreateContract => "CreateProjectRequest",
     Valpo::API::V1::Services::BindDependencyContract => "BindDependencyRequest",
     Valpo::API::V1::Services::CreateContract => "CreateServiceRequest",
     Valpo::API::V1::Services::CreateDomainContract => "CreateDomainRequest",
     Valpo::API::V1::Services::DeployContract => "DeployServiceRequest",
+    Valpo::API::V1::Services::SetEnvironmentVariableContract => "SetEnvironmentVariableRequest",
     Valpo::API::V1::Services::UpdateContract => "UpdateServiceRequest",
     Valpo::API::V1::System::ConfigureAppDomainContract => "ConfigureAppDomainRequest"
   }.freeze
@@ -32,6 +35,7 @@ class ValpoAPIOpenAPITest < Minitest::Test
     Valpo::API::V1::Services::TailQueryContract => "getServiceLogs"
   }.freeze
   CONTRACT_NAMESPACES = [
+    Valpo::API::V1::APICredentials,
     Valpo::API::V1::GitHub,
     Valpo::API::V1::Jobs,
     Valpo::API::V1::Projects,
@@ -237,9 +241,16 @@ class ValpoAPIOpenAPITest < Minitest::Test
     dependency = Valpo::ServiceDependency.create(
       service_id: app.id,
       dependency_service_id: managed.id,
-      status: "active",
-      env_json: JSON.generate("DATABASE_URL" => "postgres://secret")
+      status: "active"
     )
+    environment_variable = Valpo::ServiceEnvironmentVariable.new(
+      service_id: app.id,
+      name: "FEATURE_FLAG",
+      sensitive: false
+    )
+    environment_variable.value = "enabled"
+    environment_variable.save
+    api_credential, = Valpo::APICredential.issue(name: "OpenAPI", scopes: %w[read write])
     release = create_release(
       service: app,
       build_strategy: "buildpack",
@@ -290,6 +301,8 @@ class ValpoAPIOpenAPITest < Minitest::Test
       "ServiceLogs" => [{stdout: "ready\n", stderr: "", service: app_output}],
       "ProjectLogEntry" => [successful_log, failed_log],
       "ProjectLogs" => [{project: project_output, logs: [successful_log, failed_log]}],
+      "APICredential" => [Valpo::API::V1::APICredentials.render(api_credential)],
+      "ServiceEnvironmentVariable" => [Valpo::API::V1::Services.render_environment_variable(environment_variable)],
       "EnvironmentEntry" => [environment_entry],
       "ServiceEnvironment" => [{service: app_output, env: [environment_entry]}]
     }

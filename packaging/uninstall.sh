@@ -54,6 +54,20 @@ if [[ -f /etc/caddy/Caddyfile ]]; then
   log "Removing Valpo Caddy import"
   sed -i '/^# BEGIN VALPO$/,/^# END VALPO$/d' /etc/caddy/Caddyfile
   sed -i '\|^[[:space:]]*import /var/lib/valpo/caddy/valpo\.caddy[[:space:]]*$|d' /etc/caddy/Caddyfile
+  caddy_tmp="$(mktemp)"
+  awk '
+    /^[[:space:]]*$/ {
+      pending_blanks = pending_blanks $0 ORS
+      next
+    }
+    {
+      printf "%s", pending_blanks
+      pending_blanks = ""
+      print
+    }
+  ' /etc/caddy/Caddyfile > "$caddy_tmp"
+  cat "$caddy_tmp" > /etc/caddy/Caddyfile
+  rm -f "$caddy_tmp"
   if command -v caddy >/dev/null 2>&1; then
     caddy validate --config /etc/caddy/Caddyfile
   fi

@@ -7,9 +7,9 @@ module Valpo
         class List < BaseCommand
           desc "List projects"
 
-          def call(api_url:, config: nil, json: false, args: nil, **)
+          def call(api_url:, json: false, args: nil, **)
             reject_extra_arguments!(args)
-            current = context(api_url:, config:, json:)
+            current = context(api_url:, json:)
             current.presenter.projects(current.request(:get, "/v1/projects"))
           end
         end

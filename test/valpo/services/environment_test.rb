@@ -13,8 +13,7 @@ class ValpoServicesEnvironmentTest < Minitest::Test
     Valpo::ServiceDependency.create(
       service_id: app.id,
       dependency_service_id: database.id,
-      status: "active",
-      env_json: JSON.generate(env)
+      status: "active"
     )
 
     raw = Valpo::Services::Environment.raw_for_service(app.id)

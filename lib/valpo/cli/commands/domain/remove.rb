@@ -11,9 +11,9 @@ module Valpo
           project_option
           wait_options
 
-          def call(service:, hostname_or_id:, wait:, timeout:, api_url:, project: nil, config: nil, json: false, args: nil, **)
+          def call(service:, hostname_or_id:, wait:, timeout:, api_url:, project: nil, json: false, args: nil, **)
             reject_extra_arguments!(args)
-            current = context(api_url:, config:, json:)
+            current = context(api_url:, json:)
             response = current.request(:delete, "#{current.service_path(service, project:)}/domains/#{segment(hostname_or_id)}")
             current.presenter.operation(current.finish_operation(response, wait:, timeout:))
           end

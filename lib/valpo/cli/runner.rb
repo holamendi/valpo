@@ -3,7 +3,7 @@
 module Valpo
   module CLI
     class Runner
-      GLOBAL_VALUE_OPTIONS = %w[--api-url --config].freeze
+      GLOBAL_VALUE_OPTIONS = %w[--api-url].freeze
       GLOBAL_BOOLEAN_OPTIONS = %w[--json --no-json].freeze
 
       def initialize(out:, err:)

@@ -60,7 +60,7 @@ class ValpoDomainsConfigurationTest < Minitest::Test
 
   def test_app_domain_cannot_change_while_github_app_credentials_use_it
     create_platform_domain
-    credentials = Valpo::GitHub::Credentials.new(Valpo.config.github_app_credentials_path)
+    credentials = Valpo::GitHub::Credentials.new
     credentials.write(
       "app_id" => "123",
       "app_domain" => "apps.example.com",

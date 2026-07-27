@@ -96,8 +96,7 @@ module Valpo
       end
 
       def github_credentials
-        config = Valpo.config || Valpo::Config.load
-        Valpo::GitHub::Credentials.new(config.github_app_credentials_path)
+        Valpo::GitHub::Credentials.new
       end
       private_class_method :github_credentials
     end

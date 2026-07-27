@@ -19,14 +19,14 @@ class ValpoConfigTest < Minitest::Test
     deploy_drain_delay: 0
   }.freeze
 
-  def test_loads_api_token_from_config_file
+  def test_loads_encryption_key_path_from_config_file
     file = Tempfile.new("valpo-config")
     file.write(<<~YAML)
       test:
         database_path: tmp/test.sqlite3
         api_host: 127.0.0.1
         api_port: 7092
-        api_token: secret-token
+        encryption_key_path: tmp/master.key
         caddy_config_path: tmp/Caddyfile
         docker_network: valpo
         worker_poll_interval: 2
@@ -39,7 +39,7 @@ class ValpoConfigTest < Minitest::Test
 
     config = Valpo::Config.load(path: file.path, env: "test")
 
-    assert_equal "secret-token", config.api_token
+    assert_equal File.join(Valpo.root, "tmp", "master.key"), config.encryption_key_path
     assert_equal 1_800, config.build_timeout
     assert_equal Valpo::Config::DEFAULT_BUILDPACK_BUILDER, config.buildpack_builder
   ensure
@@ -80,11 +80,9 @@ class ValpoConfigTest < Minitest::Test
   def test_canonical_key_list_loads_every_supported_setting
     values = {
       "database_path" => "tmp/full.sqlite3",
+      "encryption_key_path" => "tmp/master.key",
       "api_host" => "0.0.0.0",
       "api_port" => 7100,
-      "api_token" => "token",
-      "github_token_path" => "tmp/github-token",
-      "github_app_credentials_path" => "tmp/github-app.json",
       "caddy_config_path" => "tmp/Caddyfile.full",
       "caddy_reload_config_path" => "/etc/caddy/Caddyfile",
       "docker_network" => "valpo-full",
@@ -154,7 +152,6 @@ class ValpoConfigTest < Minitest::Test
   def test_rejects_invalid_numeric_configuration
     {
       "api_port" => ["invalid", "must be an integer"],
-      "api_token" => [false, "must be a string"],
       "app_port_start" => ["1.5", "must be an integer"],
       "worker_poll_interval" => ["never", "must be a number"],
       "healthcheck_timeout" => ["soon", "must be an integer"]
@@ -197,17 +194,7 @@ class ValpoConfigTest < Minitest::Test
     file&.unlink
   end
 
-  def test_loads_github_token_lazily_from_the_private_file
-    path = File.join(VALPO_TEST_DIR, "config-token")
-    config = Valpo::Config.new(**CONFIG_VALUES.merge(github_token_path: path))
-
-    Valpo::Credentials::FileStore.new(path).write("first-token")
-    assert_equal "first-token", config.github_token
-    Valpo::Credentials::FileStore.new(path).write("second-token")
-    assert_equal "second-token", config.github_token
-  end
-
-  def test_places_github_app_credentials_beside_the_database_by_default
+  def test_places_encryption_key_beside_the_database_by_default
     config = Valpo::Config.new(
       **CONFIG_VALUES.merge(
         database_path: File.join(VALPO_TEST_DIR, "state", "config.sqlite3"),
@@ -215,7 +202,7 @@ class ValpoConfigTest < Minitest::Test
       )
     )
 
-    assert_equal File.join(VALPO_TEST_DIR, "state", "secrets", "github-app.json"), config.github_app_credentials_path
+    assert_equal File.join(VALPO_TEST_DIR, "state", "secrets", "master.key"), config.encryption_key_path
   end
 
   private

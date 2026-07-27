@@ -5,9 +5,11 @@ require "test_helper"
 class ValpoAPIV1ResourceContractsTest < Minitest::Test
   CONTRACTS = {
     create_service: Valpo::API::V1::Services::CreateContract,
+    create_api_credential: Valpo::API::V1::APICredentials::CreateContract,
     environment_query: Valpo::API::V1::Services::EnvironmentQueryContract,
     event_list_query: Valpo::API::V1::Jobs::EventListQueryContract,
     job_list_query: Valpo::API::V1::Jobs::ListQueryContract,
+    set_environment_variable: Valpo::API::V1::Services::SetEnvironmentVariableContract,
     tail_query: Valpo::API::V1::Services::TailQueryContract,
     update_service: Valpo::API::V1::Services::UpdateContract
   }.freeze
@@ -106,6 +108,16 @@ class ValpoAPIV1ResourceContractsTest < Minitest::Test
     assert events.success?
     assert_equal "evt_123", events[:after]
     refute contract(:event_list_query).call("after" => "").success?
+  end
+
+  def test_environment_and_api_credential_contracts_are_strict
+    environment = contract(:set_environment_variable).call(value: "", sensitive: true)
+    assert environment.success?, environment.errors.to_h.inspect
+    refute contract(:set_environment_variable).call(value: "secret", sensitive: "true").success?
+
+    credential = contract(:create_api_credential).call(name: "operator", scopes: %w[read write])
+    assert credential.success?, credential.errors.to_h.inspect
+    refute contract(:create_api_credential).call(name: "operator", scopes: ["unknown"]).success?
   end
 
   private
