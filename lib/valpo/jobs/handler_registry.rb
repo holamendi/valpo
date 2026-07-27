@@ -14,6 +14,11 @@ module Valpo
       def build
         docker = Valpo::Docker::Client.new
         build_cache_manager = Valpo::Builds::CacheManager.new(docker:)
+        image_cleaner = Valpo::Storage::ImageCleaner.new(
+          docker:,
+          retention_count: config.image_retention_count,
+          grace_period: config.storage_cleanup_grace_period
+        )
         caddy = Valpo::Caddy::Client.new(
           config_path: config.caddy_config_path,
           reload_config_path: config.caddy_reload_config_path
@@ -33,7 +38,8 @@ module Valpo
           caddy_reconciler:,
           activator:,
           domain_orchestrator: domains,
-          build_cache_manager:
+          build_cache_manager:,
+          image_cleaner:
         )
         dependency_manager = Valpo::Services::DependencyManager.new(
           config:,
@@ -52,7 +58,7 @@ module Valpo
           })}
         )
         preflight = Valpo::Sources::Preflight.new(fetcher: source_fetcher)
-        build_runner = Valpo::Builds::CommandRunner.new
+        build_runner = Valpo::Builds::CommandRunner.new(output_limit: config.build_log_limit)
         builds = Valpo::Builds::Orchestrator.new(
           source_fetcher:,
           deployment_lifecycle: deployment,
@@ -85,6 +91,19 @@ module Valpo
           deployment_repairer: Valpo::Deployments::Repairer.new(config:, docker:),
           caddy_reconciler:
         )
+        storage_maintainer = Valpo::Storage::Maintainer.new(
+          container_cleaner: Valpo::Storage::ContainerCleaner.new(
+            docker:,
+            grace_period: config.storage_cleanup_grace_period
+          ),
+          image_cleaner:,
+          build_cache_cleaner: Valpo::Storage::BuildCacheCleaner.new(
+            docker:,
+            cache_manager: build_cache_manager,
+            retention: config.build_cache_retention
+          ),
+          history_cleaner: Valpo::Storage::HistoryCleaner.new(retention: config.job_retention)
+        )
 
         handlers(
           deployment:,
@@ -96,7 +115,8 @@ module Valpo
           preflight:,
           configurator:,
           builds:,
-          updater:
+          updater:,
+          storage_maintainer:
         )
       end
 
@@ -114,11 +134,13 @@ module Valpo
         preflight:,
         configurator:,
         builds:,
-        updater:
+        updater:,
+        storage_maintainer:
       )
         {
           "system_check" => Handlers::SystemCheck.new,
           "repair_system" => Handlers::RepairSystem.new(repairer: system_repairer),
+          "maintain_storage" => Handlers::MaintainStorage.new(maintainer: storage_maintainer),
           "deploy_registry_image" => Handlers::DeployRegistryImage.new(orchestrator: deployment),
           "deploy_source" => Handlers::DeploySource.new(orchestrator: builds),
           "create_source_service" => Handlers::CreateSource.new(

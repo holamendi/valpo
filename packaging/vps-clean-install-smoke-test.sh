@@ -83,6 +83,8 @@ ssh "$ssh_target" 'test ! -e /opt/valpo &&
   test ! -e /etc/systemd/system/valpo-api.service &&
   test ! -e /etc/systemd/system/valpo-worker.service &&
   test ! -e /etc/systemd/system/valpo-migrate.service &&
+  test ! -e /etc/systemd/system/valpo-maintenance.service &&
+  test ! -e /etc/systemd/system/valpo-maintenance.timer &&
   ! id valpo >/dev/null 2>&1 &&
   test -z "$(docker network ls -q --filter label=valpo.owned=true)" &&
   test -z "$(docker ps -aq --filter label=valpo.owned=true)" &&

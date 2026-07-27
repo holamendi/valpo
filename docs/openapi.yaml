@@ -846,6 +846,23 @@ paths:
         '409': {$ref: '#/components/responses/Conflict'}
         '422': {$ref: '#/components/responses/ValidationFailed'}
         '500': {$ref: '#/components/responses/InternalError'}
+  /v1/system/maintenance:
+    post:
+      operationId: maintainStorage
+      summary: Enqueue ownership-scoped storage maintenance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/MaintainStorageRequest'}
+      responses:
+        '202': {$ref: '#/components/responses/Job'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '500': {$ref: '#/components/responses/InternalError'}
   /v1/jobs:
     get:
       operationId: listJobs
@@ -1290,6 +1307,11 @@ components:
       required: [hostname]
       properties:
         hostname: {$ref: '#/components/schemas/NonEmptyString'}
+    MaintainStorageRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        dry_run: {type: boolean}
     Project:
       type: object
       additionalProperties: false
@@ -1391,7 +1413,7 @@ components:
     Release:
       type: object
       additionalProperties: false
-      required: [id, service_id, build_target_id, version, source_type, source_ref, artifact_ref, image_digest, build, status, internal_port, healthcheck_path, container_name, route_target, activated_at, created_at]
+      required: [id, service_id, build_target_id, version, source_type, source_ref, artifact_ref, image_digest, artifact_available, build, status, internal_port, healthcheck_path, container_name, route_target, activated_at, created_at]
       properties:
         id: {type: string}
         service_id: {type: string}
@@ -1401,6 +1423,7 @@ components:
         source_ref: {type: string}
         artifact_ref: {type: [string, 'null']}
         image_digest: {type: [string, 'null']}
+        artifact_available: {type: boolean}
         build:
           anyOf:
             - {$ref: '#/components/schemas/ReleaseBuild'}

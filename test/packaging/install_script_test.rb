@@ -15,6 +15,8 @@ class ValpoPackagingInstallScriptTest < Minitest::Test
   API_SERVICE = File.expand_path("../../packaging/systemd/valpo-api.service", __dir__)
   WORKER_SERVICE = File.expand_path("../../packaging/systemd/valpo-worker.service", __dir__)
   MIGRATE_SERVICE = File.expand_path("../../packaging/systemd/valpo-migrate.service", __dir__)
+  MAINTENANCE_SERVICE = File.expand_path("../../packaging/systemd/valpo-maintenance.service", __dir__)
+  MAINTENANCE_TIMER = File.expand_path("../../packaging/systemd/valpo-maintenance.timer", __dir__)
   EXAMPLE_CONFIG = File.expand_path("../../packaging/valpo.yml.example", __dir__)
   PRE_COMMIT_HOOK = File.expand_path("../../.githooks/pre-commit", __dir__)
   CI_WORKFLOW = File.expand_path("../../.github/workflows/ci.yml", __dir__)
@@ -60,7 +62,7 @@ class ValpoPackagingInstallScriptTest < Minitest::Test
     assert_includes script, 'chmod 0600 "${STATE_DIR}/valpo.db"'
     assert_includes script, 'chown root:"$VALPO_GROUP" "$CONFIG_PATH"'
     assert_includes script, 'chmod 0640 "$CONFIG_PATH"'
-    [API_SERVICE, WORKER_SERVICE, MIGRATE_SERVICE].each do
+    [API_SERVICE, WORKER_SERVICE, MIGRATE_SERVICE, MAINTENANCE_SERVICE].each do
       assert_includes File.read(it), "UMask=0077"
     end
   end
@@ -308,13 +310,18 @@ class ValpoPackagingInstallScriptTest < Minitest::Test
   end
 
   def test_systemd_units_run_through_mise
-    [API_SERVICE, WORKER_SERVICE, MIGRATE_SERVICE].each do
+    [API_SERVICE, WORKER_SERVICE, MIGRATE_SERVICE, MAINTENANCE_SERVICE].each do
       service = File.read(it)
 
       assert_includes service, "Environment=HOME=/var/lib/valpo"
       assert_includes service, "Environment=MISE_RUBY_COMPILE=false"
       assert_includes service, "/var/lib/valpo/.local/bin/mise x ruby@4.0.5 -- bundle exec"
     end
+    timer = File.read(MAINTENANCE_TIMER)
+    assert_includes timer, "OnCalendar=daily"
+    assert_includes timer, "Persistent=true"
+    assert_includes File.read(INSTALL_SCRIPT), "systemctl enable --now valpo-maintenance.timer"
+    assert_includes File.read(UNINSTALL_SCRIPT), "valpo-maintenance.timer"
   end
 
   def test_installer_creates_private_encryption_key_storage

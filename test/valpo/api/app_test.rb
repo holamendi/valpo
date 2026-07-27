@@ -77,6 +77,18 @@ class ValpoAPIAppTest < Minitest::Test
     assert_equal "repair_system", json.fetch("type")
   end
 
+  def test_system_maintenance_enqueues_one_deduplicated_job
+    post_json "/v1/system/maintenance", dry_run: true
+
+    assert_equal 202, last_response.status
+    assert_equal "maintain_storage", json.fetch("type")
+    assert_equal true, json.dig("payload", "dry_run")
+    first_id = json.fetch("id")
+
+    post_json "/v1/system/maintenance", dry_run: false
+    assert_equal first_id, json.fetch("id")
+  end
+
   def test_project_create_list_show_and_empty_delete
     post_json "/v1/projects", name: "hello"
     assert_equal 201, last_response.status

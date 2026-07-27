@@ -15,6 +15,7 @@ class ValpoJobsHandlersTest < Minitest::Test
       [Valpo::Jobs::Handlers::DeleteProject, {orchestrator: recorder}, "delete_project", {project_id: "prj_1"}, :delete_project],
       [Valpo::Jobs::Handlers::DeployRegistryImage, {orchestrator: recorder}, "deploy_registry_image", {service_id: "svc_1", image: "example/app:v1", internal_port: "3000"}, :deploy_registry_image],
       [Valpo::Jobs::Handlers::DeploySource, {orchestrator: recorder}, "deploy_source", {service_id: "svc_1", ref: "main", internal_port: "3000"}, :deploy_source],
+      [Valpo::Jobs::Handlers::MaintainStorage, {maintainer: recorder}, "maintain_storage", {dry_run: true}, :call],
       [Valpo::Jobs::Handlers::ProvisionManaged, {orchestrator: recorder}, "provision_service", {service_id: "svc_1"}, :provision_service],
       [Valpo::Jobs::Handlers::RepairSystem, {repairer: recorder}, "repair_system", {}, :repair],
       [Valpo::Jobs::Handlers::UpdateApp, {updater: recorder}, "update_app_service", {service_id: "svc_1", runtime: {"command" => []}, deploy: true}, :update],
@@ -28,6 +29,7 @@ class ValpoJobsHandlersTest < Minitest::Test
       handler_class.new(**dependencies).call(job, queue:)
       assert_equal expected_method, target.calls.last.fetch(:method), handler_class.name
       assert_equal job.id, target.calls.last.fetch(:kwargs).fetch(:job_id), handler_class.name
+      assert_equal true, target.calls.last.fetch(:kwargs).fetch(:dry_run) if handler_class == Valpo::Jobs::Handlers::MaintainStorage
     end
   end
 

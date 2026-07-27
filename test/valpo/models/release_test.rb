@@ -25,6 +25,9 @@ class ValpoReleaseTest < Minitest::Test
     first.activate!
     second.activate!
     assert_equal first.id, Valpo::Release.previous_deployable_for_service(service.id, excluding_release_id: second.id).id
+
+    first.update(artifact_available: false)
+    assert_nil Valpo::Release.previous_deployable_for_service(service.id, excluding_release_id: second.id)
   end
 
   def test_validates_runtime_fields

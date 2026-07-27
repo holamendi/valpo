@@ -194,7 +194,7 @@ if [[ "$install_mode" != "none" ]]; then
   fi
 fi
 
-remote "systemctl is-active docker caddy valpo-api valpo-worker"
+remote "systemctl is-active docker caddy valpo-api valpo-worker valpo-maintenance.timer"
 remote "curl -fsS http://127.0.0.1:7092/health"
 assert_github_auth
 

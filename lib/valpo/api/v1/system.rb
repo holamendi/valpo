@@ -10,6 +10,12 @@ module Valpo
           end
         end
 
+        class MaintainStorageContract < Contract
+          json do
+            optional(:dry_run).value(:bool)
+          end
+        end
+
         module_function
 
         def render_domain(domain)

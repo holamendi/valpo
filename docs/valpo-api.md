@@ -47,7 +47,9 @@ Service records retain `kind` internally, but every public service and project-l
 - `GET /v1/jobs/{id}/events` accepts `after` and `limit`; the default is `200` and the maximum is `500`. `after` is an event ID from the same job, and events are ordered by creation time and ID.
 - Service and project log endpoints accept `tail`; the default is `200` and the maximum is `10,000`.
 
-Clients waiting on a job must drain every event page before advancing the cursor. Valpo does not automatically expire jobs, webhook deliveries, logs, or images.
+Clients waiting on a job must drain every event page before advancing the cursor. Daily storage maintenance expires completed jobs, their events, and GitHub webhook deliveries according to the host retention configuration.
+
+`POST /v1/system/maintenance` enqueues an ownership-scoped cleanup job and accepts an optional `dry_run` boolean. Cleanup retains the configured number of deployable local build artifacts per service, marks older artifacts unavailable without deleting their release history, removes stale buildpack caches and orphaned Valpo containers, and leaves registry images, managed data volumes, unrelated Docker resources, and global Dockerfile build cache untouched.
 
 Example validation response:
 

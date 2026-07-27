@@ -20,7 +20,8 @@ class ValpoAPIOpenAPITest < Minitest::Test
     Valpo::API::V1::Services::DeployContract => "DeployServiceRequest",
     Valpo::API::V1::Services::SetEnvironmentVariableContract => "SetEnvironmentVariableRequest",
     Valpo::API::V1::Services::UpdateContract => "UpdateServiceRequest",
-    Valpo::API::V1::System::ConfigureAppDomainContract => "ConfigureAppDomainRequest"
+    Valpo::API::V1::System::ConfigureAppDomainContract => "ConfigureAppDomainRequest",
+    Valpo::API::V1::System::MaintainStorageContract => "MaintainStorageRequest"
   }.freeze
   QUERY_CONTRACTS = {
     Valpo::API::V1::GitHub::SetupQueryContract => "showGitHubAppManifest",

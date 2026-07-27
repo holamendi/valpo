@@ -19,6 +19,7 @@ module Valpo
         activator: nil,
         domain_orchestrator: nil,
         build_cache_manager: nil,
+        image_cleaner: nil,
         sleeper: Kernel
       )
         @config = config
@@ -37,6 +38,11 @@ module Valpo
           sleeper:
         )
         @build_cache_manager = build_cache_manager
+        @image_cleaner = image_cleaner || Valpo::Storage::ImageCleaner.new(
+          docker:,
+          retention_count: config.image_retention_count,
+          grace_period: config.storage_cleanup_grace_period
+        )
       end
 
       def deploy_registry_image(service_id:, image:, internal_port:, healthcheck_path:, queue:, job_id:)
@@ -203,6 +209,7 @@ module Valpo
         end
         build_target_ids = Valpo::BuildTarget.where(owner_service_id: service.id).select_map(:id)
         remove_build_caches(build_target_ids, queue:, job_id:)
+        image_cleaner.remove_for_service(service_id: service.id, queue:, job_id:)
         service.destroy
         event(queue, job_id, "Deleted #{service_name}")
         true
@@ -232,7 +239,7 @@ module Valpo
 
       private
 
-      attr_reader :config, :docker, :health_checker, :port_resolver, :domain_orchestrator, :activator, :build_cache_manager, :sleeper
+      attr_reader :config, :docker, :health_checker, :port_resolver, :domain_orchestrator, :activator, :build_cache_manager, :image_cleaner, :sleeper
 
       def deploy_image(service_id:, image:, source_type:, source_ref:, build_target_id:, build_strategy:, build_metadata:, internal_port:, healthcheck_path:, pull:, queue:, job_id:)
         runtime = runtime_for(queue:, job_id:)

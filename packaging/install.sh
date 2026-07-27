@@ -320,6 +320,8 @@ install_systemd_units() {
   install -m 0644 "${PREFIX}/packaging/systemd/valpo-api.service" /etc/systemd/system/valpo-api.service
   install -m 0644 "${PREFIX}/packaging/systemd/valpo-worker.service" /etc/systemd/system/valpo-worker.service
   install -m 0644 "${PREFIX}/packaging/systemd/valpo-migrate.service" /etc/systemd/system/valpo-migrate.service
+  install -m 0644 "${PREFIX}/packaging/systemd/valpo-maintenance.service" /etc/systemd/system/valpo-maintenance.service
+  install -m 0644 "${PREFIX}/packaging/systemd/valpo-maintenance.timer" /etc/systemd/system/valpo-maintenance.timer
 }
 
 locked_bundler_version() {
@@ -410,6 +412,7 @@ start_services() {
   systemctl enable --now caddy.service
   systemctl restart caddy.service
   systemctl enable valpo-api.service valpo-worker.service
+  systemctl enable --now valpo-maintenance.timer
   systemctl restart valpo-api.service valpo-worker.service
 }
 

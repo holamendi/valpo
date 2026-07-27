@@ -148,7 +148,7 @@ module Valpo
         def render_release(release)
           output = Fields.call(
             release, :id, :service_id, :build_target_id, :version, :source_type, :source_ref, :artifact_ref,
-            :image_digest, :status, :internal_port, :healthcheck_path, :container_name, :route_target,
+            :image_digest, :artifact_available, :status, :internal_port, :healthcheck_path, :container_name, :route_target,
             :activated_at, :created_at
           )
           output[:build] = release.build_strategy && render_release_build(release)

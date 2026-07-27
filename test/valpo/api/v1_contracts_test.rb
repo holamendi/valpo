@@ -9,6 +9,7 @@ class ValpoAPIV1ResourceContractsTest < Minitest::Test
     environment_query: Valpo::API::V1::Services::EnvironmentQueryContract,
     event_list_query: Valpo::API::V1::Jobs::EventListQueryContract,
     job_list_query: Valpo::API::V1::Jobs::ListQueryContract,
+    maintain_storage: Valpo::API::V1::System::MaintainStorageContract,
     set_environment_variable: Valpo::API::V1::Services::SetEnvironmentVariableContract,
     tail_query: Valpo::API::V1::Services::TailQueryContract,
     update_service: Valpo::API::V1::Services::UpdateContract
@@ -118,6 +119,12 @@ class ValpoAPIV1ResourceContractsTest < Minitest::Test
     credential = contract(:create_api_credential).call(name: "operator", scopes: %w[read write])
     assert credential.success?, credential.errors.to_h.inspect
     refute contract(:create_api_credential).call(name: "operator", scopes: ["unknown"]).success?
+  end
+
+  def test_storage_maintenance_contract_accepts_only_boolean_dry_run
+    assert contract(:maintain_storage).call(dry_run: true).success?
+    assert contract(:maintain_storage).call({}).success?
+    refute contract(:maintain_storage).call(dry_run: "true").success?
   end
 
   private

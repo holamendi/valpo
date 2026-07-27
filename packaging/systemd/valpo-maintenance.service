@@ -1,0 +1,19 @@
+[Unit]
+Description=Schedule Valpo Storage Maintenance
+After=valpo-migrate.service
+Requires=valpo-migrate.service
+
+[Service]
+Type=oneshot
+User=valpo
+Group=valpo
+UMask=0077
+WorkingDirectory=/opt/valpo
+Environment=VALPO_ENV=production
+Environment=VALPO_CONFIG=/etc/valpo/valpo.yml
+Environment=HOME=/var/lib/valpo
+Environment=MISE_RUBY_COMPILE=false
+Environment=PATH=/var/lib/valpo/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+StateDirectory=valpo
+LogsDirectory=valpo
+ExecStart=/var/lib/valpo/.local/bin/mise x ruby@4.0.5 -- bundle exec exe/valpo-maintenance --config /etc/valpo/valpo.yml

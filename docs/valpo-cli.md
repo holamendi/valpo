@@ -46,6 +46,7 @@ valpo release list SERVICE
 valpo release rollback SERVICE
 valpo system status
 valpo system repair
+valpo system maintenance
 valpo version
 ```
 
@@ -210,6 +211,17 @@ valpo project list --api-url https://valpo.example.com
 ```
 
 `valpo version` is fully offline. `valpo system status` calls `/health` and reports whether the client and server versions match.
+
+## Storage Maintenance
+
+Packaged hosts enqueue storage maintenance daily. Preview or run the same ownership-scoped operation manually:
+
+```bash
+valpo system maintenance --dry-run
+valpo system maintenance
+```
+
+Maintenance removes stale local build images beyond the configured rollback retention, unused buildpack cache volumes, orphaned Valpo-owned containers, and expired job/webhook history. It does not remove registry images, managed-service data volumes, unrelated Docker resources, or global Dockerfile build cache. Every newly created Valpo container uses bounded rotating logs.
 
 ## Advanced Job Inspection
 

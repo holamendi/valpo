@@ -18,6 +18,14 @@ module Valpo
         command("image", "inspect", image)
       end
 
+      def image_list_command
+        command("image", "ls", "--all", "--no-trunc", "--format", "{{json .}}")
+      end
+
+      def image_rm_command(image)
+        command("image", "rm", image)
+      end
+
       def build_command(dockerfile:, tag:, context:)
         command("build", "--file", dockerfile, "--tag", tag, context)
       end
@@ -32,12 +40,28 @@ module Valpo
         end
       end
 
-      def run_command(name:, image:, network:, labels: {}, env_file: nil, ports: {}, volumes: {}, detach: true, restart_policy: nil, entrypoint: nil, command_args: [])
+      def run_command(
+        name:,
+        image:,
+        network:,
+        labels: {},
+        env_file: nil,
+        ports: {},
+        volumes: {},
+        detach: true,
+        restart_policy: nil,
+        entrypoint: nil,
+        command_args: [],
+        log_driver: nil,
+        log_options: {}
+      )
         args = ["run"]
         args << "--detach" if detach
         args += ["--name", name, "--network", network]
         args += ["--restart", restart_policy] if restart_policy
         args += ["--entrypoint", entrypoint] if entrypoint
+        args += ["--log-driver", log_driver] if log_driver
+        log_options.sort.each { |key, value| args += ["--log-opt", "#{key}=#{value}"] }
         labels.sort.each { |key, value| args += ["--label", "#{key}=#{value}"] }
         args += ["--env-file", env_file] if env_file
         ports.sort.each { |host, container| args += ["--publish", "#{host}:#{container}"] }
@@ -49,6 +73,13 @@ module Valpo
 
       def container_inspect_command(name)
         command("container", "inspect", name)
+      end
+
+      def container_list_command(all: false, filters: [])
+        args = ["container", "ls"]
+        args << "--all" if all
+        filters.each { args += ["--filter", it] }
+        command(*args, "--no-trunc", "--format", "{{json .}}")
       end
 
       def start_command(name)
@@ -96,6 +127,12 @@ module Valpo
         args = ["volume", "create"]
         labels.sort.each { |key, value| args += ["--label", "#{key}=#{value}"] }
         command(*args, name)
+      end
+
+      def volume_list_command(filters: [])
+        args = ["volume", "ls"]
+        filters.each { args += ["--filter", it] }
+        command(*args, "--format", "{{.Name}}")
       end
 
       def volume_rm_command(name, force: false)

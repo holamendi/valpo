@@ -111,6 +111,19 @@ class ValpoJobsQueueTest < Minitest::Test
     assert_equal 0, Valpo::Job.count
   end
 
+  def test_enqueue_unique_reuses_an_active_job
+    queue = Valpo::Jobs::Queue.new
+    first = queue.enqueue_unique("maintain_storage")
+    second = queue.enqueue_unique("maintain_storage", dry_run: true)
+
+    assert_equal first.id, second.id
+    assert_equal 1, Valpo::Job.where(type: "maintain_storage").count
+
+    queue.lock_next("worker")
+    queue.succeed(first.id, worker_id: "worker")
+    refute_equal first.id, queue.enqueue_unique("maintain_storage").id
+  end
+
   def test_list_and_events_are_bounded_and_stably_cursor_ordered
     queue = Valpo::Jobs::Queue.new
     105.times { queue.enqueue("system_check") }

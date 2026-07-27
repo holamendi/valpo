@@ -12,7 +12,14 @@ module Valpo
     DEFAULT_HEALTHCHECK_TIMEOUT = 30
     DEFAULT_DEPLOY_DRAIN_DELAY = 0
     DEFAULT_BUILD_TIMEOUT = 1_800
+    DEFAULT_BUILD_LOG_LIMIT = 16_777_216
     DEFAULT_BUILDPACK_BUILDER = "paketobuildpacks/builder-jammy-base@sha256:7510725172c8b2f1a7bce82b694e2af9599d5e2d97528c140eaeb81c569c21df"
+    DEFAULT_IMAGE_RETENTION_COUNT = 3
+    DEFAULT_STORAGE_CLEANUP_GRACE_PERIOD = 86_400
+    DEFAULT_BUILD_CACHE_RETENTION = 2_592_000
+    DEFAULT_JOB_RETENTION = 2_592_000
+    DEFAULT_CONTAINER_LOG_MAX_SIZE = "10m"
+    DEFAULT_CONTAINER_LOG_MAX_FILES = 3
     KEYS = %w[
       database_path
       encryption_key_path
@@ -27,7 +34,14 @@ module Valpo
       healthcheck_timeout
       deploy_drain_delay
       build_timeout
+      build_log_limit
       buildpack_builder
+      image_retention_count
+      storage_cleanup_grace_period
+      build_cache_retention
+      job_retention
+      container_log_max_size
+      container_log_max_files
     ].freeze
 
     attr_reader :env,
@@ -45,7 +59,14 @@ module Valpo
       :healthcheck_timeout,
       :deploy_drain_delay,
       :build_timeout,
-      :buildpack_builder
+      :build_log_limit,
+      :buildpack_builder,
+      :image_retention_count,
+      :storage_cleanup_grace_period,
+      :build_cache_retention,
+      :job_retention,
+      :container_log_max_size,
+      :container_log_max_files
 
     def self.load(path: ENV["VALPO_CONFIG"], env: ENV.fetch("VALPO_ENV", DEFAULT_ENV))
       env = env.to_s
@@ -69,7 +90,24 @@ module Valpo
         healthcheck_timeout: integer_value(env_data, "healthcheck_timeout", ENV["VALPO_HEALTHCHECK_TIMEOUT"], DEFAULT_HEALTHCHECK_TIMEOUT),
         deploy_drain_delay: float_value(env_data, "deploy_drain_delay", ENV["VALPO_DEPLOY_DRAIN_DELAY"], DEFAULT_DEPLOY_DRAIN_DELAY),
         build_timeout: integer_value(env_data, "build_timeout", ENV["VALPO_BUILD_TIMEOUT"], DEFAULT_BUILD_TIMEOUT),
-        buildpack_builder: value(env_data, "buildpack_builder", ENV["VALPO_BUILDPACK_BUILDER"], DEFAULT_BUILDPACK_BUILDER)
+        build_log_limit: integer_value(env_data, "build_log_limit", ENV["VALPO_BUILD_LOG_LIMIT"], DEFAULT_BUILD_LOG_LIMIT),
+        buildpack_builder: value(env_data, "buildpack_builder", ENV["VALPO_BUILDPACK_BUILDER"], DEFAULT_BUILDPACK_BUILDER),
+        image_retention_count: integer_value(env_data, "image_retention_count", ENV["VALPO_IMAGE_RETENTION_COUNT"], DEFAULT_IMAGE_RETENTION_COUNT),
+        storage_cleanup_grace_period: integer_value(
+          env_data,
+          "storage_cleanup_grace_period",
+          ENV["VALPO_STORAGE_CLEANUP_GRACE_PERIOD"],
+          DEFAULT_STORAGE_CLEANUP_GRACE_PERIOD
+        ),
+        build_cache_retention: integer_value(env_data, "build_cache_retention", ENV["VALPO_BUILD_CACHE_RETENTION"], DEFAULT_BUILD_CACHE_RETENTION),
+        job_retention: integer_value(env_data, "job_retention", ENV["VALPO_JOB_RETENTION"], DEFAULT_JOB_RETENTION),
+        container_log_max_size: value(env_data, "container_log_max_size", ENV["VALPO_CONTAINER_LOG_MAX_SIZE"], DEFAULT_CONTAINER_LOG_MAX_SIZE),
+        container_log_max_files: integer_value(
+          env_data,
+          "container_log_max_files",
+          ENV["VALPO_CONTAINER_LOG_MAX_FILES"],
+          DEFAULT_CONTAINER_LOG_MAX_FILES
+        )
       )
     end
 
@@ -174,7 +212,31 @@ module Valpo
     end
     private_class_method :float_value
 
-    def initialize(env:, root:, database_path:, api_host:, api_port:, caddy_config_path:, docker_network:, worker_poll_interval:, app_port_start:, app_port_end:, healthcheck_timeout:, deploy_drain_delay:, encryption_key_path: nil, caddy_reload_config_path: nil, build_timeout: DEFAULT_BUILD_TIMEOUT, buildpack_builder: DEFAULT_BUILDPACK_BUILDER)
+    def initialize(
+      env:,
+      root:,
+      database_path:,
+      api_host:,
+      api_port:,
+      caddy_config_path:,
+      docker_network:,
+      worker_poll_interval:,
+      app_port_start:,
+      app_port_end:,
+      healthcheck_timeout:,
+      deploy_drain_delay:,
+      encryption_key_path: nil,
+      caddy_reload_config_path: nil,
+      build_timeout: DEFAULT_BUILD_TIMEOUT,
+      build_log_limit: DEFAULT_BUILD_LOG_LIMIT,
+      buildpack_builder: DEFAULT_BUILDPACK_BUILDER,
+      image_retention_count: DEFAULT_IMAGE_RETENTION_COUNT,
+      storage_cleanup_grace_period: DEFAULT_STORAGE_CLEANUP_GRACE_PERIOD,
+      build_cache_retention: DEFAULT_BUILD_CACHE_RETENTION,
+      job_retention: DEFAULT_JOB_RETENTION,
+      container_log_max_size: DEFAULT_CONTAINER_LOG_MAX_SIZE,
+      container_log_max_files: DEFAULT_CONTAINER_LOG_MAX_FILES
+    )
       @env = required_string(env, "env")
       @root = required_string(root, "root")
       @database_path = expand_path(database_path)
@@ -190,7 +252,14 @@ module Valpo
       @healthcheck_timeout = healthcheck_timeout
       @deploy_drain_delay = deploy_drain_delay
       @build_timeout = build_timeout
+      @build_log_limit = build_log_limit
       @buildpack_builder = required_string(buildpack_builder, "buildpack_builder")
+      @image_retention_count = image_retention_count
+      @storage_cleanup_grace_period = storage_cleanup_grace_period
+      @build_cache_retention = build_cache_retention
+      @job_retention = job_retention
+      @container_log_max_size = required_string(container_log_max_size, "container_log_max_size")
+      @container_log_max_files = container_log_max_files
       validate!
     end
 
@@ -212,6 +281,19 @@ module Valpo
         raise Valpo::ValidationError, "deploy_drain_delay must be greater than or equal to 0"
       end
       raise Valpo::ValidationError, "build_timeout must be greater than 0" unless @build_timeout.positive?
+      raise Valpo::ValidationError, "build_log_limit must be greater than 0" unless @build_log_limit.positive?
+      raise Valpo::ValidationError, "image_retention_count must be greater than 0" unless @image_retention_count.positive?
+      unless @storage_cleanup_grace_period >= 0
+        raise Valpo::ValidationError, "storage_cleanup_grace_period must be greater than or equal to 0"
+      end
+      raise Valpo::ValidationError, "build_cache_retention must be greater than 0" unless @build_cache_retention.positive?
+      raise Valpo::ValidationError, "job_retention must be greater than 0" unless @job_retention.positive?
+      unless @container_log_max_size.match?(/\A[1-9]\d*[kmg]\z/i)
+        raise Valpo::ValidationError, "container_log_max_size must be a positive size ending in k, m, or g"
+      end
+      unless @container_log_max_files.positive?
+        raise Valpo::ValidationError, "container_log_max_files must be greater than 0"
+      end
     end
 
     private

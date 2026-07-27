@@ -37,6 +37,21 @@ class ValpoBuildsCommandRunnerTest < Minitest::Test
     assert_match "timed out", error.message
   end
 
+  def test_caps_persisted_output_but_keeps_the_failure_tail
+    queue = FakeQueue.new
+    result = Valpo::Builds::CommandRunner.new(output_limit: 10).run(
+      [RbConfig.ruby, "-e", "$stdout.write('x' * 100); exit 1"],
+      timeout: 5,
+      queue:,
+      job_id: "job_test"
+    )
+
+    assert_equal 100, result.fetch(:stdout).bytesize
+    persisted = queue.events.select { it.fetch(1) == "stdout" }.sum { it.fetch(2).bytesize }
+    assert_equal 10, persisted
+    assert queue.events.any? { it.fetch(1) == "system" && it.fetch(2).include?("further output was not stored") }
+  end
+
   class FakeQueue
     attr_reader :events
 

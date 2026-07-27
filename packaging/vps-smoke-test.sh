@@ -137,7 +137,7 @@ wait_for_services() {
   local delay="${2:-5}"
 
   for _ in $(seq 1 "$attempts"); do
-    if ssh -o ConnectTimeout=5 "$ssh_target" 'systemctl is-active docker caddy valpo-api valpo-worker' >/dev/null 2>&1; then
+    if ssh -o ConnectTimeout=5 "$ssh_target" 'systemctl is-active docker caddy valpo-api valpo-worker valpo-maintenance.timer' >/dev/null 2>&1; then
       return 0
     fi
     sleep "$delay"
@@ -245,7 +245,7 @@ else
 fi
 
 echo "[smoke] verifying services"
-remote "systemctl is-active docker caddy valpo-api valpo-worker"
+remote "systemctl is-active docker caddy valpo-api valpo-worker valpo-maintenance.timer"
 remote "curl -fsS http://127.0.0.1:7092/health"
 remote "test -f /var/lib/valpo/secrets/master.key; test \"\$(stat -c '%a' /var/lib/valpo/secrets/master.key)\" = 600"
 
@@ -339,7 +339,7 @@ if [[ "$reboot" -eq 1 ]]; then
   wait_for_services
 
   echo "[smoke] verifying post-reboot services and app"
-  remote "systemctl is-active docker caddy valpo-api valpo-worker"
+  remote "systemctl is-active docker caddy valpo-api valpo-worker valpo-maintenance.timer"
   remote "curl -fsS http://127.0.0.1:7092/health"
   wait_for_https "https://${domain}/"
   remote "valpo system repair --timeout 180"

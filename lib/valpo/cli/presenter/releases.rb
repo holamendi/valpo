@@ -10,7 +10,8 @@ module Valpo
           table(value, [
             ["VERSION", -> { it["version"] }],
             ["STATUS", -> { it["status"] }],
-            ["ARTIFACT", -> { it["artifact_ref"] }],
+            ["ARTIFACT", -> { it["artifact_available"] ? "available" : "removed" }],
+            ["REFERENCE", -> { it["artifact_ref"] }],
             ["CREATED", -> { it["created_at"] }]
           ], empty: "No releases found.")
         end

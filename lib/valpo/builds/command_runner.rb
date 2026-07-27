@@ -10,9 +10,14 @@ module Valpo
       TERMINATION_GRACE = 5
       SELECT_INTERVAL = 0.25
 
+      def initialize(output_limit: Valpo::Config::DEFAULT_BUILD_LOG_LIMIT)
+        @output_limit = output_limit
+      end
+
       def run(command, timeout:, queue:, job_id:)
         deadline = monotonic_time + timeout
         tails = {"stdout" => +"", "stderr" => +""}
+        output_state = {bytes: 0, truncated: false}
         status = nil
         timed_out = false
 
@@ -24,7 +29,7 @@ module Valpo
               timed_out = true
               terminate(wait_thread)
             end
-            drain_ready(streams, tails, queue:, job_id:)
+            drain_ready(streams, tails, output_state, queue:, job_id:)
           end
           status = wait_thread.value
         end
@@ -45,24 +50,43 @@ module Valpo
 
       private
 
-      def drain_ready(streams, tails, queue:, job_id:)
+      attr_reader :output_limit
+
+      def drain_ready(streams, tails, output_state, queue:, job_id:)
         ready = IO.select(streams.keys, nil, nil, SELECT_INTERVAL)&.first || []
         ready.each do
           output = it.read_nonblock(CHUNK_SIZE)
-          emit(streams.fetch(it), output, tails, queue:, job_id:)
+          emit(streams.fetch(it), output, tails, output_state, queue:, job_id:)
         rescue EOFError
           streams.delete(it)
           it.close
         end
       end
 
-      def emit(stream, output, tails, queue:, job_id:)
+      def emit(stream, output, tails, output_state, queue:, job_id:)
         message = output.encode("UTF-8", invalid: :replace, undef: :replace)
         tails[stream] << message
         if tails[stream].bytesize > FAILURE_TAIL_SIZE
           tails[stream] = tails[stream].byteslice(-FAILURE_TAIL_SIZE, FAILURE_TAIL_SIZE).scrub
         end
-        queue.event(job_id, stream, message) unless message.empty?
+        persist_output(stream, message, output_state, queue:, job_id:)
+      end
+
+      def persist_output(stream, message, output_state, queue:, job_id:)
+        return if message.empty?
+
+        remaining = output_limit - output_state.fetch(:bytes)
+        if remaining.positive?
+          persisted = message.byteslice(0, remaining).to_s.scrub
+          unless persisted.empty?
+            queue.event(job_id, stream, persisted)
+            output_state[:bytes] += persisted.bytesize
+          end
+        end
+        return unless message.bytesize > remaining && !output_state.fetch(:truncated)
+
+        output_state[:truncated] = true
+        queue.event(job_id, "system", "Build output exceeded #{output_limit} bytes; further output was not stored")
       end
 
       def terminate(wait_thread)

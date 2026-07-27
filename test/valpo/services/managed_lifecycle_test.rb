@@ -18,6 +18,8 @@ class ValpoServicesManagedLifecycleTest < Minitest::Test
     assert_equal({}, request.fetch(:ports))
     assert_equal({managed.volume_name => "/var/lib/postgresql"}, request.fetch(:volumes))
     assert_equal service.project_id, request.fetch(:labels).fetch("valpo.project_id")
+    assert_equal "local", request.fetch(:log_driver)
+    assert_equal({"max-file" => 3, "max-size" => "10m"}, request.fetch(:log_options))
   end
 
   def test_failed_provision_readiness_removes_the_started_container

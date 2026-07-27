@@ -26,7 +26,7 @@ module Valpo
     end
 
     def self.previous_deployable_for_service(service_id, excluding_release_id: nil)
-      dataset = where(service_id:, status: %w[active inactive])
+      dataset = where(service_id:, status: %w[active inactive], artifact_available: true)
       dataset = dataset.exclude(id: excluding_release_id) if excluding_release_id
       dataset.order(Sequel.desc(:version)).first
     end

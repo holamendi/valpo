@@ -33,7 +33,7 @@ module Valpo
         delete_service
       ].freeze
       SUPPORTED_TYPES = (
-        %w[system_check repair_system verify_platform_domain] +
+        %w[system_check repair_system maintain_storage verify_platform_domain] +
         PROJECT_OPERATION_TYPES +
         SERVICE_OPERATION_TYPES
       ).uniq.freeze
@@ -42,6 +42,14 @@ module Valpo
         type = validate_type(type)
         Valpo::Database.connection.transaction(mode: :immediate) do
           create_job(type, payload)
+        end
+      end
+
+      def enqueue_unique(type, payload = {})
+        type = validate_type(type)
+        Valpo::Database.connection.transaction(mode: :immediate) do
+          existing = Valpo::Job.where(type:, status: ACTIVE_PROJECT_JOB_STATUSES).order(:created_at).first
+          existing || create_job(type, payload)
         end
       end
 

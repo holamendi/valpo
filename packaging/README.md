@@ -135,7 +135,35 @@ production:
   buildpack_builder: paketobuildpacks/builder-jammy-base@sha256:7510725172c8b2f1a7bce82b694e2af9599d5e2d97528c140eaeb81c569c21df
 ```
 
-Build output is available through normal job events. Buildpack caches are stable Docker volumes scoped to a build target and are removed when its owning service or project is deleted. A repository `project.toml` is honored, but the configured builder remains explicit. Runtime service secrets are not passed into builds.
+Build output is available through normal job events. Buildpack caches are stable Docker volumes scoped to a build target; they are removed when their owning service or project is deleted or after the configured period without a build. A repository `project.toml` is honored, but the configured builder remains explicit. Runtime service secrets are not passed into builds.
+
+## Storage Maintenance
+
+Valpo schedules ownership-scoped storage maintenance daily through `valpo-maintenance.timer`. Run a preview or an immediate pass with:
+
+```bash
+valpo system maintenance --dry-run
+valpo system maintenance
+```
+
+Maintenance removes orphaned Valpo containers after the grace period, stale `valpo/...` build images beyond the configured release retention, buildpack cache volumes unused beyond their retention, and expired jobs, job events, and GitHub webhook-delivery history. Removed release artifacts remain in deployment history with `artifact_available=false` and are excluded from rollback. Registry images, managed-service data volumes, unrelated Docker resources, and global Dockerfile BuildKit cache are never automatically deleted.
+
+Every newly created app or managed-service container uses Docker's rotating `local` log driver. The defaults retain at most three compressed 10 MB log files per container. Existing containers adopt the limit when a deployment, restart, or repair recreates them.
+
+The production defaults are:
+
+```yaml
+production:
+  build_log_limit: 16777216
+  image_retention_count: 3
+  storage_cleanup_grace_period: 86400
+  build_cache_retention: 2592000
+  job_retention: 2592000
+  container_log_max_size: 10m
+  container_log_max_files: 3
+```
+
+Build command output stored in SQLite is capped per build by `build_log_limit`; the runner still retains its bounded failure tail for error reporting after the persisted stream is truncated. The SQLite database uses incremental auto-vacuum so history cleanup can return freed pages to the filesystem without creating a full duplicate database.
 
 On a Linux development host with Docker and `pack`, run the opt-in build/inspect/run smoke test with:
 

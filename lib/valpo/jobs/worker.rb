@@ -6,6 +6,12 @@ require "socket"
 module Valpo
   module Jobs
     class Worker
+      STORAGE_MAINTENANCE_TRIGGER_TYPES = %w[
+        create_source_service
+        deploy_source
+        update_app_service
+      ].freeze
+
       def initialize(
         queue: Valpo::Jobs::Queue.new,
         handlers: nil,
@@ -69,6 +75,16 @@ module Valpo
         queue.fail(job[:id], e.message, worker_id:)
         err.puts "[valpo-worker] job=#{job[:id]} type=#{job[:type]} failed: #{e.class}: #{e.message}"
         Array(e.backtrace).each { err.puts it }
+      ensure
+        schedule_storage_maintenance(job)
+      end
+
+      def schedule_storage_maintenance(job)
+        return unless STORAGE_MAINTENANCE_TRIGGER_TYPES.include?(job[:type])
+
+        queue.enqueue_unique("maintain_storage")
+      rescue => e
+        err.puts "[valpo-worker] could not schedule storage maintenance: #{e.class}: #{e.message}"
       end
 
       def default_worker_id

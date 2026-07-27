@@ -8,8 +8,14 @@ class ValpoDockerClientTest < Minitest::Test
 
     assert_equal ["docker", "pull", "ghcr.io/example/app:latest"], client.pull_command("ghcr.io/example/app:latest")
     assert_equal ["docker", "image", "inspect", "ghcr.io/example/app:latest"], client.image_inspect_command("ghcr.io/example/app:latest")
+    assert_equal ["docker", "image", "ls", "--all", "--no-trunc", "--format", "{{json .}}"], client.image_list_command
+    assert_equal ["docker", "image", "rm", "valpo/acme/app:v1"], client.image_rm_command("valpo/acme/app:v1")
     assert_equal ["docker", "build", "--file", "/tmp/app/Dockerfile", "--tag", "valpo/acme/app:abc123", "/tmp/app"], client.build_command(dockerfile: "/tmp/app/Dockerfile", tag: "valpo/acme/app:abc123", context: "/tmp/app")
     assert_equal ["docker", "container", "inspect", "valpo-hello"], client.container_inspect_command("valpo-hello")
+    assert_equal(
+      ["docker", "container", "ls", "--all", "--filter", "label=valpo.owned=true", "--no-trunc", "--format", "{{json .}}"],
+      client.container_list_command(all: true, filters: ["label=valpo.owned=true"])
+    )
     assert_equal ["docker", "start", "valpo-hello"], client.start_command("valpo-hello")
     assert_equal ["docker", "update", "--restart", "unless-stopped", "valpo-hello"], client.update_restart_policy_command("valpo-hello", "unless-stopped")
     assert_equal(
@@ -22,6 +28,10 @@ class ValpoDockerClientTest < Minitest::Test
       client.volume_create_command("valpo-data", labels: {"valpo.owned" => "true"})
     )
     assert_equal ["docker", "volume", "rm", "--force", "valpo-data"], client.volume_rm_command("valpo-data", force: true)
+    assert_equal(
+      ["docker", "volume", "ls", "--filter", "label=valpo.owned=true", "--format", "{{.Name}}"],
+      client.volume_list_command(filters: ["label=valpo.owned=true"])
+    )
     assert_equal ["docker", "exec", "valpo-db", "pg_isready"], client.exec_command("valpo-db", "pg_isready")
   end
 
@@ -37,6 +47,8 @@ class ValpoDockerClientTest < Minitest::Test
       ports: {8080 => 3000},
       volumes: {"valpo-data" => "/data"},
       restart_policy: "unless-stopped",
+      log_driver: "local",
+      log_options: {"max-size" => "10m", "max-file" => 3},
       entrypoint: "/cnb/lifecycle/launcher",
       command_args: ["bin/server"]
     )
@@ -45,6 +57,8 @@ class ValpoDockerClientTest < Minitest::Test
       "docker", "run", "--detach", "--name", "valpo-hello", "--network", "valpo",
       "--restart", "unless-stopped",
       "--entrypoint", "/cnb/lifecycle/launcher",
+      "--log-driver", "local",
+      "--log-opt", "max-file=3", "--log-opt", "max-size=10m",
       "--label", "valpo.project_id=p1", "--label", "valpo.release_id=r1",
       "--env-file", "/tmp/valpo-env", "--publish", "8080:3000",
       "--volume", "valpo-data:/data",

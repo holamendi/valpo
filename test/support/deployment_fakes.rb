@@ -24,7 +24,21 @@ module ValpoTestSupport
       [:inspect, image]
     end
 
-    def run_command(name:, image:, network:, labels:, ports:, env: {}, volumes: {}, restart_policy: nil, entrypoint: nil, command_args: [], **)
+    def run_command(
+      name:,
+      image:,
+      network:,
+      labels:,
+      ports:,
+      env: {},
+      volumes: {},
+      restart_policy: nil,
+      entrypoint: nil,
+      command_args: [],
+      log_driver: nil,
+      log_options: {},
+      **
+    )
       run_requests << {
         name:,
         image:,
@@ -34,6 +48,8 @@ module ValpoTestSupport
         ports:,
         volumes:,
         restart_policy:,
+        log_driver:,
+        log_options:,
         entrypoint:,
         command_args:
       }

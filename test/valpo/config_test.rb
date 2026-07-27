@@ -92,7 +92,14 @@ class ValpoConfigTest < Minitest::Test
       "healthcheck_timeout" => 31,
       "deploy_drain_delay" => 1.5,
       "build_timeout" => 901,
-      "buildpack_builder" => "example/builder@sha256:abc"
+      "build_log_limit" => 1_048_576,
+      "buildpack_builder" => "example/builder@sha256:abc",
+      "image_retention_count" => 4,
+      "storage_cleanup_grace_period" => 3_600,
+      "build_cache_retention" => 86_400,
+      "job_retention" => 172_800,
+      "container_log_max_size" => "20m",
+      "container_log_max_files" => 5
     }
     file = write_config(YAML.dump(values))
     config = Valpo::Config.load(path: file.path, env: "test")
@@ -172,6 +179,13 @@ class ValpoConfigTest < Minitest::Test
       healthcheck_timeout: 0,
       deploy_drain_delay: -1,
       build_timeout: 0,
+      build_log_limit: 0,
+      image_retention_count: 0,
+      storage_cleanup_grace_period: -1,
+      build_cache_retention: 0,
+      job_retention: 0,
+      container_log_max_size: "large",
+      container_log_max_files: 0,
       docker_network: ""
     }.each do |key, value|
       assert_raises(Valpo::ValidationError, key.to_s) { Valpo::Config.new(**CONFIG_VALUES.merge(key => value)) }

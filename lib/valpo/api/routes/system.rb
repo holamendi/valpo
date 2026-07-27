@@ -39,6 +39,16 @@ module Valpo
             V1::Jobs.render(jobs.enqueue("repair_system"))
           end
         end
+
+        r.on "maintenance" do
+          # POST /v1/system/maintenance — enqueue ownership-scoped storage maintenance.
+          r.post true do
+            validate_query
+            payload = validate_body(V1::System::MaintainStorageContract)
+            response.status = 202
+            V1::Jobs.render(jobs.enqueue_unique("maintain_storage", dry_run: payload.fetch(:dry_run, false)))
+          end
+        end
         not_found("Route not found")
       end
     end

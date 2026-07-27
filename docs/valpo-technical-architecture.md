@@ -74,6 +74,7 @@ There is no canceled state, cancellation operation, lease, or automatic replay. 
 - `Deployments::Lifecycle` owns deploy, rollback, stop, restart, reconfigure, delete, and app-log behavior.
 - `Deployments::Activator` switches routes, activates releases, and retires prior containers.
 - `Deployments::Repairer` reconciles active and ready app containers.
+- `Storage::Maintainer` serializes ownership-scoped image, build-cache, orphan-container, and history retention through the normal worker queue.
 - `Domains::Orchestrator` verifies platform/custom domains and activates ready releases.
 - `Caddy::Reconciler` projects verified domain/release state into generated Caddy configuration.
 - `System::Repairer` coordinates managed-service repair, app repair, and Caddy reconciliation.

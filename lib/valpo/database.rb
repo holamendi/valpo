@@ -20,6 +20,7 @@ module Valpo
           foreign_keys: true,
           synchronous: :normal,
           connect_sqls: [
+            "PRAGMA auto_vacuum = INCREMENTAL",
             "PRAGMA journal_mode = WAL",
             "PRAGMA busy_timeout = #{BUSY_TIMEOUT_MS}",
             "PRAGMA wal_autocheckpoint = #{WAL_AUTOCHECKPOINT}"

@@ -71,6 +71,11 @@ module Valpo
           env: environment,
           ports: host_port ? {"127.0.0.1:#{host_port}" => release.internal_port} : {},
           restart_policy: "unless-stopped",
+          log_driver: "local",
+          log_options: {
+            "max-file" => config.container_log_max_files,
+            "max-size" => config.container_log_max_size
+          },
           entrypoint:,
           command_args: command
         )

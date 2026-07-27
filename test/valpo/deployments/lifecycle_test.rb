@@ -36,6 +36,8 @@ class ValpoDeploymentsLifecycleTest < Minitest::Test
     assert_equal expected_url, docker.run_requests.first.fetch(:env).fetch("DATABASE_URL")
     assert_equal "3000", docker.run_requests.first.fetch(:env).fetch("PORT")
     assert_equal app.id, docker.run_requests.first.fetch(:labels).fetch("valpo.service_id")
+    assert_equal "local", docker.run_requests.first.fetch(:log_driver)
+    assert_equal({"max-file" => 3, "max-size" => "10m"}, docker.run_requests.first.fetch(:log_options))
   end
 
   def test_deploy_refuses_an_existing_network_without_the_ownership_label

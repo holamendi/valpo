@@ -17,6 +17,7 @@ class ValpoJobsHandlerRegistryTest < Minitest::Test
     expected = {
       "system_check" => Valpo::Jobs::Handlers::SystemCheck,
       "repair_system" => Valpo::Jobs::Handlers::RepairSystem,
+      "maintain_storage" => Valpo::Jobs::Handlers::MaintainStorage,
       "deploy_registry_image" => Valpo::Jobs::Handlers::DeployRegistryImage,
       "deploy_source" => Valpo::Jobs::Handlers::DeploySource,
       "create_source_service" => Valpo::Jobs::Handlers::CreateSource,

@@ -7,6 +7,7 @@ class ValpoDatabaseTest < Minitest::Test
 
   def test_sqlite_pragmas_are_set_for_valpo_runtime
     assert_equal "wal", pragma(:journal_mode)
+    assert_equal 2, pragma(:auto_vacuum)
     assert_equal 1, pragma(:foreign_keys)
     assert_equal 1, pragma(:synchronous)
     assert_equal 5000, pragma(:busy_timeout)

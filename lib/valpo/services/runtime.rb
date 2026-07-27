@@ -45,6 +45,11 @@ module Valpo
           ports: {},
           volumes: {managed.volume_name => Registry.volume_path(service)},
           restart_policy: "unless-stopped",
+          log_driver: "local",
+          log_options: {
+            "max-file" => config.container_log_max_files,
+            "max-size" => config.container_log_max_size
+          },
           command_args: Registry.command(service)
         )
         emit_command_output(result)

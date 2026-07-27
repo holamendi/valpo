@@ -16,4 +16,11 @@ production:
   healthcheck_timeout: 30
   deploy_drain_delay: 2
   build_timeout: 1800
+  build_log_limit: 16777216
   buildpack_builder: paketobuildpacks/builder-jammy-base@sha256:7510725172c8b2f1a7bce82b694e2af9599d5e2d97528c140eaeb81c569c21df
+  image_retention_count: 3
+  storage_cleanup_grace_period: 86400
+  build_cache_retention: 2592000
+  job_retention: 2592000
+  container_log_max_size: 10m
+  container_log_max_files: 3

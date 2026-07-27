@@ -39,8 +39,8 @@ done
 
 log "Stopping Valpo services"
 if command -v systemctl >/dev/null 2>&1; then
-  systemctl disable --now valpo-api.service valpo-worker.service 2>/dev/null || true
-  systemctl stop valpo-migrate.service 2>/dev/null || true
+  systemctl disable --now valpo-api.service valpo-worker.service valpo-maintenance.timer 2>/dev/null || true
+  systemctl stop valpo-migrate.service valpo-maintenance.service 2>/dev/null || true
 fi
 
 if command -v docker >/dev/null 2>&1; then
@@ -81,6 +81,8 @@ rm -f \
   /etc/systemd/system/valpo-api.service \
   /etc/systemd/system/valpo-worker.service \
   /etc/systemd/system/valpo-migrate.service \
+  /etc/systemd/system/valpo-maintenance.service \
+  /etc/systemd/system/valpo-maintenance.timer \
   /usr/local/bin/valpo
 rm -rf /etc/valpo /opt/valpo /var/lib/valpo /var/log/valpo
 

@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Valpo Storage Maintenance Daily
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+RandomizedDelaySec=1h
+Unit=valpo-maintenance.service
+
+[Install]
+WantedBy=timers.target

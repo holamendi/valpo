@@ -115,6 +115,7 @@ Sequel.migration do
       String :source_ref
       String :artifact_ref
       String :image_digest
+      TrueClass :artifact_available, null: false, default: true
       String :build_strategy
       String :build_metadata_json, text: true, null: false, default: "{}"
       String :status, null: false, default: "pending"

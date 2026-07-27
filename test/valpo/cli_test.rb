@@ -50,6 +50,20 @@ class ValpoCLITest < Minitest::Test
     assert_empty stderr
   end
 
+  def test_system_maintenance_sends_dry_run_and_can_return_without_waiting
+    client = FakeAPIClient.new("id" => job_id, "status" => "queued")
+
+    status, stdout, stderr = run_cli(client, %w[system maintenance --dry-run --no-wait --json])
+
+    assert_equal 0, status
+    assert_equal job_id, JSON.parse(stdout).fetch("id")
+    assert_empty stderr
+    request = client.requests.first
+    assert_equal :post, request.fetch(:method)
+    assert_equal "/v1/system/maintenance", request.fetch(:path)
+    assert_equal({"dry_run" => true}, request.fetch(:payload))
+  end
+
   def test_create_service_documents_and_rejects_incompatible_options_locally
     client = FakeAPIClient.new([])
     status, _stdout, stderr = run_cli(client, %w[service create database --project acme --type postgres --port 3000])

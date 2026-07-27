@@ -117,6 +117,7 @@ class ValpoJobsWorkerTest < Minitest::Test
 
     assert_equal [service.id, "release"], fake.source
     assert_equal "succeeded", queue.find(job.id).status
+    assert_equal 1, Valpo::Job.where(type: "maintain_storage", status: "queued").count
   end
 
   def test_manifest_handler_passes_normalized_manifest
