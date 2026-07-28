@@ -15,9 +15,10 @@ Environment=VALPO_CONFIG=/etc/valpo/valpo.yml
 Environment=HOME=/var/lib/valpo
 Environment=MISE_RUBY_COMPILE=false
 Environment=PATH=/var/lib/valpo/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=RUBYLIB=/var/lib/valpo/bundle
 StateDirectory=valpo
 LogsDirectory=valpo
-ExecStart=/var/lib/valpo/.local/bin/mise x ruby@4.0.5 -- bundle exec exe/valpo-worker --config /etc/valpo/valpo.yml
+ExecStart=/var/lib/valpo/.local/bin/mise x ruby@4.0.5 -- ruby exe/valpo-worker --config /etc/valpo/valpo.yml
 Restart=on-failure
 RestartSec=5
 

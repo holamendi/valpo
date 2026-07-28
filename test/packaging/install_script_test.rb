@@ -261,14 +261,51 @@ class ValpoPackagingInstallScriptTest < Minitest::Test
     assert_includes config, Valpo::Config::DEFAULT_BUILDPACK_BUILDER
   end
 
-  def test_installer_uses_locked_bundler_without_rewriting_source
+  def test_installer_uses_locked_bundler_and_generates_standalone_runtime_setup
     script = File.read(INSTALL_SCRIPT)
 
     assert_includes script, "locked_bundler_version()"
     assert_includes script, "Gemfile.lock must include BUNDLED WITH"
     assert_includes script, "gem install bundler -v '${bundler_version}'"
     assert_includes script, "bundle _${bundler_version}_ config set --global frozen true"
-    assert_includes script, "bundle _${bundler_version}_ install --jobs 4 --retry 3"
+    assert_includes script, "bundle _${bundler_version}_ install --standalone=default --jobs 4 --retry 3"
+    assert_includes script, "bundle _${bundler_version}_ install --local --standalone=default --jobs 4"
+    assert_includes script, '[[ -r "${STATE_DIR}/bundle/bundler/setup.rb" ]]'
+  end
+
+  def test_skip_dependencies_refreshes_standalone_setup_from_local_gems
+    Dir.mktmpdir("valpo-standalone-setup") do
+      prefix = File.join(it, "prefix")
+      state = File.join(it, "state")
+      FileUtils.mkdir_p(prefix)
+      FileUtils.cp(File.expand_path("../../Gemfile.lock", __dir__), prefix)
+
+      command = <<~BASH
+        install_script="$1"
+        prefix="$2"
+        state="$3"
+        set --
+        source "$install_script"
+        PREFIX="$prefix"
+        STATE_DIR="$state"
+        SKIP_DEPS=1
+        MISE_BIN=/mise
+        run_as_valpo_shell() {
+          printf '%s\n' "$1"
+          mkdir -p "$STATE_DIR/bundle/bundler"
+          touch "$STATE_DIR/bundle/bundler/setup.rb"
+        }
+        install_gems
+      BASH
+      stdout, stderr, status = Open3.capture3(
+        "bash", "-c", command, "standalone-setup", INSTALL_SCRIPT, prefix, state
+      )
+
+      assert status.success?, stderr
+      assert_includes stdout, "Refreshing standalone Ruby setup"
+      assert_includes stdout, "install --local --standalone=default --jobs 4"
+      refute_includes stdout, "gem install"
+    end
   end
 
   def test_installer_installs_valpo_cli_wrapper_on_path
@@ -315,7 +352,18 @@ class ValpoPackagingInstallScriptTest < Minitest::Test
 
       assert_includes service, "Environment=HOME=/var/lib/valpo"
       assert_includes service, "Environment=MISE_RUBY_COMPILE=false"
-      assert_includes service, "/var/lib/valpo/.local/bin/mise x ruby@4.0.5 -- bundle exec"
+      assert_includes service, "/var/lib/valpo/.local/bin/mise x ruby@4.0.5 --"
+    end
+    [API_SERVICE, WORKER_SERVICE].each do
+      service = File.read(it)
+
+      assert_includes service, "Environment=RUBYLIB=/var/lib/valpo/bundle"
+      assert_includes service, "-- ruby exe/valpo-"
+      refute_includes service, "bundle exec"
+      refute_includes service, "--disable-gems"
+    end
+    [MIGRATE_SERVICE, MAINTENANCE_SERVICE].each do
+      assert_includes File.read(it), "-- bundle exec"
     end
     timer = File.read(MAINTENANCE_TIMER)
     assert_includes timer, "OnCalendar=daily"
@@ -337,6 +385,8 @@ class ValpoPackagingInstallScriptTest < Minitest::Test
 
     assert_includes script, "valpo auth status github --json"
     assert_includes script, "provider_credentials"
+    assert_includes script, "runuser -u valpo -- env HOME=/var/lib/valpo USER=valpo"
+    refute_includes script, "/var/lib/valpo/.local/bin/mise x ruby@4.0.5"
     refute_includes script, "auth logout"
     assert_includes script, "--source 'github:${repository}' --deploy"
   end

@@ -93,6 +93,11 @@ VALPO_ENV=production VALPO_CONFIG=/path/to/valpo.yml \
   mise exec -- bundle exec exe/valpo-api
 ```
 
+The installer also generates a frozen standalone Ruby load path under
+`/var/lib/valpo/bundle`. The long-running API and worker use that setup directly,
+so they do not retain the full Bundler runtime. Short-lived CLI, migration, and
+maintenance commands continue to use the locked Bundler environment.
+
 Without `VALPO_ENV=production`, direct development commands select the `development` section/defaults rather than the `production` mapping.
 
 ## GitHub Source Authentication
@@ -231,10 +236,11 @@ It disables Valpo services, removes containers, volumes, and networks carrying `
 
 ## VPS Smoke Test
 
-Run the repeatable VPS smoke test from a local checkout against a dedicated test host:
+The dedicated Valpo test VPS is `root@162.55.43.108`, and its app-domain
+suffix is `apps.valpo.dev`. Run the repeatable smoke test from a local checkout:
 
 ```bash
-packaging/vps-smoke-test.sh root@SERVER_IP apps.example.com --reboot
+packaging/vps-smoke-test.sh root@162.55.43.108 apps.valpo.dev --reboot
 ```
 
 By default the smoke test copies the current checkout to `/tmp/valpo-src`, runs the full installer, verifies the private host key, sets the host-wide app domain, deploys `nginx:alpine`, exercises encrypted set/list/reveal/unset service environment behavior, verifies HTTPS, releases, logs, optional reboot recovery, and then deletes the project. It also checks that a custom plaintext value does not occur in the SQLite files. It does not restore a previous app domain, so do not run it against a host serving unrelated projects. Use `--skip-deps` only when intentionally testing a schema-compatible development update on a host whose dependencies are already installed.
@@ -242,13 +248,13 @@ By default the smoke test copies the current checkout to `/tmp/valpo-src`, runs 
 To prove installation from a clean Valpo state, use the guarded destructive wrapper. It runs the uninstaller, verifies the absence of label-owned runtime resources and host state, then runs the full smoke test from the local checkout. Docker images, unlabeled Docker resources, Docker, Caddy, and other shared host packages remain installed.
 
 ```bash
-packaging/vps-clean-install-smoke-test.sh root@SERVER_IP apps.example.com --confirm-destroy-valpo
+packaging/vps-clean-install-smoke-test.sh root@162.55.43.108 apps.valpo.dev --confirm-destroy-valpo
 ```
 
 Use the source smoke test on a host whose GitHub App or fallback PAT is already configured:
 
 ```bash
-packaging/vps-source-smoke-test.sh root@SERVER_IP apps.example.com
+packaging/vps-source-smoke-test.sh root@162.55.43.108 apps.valpo.dev
 ```
 
 It installs the current checkout, creates a unique project without a manifest, and deploys `holamendi/smol-roda` while omitting ref, build strategy, Dockerfile, context, and port. It verifies automatic Dockerfile selection, the resolved commit, port `3000`, injected `PORT`, HTTPS, and release metadata, then removes only the generated project/runtime resources. The script checks the encrypted GitHub credential record and `auth status github` before and after; it never logs out or deletes the credential. Use `--repository OWNER/REPO` for another repository or `--skip-install` to test the already-installed version.

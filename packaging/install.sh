@@ -336,15 +336,22 @@ locked_bundler_version() {
 }
 
 install_gems() {
-  [[ "$SKIP_DEPS" -eq 0 ]] || return 0
   bundler_version="$(locked_bundler_version)"
   [[ -n "$bundler_version" ]] || fail "Gemfile.lock must include BUNDLED WITH"
 
-  log "Installing Ruby gems"
-  run_as_valpo_shell "cd '${PREFIX}' && '${MISE_BIN}' x ruby@${RUBY_VERSION} -- gem install bundler -v '${bundler_version}'"
-  run_as_valpo_shell "cd '${PREFIX}' && '${MISE_BIN}' x ruby@${RUBY_VERSION} -- bundle _${bundler_version}_ config set --global path '${STATE_DIR}/bundle'"
-  run_as_valpo_shell "cd '${PREFIX}' && '${MISE_BIN}' x ruby@${RUBY_VERSION} -- bundle _${bundler_version}_ config set --global frozen true"
-  run_as_valpo_shell "cd '${PREFIX}' && '${MISE_BIN}' x ruby@${RUBY_VERSION} -- bundle _${bundler_version}_ install --jobs 4 --retry 3"
+  if [[ "$SKIP_DEPS" -eq 0 ]]; then
+    log "Installing Ruby gems"
+    run_as_valpo_shell "cd '${PREFIX}' && '${MISE_BIN}' x ruby@${RUBY_VERSION} -- gem install bundler -v '${bundler_version}'"
+    run_as_valpo_shell "cd '${PREFIX}' && '${MISE_BIN}' x ruby@${RUBY_VERSION} -- bundle _${bundler_version}_ config set --global path '${STATE_DIR}/bundle'"
+    run_as_valpo_shell "cd '${PREFIX}' && '${MISE_BIN}' x ruby@${RUBY_VERSION} -- bundle _${bundler_version}_ config set --global frozen true"
+    run_as_valpo_shell "cd '${PREFIX}' && '${MISE_BIN}' x ruby@${RUBY_VERSION} -- bundle _${bundler_version}_ install --standalone=default --jobs 4 --retry 3"
+  else
+    log "Refreshing standalone Ruby setup"
+    run_as_valpo_shell "cd '${PREFIX}' && '${MISE_BIN}' x ruby@${RUBY_VERSION} -- bundle _${bundler_version}_ install --local --standalone=default --jobs 4"
+  fi
+
+  [[ -r "${STATE_DIR}/bundle/bundler/setup.rb" ]] ||
+    fail "Bundler did not create ${STATE_DIR}/bundle/bundler/setup.rb"
 }
 
 install_cli_wrapper() {

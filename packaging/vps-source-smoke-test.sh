@@ -129,7 +129,7 @@ assert_github_auth() {
 }
 
 credential_digest() {
-  remote "cd /opt/valpo && VALPO_ENV=production /var/lib/valpo/.local/bin/mise x ruby@4.0.5 -- bundle exec ruby -e 'require \"digest\"; require \"sqlite3\"; row = SQLite3::Database.new(\"/var/lib/valpo/valpo.db\").get_first_row(\"SELECT provider, kind, encrypted_payload, public_metadata_json FROM provider_credentials WHERE provider = ? ORDER BY kind LIMIT 1\", \"github\"); abort \"GitHub credential is missing\" unless row; puts Digest::SHA256.hexdigest(row.join(\"\\0\"))'"
+  remote "cd /opt/valpo && runuser -u valpo -- env HOME=/var/lib/valpo USER=valpo PATH=/var/lib/valpo/.local/share/mise/installs/ruby/4.0.5/bin:/usr/bin:/bin VALPO_ENV=production bundle exec ruby -e 'require \"digest\"; require \"sqlite3\"; row = SQLite3::Database.new(\"/var/lib/valpo/valpo.db\").get_first_row(\"SELECT provider, kind, encrypted_payload, public_metadata_json FROM provider_credentials WHERE provider = ? ORDER BY kind LIMIT 1\", \"github\"); abort \"GitHub credential is missing\" unless row; puts Digest::SHA256.hexdigest(row.join(\"\\0\"))'"
 }
 
 cleanup() {
