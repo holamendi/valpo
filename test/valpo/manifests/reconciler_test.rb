@@ -105,7 +105,10 @@ class ValpoManifestReconcilerTest < Minitest::Test
     managed = Valpo::Services::ManagedLifecycle.new(
       config: VALPO_TEST_CONFIG,
       docker: ValpoTestSupport::FakeDocker.new,
-      dependency_manager: dependencies
+      dependency_manager: dependencies,
+      redis_host_requirements: Valpo::Services::RedisHostRequirements.new(
+        reader: ->(_path) { "1" }
+      )
     )
     Valpo::Manifests::Reconciler.new(
       managed_lifecycle: managed,

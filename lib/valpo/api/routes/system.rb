@@ -49,6 +49,29 @@ module Valpo
             V1::Jobs.render(jobs.enqueue_unique("maintain_storage", dry_run: payload.fetch(:dry_run, false)))
           end
         end
+
+        r.on "secrets" do
+          r.on "verify" do
+            # POST /v1/system/secrets/verify — enqueue encrypted-record recovery verification.
+            r.post true do
+              validate_query
+              require_admin_credential!
+              response.status = 202
+              V1::Jobs.render(jobs.enqueue_unique("verify_secrets"))
+            end
+          end
+
+          r.on "rotate" do
+            # POST /v1/system/secrets/rotate — enqueue host-key rotation and bulk re-encryption.
+            r.post true do
+              validate_query
+              require_admin_credential!
+              response.status = 202
+              V1::Jobs.render(jobs.enqueue_unique("rotate_secrets"))
+            end
+          end
+          not_found("Route not found")
+        end
         not_found("Route not found")
       end
     end

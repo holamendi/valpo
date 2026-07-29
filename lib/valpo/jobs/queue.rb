@@ -33,7 +33,7 @@ module Valpo
         delete_service
       ].freeze
       SUPPORTED_TYPES = (
-        %w[system_check repair_system maintain_storage verify_platform_domain] +
+        %w[system_check repair_system maintain_storage verify_secrets rotate_secrets verify_platform_domain] +
         PROJECT_OPERATION_TYPES +
         SERVICE_OPERATION_TYPES
       ).uniq.freeze

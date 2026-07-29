@@ -76,6 +76,11 @@ if [[ -f /etc/caddy/Caddyfile ]]; then
   fi
 fi
 
+if [[ -e /etc/sysctl.d/99-valpo-redis.conf ]]; then
+  log "Removing Valpo Redis sysctl configuration"
+  rm -f /etc/sysctl.d/99-valpo-redis.conf
+fi
+
 log "Removing Valpo host files and account"
 rm -f \
   /etc/systemd/system/valpo-api.service \

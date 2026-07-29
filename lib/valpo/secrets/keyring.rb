@@ -36,6 +36,7 @@ module Valpo
         values["active"] = version
         write(values)
         @data = values
+        @data_signature = file_signature
         version
       end
 
@@ -44,7 +45,12 @@ module Valpo
       attr_reader :path
 
       def data
-        @data ||= load_or_create
+        signature = file_signature if File.exist?(path)
+        return @data if @data && signature == @data_signature
+
+        @data = load_or_create
+        @data_signature = file_signature
+        @data
       end
 
       def load_or_create
@@ -110,6 +116,11 @@ module Valpo
         return if (mode & 0o077).zero?
 
         raise Valpo::ValidationError, "Encryption key file permissions must not allow group or other access"
+      end
+
+      def file_signature
+        stat = File.stat(path)
+        [stat.ino, stat.size, stat.mtime.to_i, stat.mtime.nsec, stat.mode & 0o777]
       end
 
       def fsync_directory

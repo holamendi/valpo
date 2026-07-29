@@ -11,6 +11,7 @@ class ValpoPackagingInstallScriptTest < Minitest::Test
   UNINSTALL_SCRIPT = File.expand_path("../../packaging/uninstall.sh", __dir__)
   CLEAN_INSTALL_SMOKE_SCRIPT = File.expand_path("../../packaging/vps-clean-install-smoke-test.sh", __dir__)
   VPS_SMOKE_SCRIPT = File.expand_path("../../packaging/vps-smoke-test.sh", __dir__)
+  VPS_SMOKE_CONTROLLER = File.expand_path("../../packaging/vps_smoke_test.rb", __dir__)
   SOURCE_SMOKE_SCRIPT = File.expand_path("../../packaging/vps-source-smoke-test.sh", __dir__)
   API_SERVICE = File.expand_path("../../packaging/systemd/valpo-api.service", __dir__)
   WORKER_SERVICE = File.expand_path("../../packaging/systemd/valpo-worker.service", __dir__)
@@ -92,6 +93,7 @@ class ValpoPackagingInstallScriptTest < Minitest::Test
     assert status.success?, stderr
     assert_includes stdout, "Usage: packaging/vps-smoke-test.sh"
     assert_includes stdout, "--full-install"
+    assert_includes File.read(VPS_SMOKE_SCRIPT), "vps_smoke_test.rb"
   end
 
   def test_installer_has_no_public_layout_or_lifecycle_flags
@@ -113,6 +115,59 @@ class ValpoPackagingInstallScriptTest < Minitest::Test
     refute_includes script, "VALPO_RUBY_VERSION"
     refute_match(/VALPO_USER=.*:-/, script)
     refute_match(/VALPO_GROUP=.*:-/, script)
+  end
+
+  def test_installer_owns_the_redis_sysctl_prerequisite
+    installer = File.read(INSTALL_SCRIPT)
+    uninstaller = File.read(UNINSTALL_SCRIPT)
+    smoke = File.read(VPS_SMOKE_CONTROLLER)
+    main = installer.match(/main\(\) \{\n(?<body>.*?)\n\}/m).named_captures.fetch("body")
+
+    assert_includes installer, 'REDIS_SYSCTL_PATH="/etc/sysctl.d/99-valpo-redis.conf"'
+    assert_includes installer, "printf 'vm.overcommit_memory = 1\\n'"
+    assert_includes installer, "sysctl -w vm.overcommit_memory=1"
+    assert_includes installer, '"$(sysctl -n vm.overcommit_memory)" == "1"'
+    assert_operator main.index("install_packages"), :<, main.index("configure_redis_host")
+    assert_operator main.index("configure_redis_host"), :<, main.index("start_services")
+    assert_includes uninstaller, "rm -f /etc/sysctl.d/99-valpo-redis.conf"
+    refute_includes uninstaller, "sysctl -w vm.overcommit_memory=0"
+    assert_includes smoke, 'test "$(sysctl -n vm.overcommit_memory)" = 1'
+  end
+
+  def test_redis_sysctl_configuration_is_idempotent
+    Dir.mktmpdir("valpo-redis-sysctl") do
+      sysctl_path = File.join(it, "99-valpo-redis.conf")
+      live_value = File.join(it, "overcommit-memory")
+      File.write(live_value, "0\n")
+      command = <<~BASH
+        install_script="$1"
+        sysctl_path="$2"
+        live_value="$3"
+        set --
+        source "$install_script"
+        REDIS_SYSCTL_PATH="$sysctl_path"
+        install() {
+          cp "${@: -2:1}" "${@: -1}"
+          chmod 0644 "${@: -1}"
+        }
+        sysctl() {
+          case "$1" in
+            -w) printf '1\n' > "$live_value" ;;
+            -n) cat "$live_value" ;;
+          esac
+        }
+        configure_redis_host
+        configure_redis_host
+      BASH
+      _stdout, stderr, status = Open3.capture3(
+        "bash", "-c", command, "redis-sysctl", INSTALL_SCRIPT, sysctl_path, live_value
+      )
+
+      assert status.success?, stderr
+      assert_equal "vm.overcommit_memory = 1\n", File.read(sysctl_path)
+      assert_equal "1\n", File.read(live_value)
+      assert_equal 0o644, File.stat(sysctl_path).mode & 0o777
+    end
   end
 
   def test_installer_requires_ubuntu_26_04
@@ -392,17 +447,27 @@ class ValpoPackagingInstallScriptTest < Minitest::Test
   end
 
   def test_primary_smoke_test_never_reveals_managed_secrets
-    script = File.read(File.expand_path("../../packaging/vps-smoke-test.sh", __dir__))
+    script = File.read(VPS_SMOKE_CONTROLLER)
 
-    assert_includes script, "environment_output=\"$(remote \"valpo service env list '${web_service}' --project '${project}'\")\""
+    assert_includes script, "environment_output = remote.capture("
     assert_includes script, "valpo service env set"
     assert_includes script, "Custom environment plaintext leaked into SQLite"
     assert_includes script, "valpo service env unset"
     assert_includes script, "DATABASE_URL PGPASSWORD REDIS_URL REDIS_PASSWORD"
-    assert_includes script, "grep -F '********'"
-    assert_includes script, "postgres(ql)?://|redis://"
-    assert_includes script, "revealed_output=\\$(valpo service env list '${web_service}' --project '${project}' --reveal)"
-    assert_includes script, "grep -F -- \\\"\\$secret_value\\\""
+    assert_includes script, 'line&.include?("********")'
+    assert_includes script, "/postgres(?:ql)?:\\/\\/|redis:\\/\\//"
+    assert_includes script, 'revealed_output="$(valpo service env list web'
+    assert_includes script, 'grep -F -- "$secret_value"'
+  end
+
+  def test_primary_smoke_test_keeps_temporary_api_token_out_of_process_arguments
+    script = File.read(VPS_SMOKE_CONTROLLER)
+
+    assert_includes script, 'lines << "export VALPO_API_TOKEN='
+    assert_includes script, 'argv.concat([target, "bash -s"])'
+    assert_includes script, "--scope=admin"
+    assert_includes script, "ensure"
+    assert_includes script, "revoke_api_credential"
   end
 
   def test_pre_commit_hook_is_check_only

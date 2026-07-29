@@ -168,7 +168,7 @@ module Valpo
           The API URL defaults to `#{DEFAULT_API_URL}` and can be set with `--api-url` or `VALPO_API_URL`. API bearer credentials are issued by the server, stored as one-way digests, and supplied to the CLI through `VALPO_API_TOKEN`:
 
           ```bash
-          valpo auth token create operator --scope admin
+          valpo auth token create operator --scope=admin
           export VALPO_API_TOKEN=valpo_...
           valpo auth token list
           ```
@@ -183,6 +183,24 @@ module Valpo
           ```
 
           `valpo version` is fully offline. `valpo system status` calls `/health` and reports whether the client and server versions match.
+
+          ## Credential Recovery And Rotation
+
+          Verify that the configured host keyring can decrypt every encrypted database record before trusting a backup or changing keys:
+
+          ```bash
+          valpo system secrets verify
+          ```
+
+          Back up the SQLite database and host keyring as one recovery set before rotation. Then rotate the active host key and re-encrypt every managed credential, custom environment value, and provider credential:
+
+          ```bash
+          valpo system secrets rotate
+          ```
+
+          Both commands require an admin API credential and run through the job worker. Rotation verifies all records before mutation, adds a new key version, re-encrypts the records in one SQLite transaction, and verifies them again. Old key versions remain readable; Valpo does not prune them automatically. A restored database and keyring should be tested together on a separate host with `system secrets verify` before being treated as recoverable.
+
+          Roll API credentials without an authentication gap: create and save a replacement token, use it from a second shell to run `system status` and `auth token list`, then revoke the old credential by ID with `auth token revoke CREDENTIAL_ID`. Never revoke the old admin credential until the replacement has successfully authenticated.
 
           ## Storage Maintenance
 

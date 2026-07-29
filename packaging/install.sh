@@ -16,6 +16,7 @@ STATE_DIR="/var/lib/valpo"
 LOG_DIR="/var/log/valpo"
 CLI_PATH="/usr/local/bin/valpo"
 PACK_PATH="${STATE_DIR}/.local/bin/pack"
+REDIS_SYSCTL_PATH="/etc/sysctl.d/99-valpo-redis.conf"
 SKIP_DEPS="${VALPO_INSTALL_SKIP_DEPS:-0}"
 NO_START="${VALPO_INSTALL_NO_START:-0}"
 
@@ -108,10 +109,26 @@ install_packages() {
     git \
     gnupg \
     lsb-release \
+    procps \
     rsync \
     tar \
     unzip \
     xz-utils
+}
+
+configure_redis_host() {
+  command -v sysctl >/dev/null 2>&1 || fail "sysctl is required to configure the Redis host prerequisite"
+
+  log "Configuring Redis host memory overcommit"
+  local temporary
+  temporary="$(mktemp)"
+  printf 'vm.overcommit_memory = 1\n' > "$temporary"
+  install -o root -g root -m 0644 "$temporary" "$REDIS_SYSCTL_PATH"
+  rm -f "$temporary"
+
+  sysctl -w vm.overcommit_memory=1 >/dev/null
+  [[ "$(sysctl -n vm.overcommit_memory)" == "1" ]] ||
+    fail "Could not activate vm.overcommit_memory=1 for Redis"
 }
 
 ensure_user_and_dirs() {
@@ -428,6 +445,7 @@ main() {
   require_ubuntu
   preflight_bootstrap_schema
   install_packages
+  configure_redis_host
   ensure_user_and_dirs
   install_mise
   install_ruby

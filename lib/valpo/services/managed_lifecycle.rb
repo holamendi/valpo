@@ -7,12 +7,14 @@ module Valpo
         config: Valpo.config || Valpo::Config.load,
         docker: Valpo::Docker::Client.new,
         dependency_manager: nil,
+        redis_host_requirements: RedisHostRequirements.new,
         sleeper: Kernel,
         clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }
       )
         @config = config
         @docker = docker
         @dependency_manager = dependency_manager
+        @redis_host_requirements = redis_host_requirements
         @sleeper = sleeper
         @clock = clock
       end
@@ -24,7 +26,7 @@ module Valpo
         managed.update(Registry.runtime_attributes(service))
         service.update(status: "provisioning")
         event(queue, job_id, "system", "Provisioning #{service.name}")
-        runtime.start_service_container(service.refresh)
+        start_service_container(runtime, service.refresh)
         service.update(status: "running")
         service.refresh
       rescue
@@ -37,6 +39,7 @@ module Valpo
         runtime = runtime_for(queue:, job_id:)
         service.update(status: "restarting")
         event(queue, job_id, "system", "Restarting #{service.name}")
+        validate_host_start!(service)
         runtime.restart_service_container(service)
         service.update(status: "running")
         service.refresh
@@ -120,7 +123,7 @@ module Valpo
 
       private
 
-      attr_reader :config, :docker, :sleeper, :clock
+      attr_reader :config, :docker, :redis_host_requirements, :sleeper, :clock
 
       def dependency_manager
         @dependency_manager ||= DependencyManager.new(config:, docker:, sleeper:)
@@ -133,12 +136,12 @@ module Valpo
           runtime.update_restart_policy(managed.container_name)
           unless inspection.dig("State", "Running")
             event(queue, job_id, "system", "Starting #{managed.container_name}")
-            runtime.start_container(managed.container_name)
+            start_container(runtime, service, managed.container_name)
           end
           runtime.wait_until_ready(service)
         else
           event(queue, job_id, "system", "Recreating service runtime for #{service.name}")
-          runtime.start_service_container(service)
+          start_service_container(runtime, service)
         end
         service.update(status: "running")
       rescue
@@ -180,14 +183,16 @@ module Valpo
 
         if original_status == "running"
           if container_removed
-            runtime.start_service_container(service)
+            start_service_container(runtime, service)
           else
             inspection = runtime.inspect_container(Registry.managed_config(service).container_name)
             if inspection
-              runtime.start_container(Registry.managed_config(service).container_name) unless inspection.dig("State", "Running")
+              unless inspection.dig("State", "Running")
+                start_container(runtime, service, Registry.managed_config(service).container_name)
+              end
               runtime.wait_until_ready(service)
             else
-              runtime.start_service_container(service)
+              start_service_container(runtime, service)
             end
           end
         end
@@ -199,6 +204,20 @@ module Valpo
 
       def event(queue, job_id, stream, message)
         queue.event(job_id, stream, message)
+      end
+
+      def start_service_container(runtime, service)
+        validate_host_start!(service)
+        runtime.start_service_container(service)
+      end
+
+      def start_container(runtime, service, container_name)
+        validate_host_start!(service)
+        runtime.start_container(container_name)
+      end
+
+      def validate_host_start!(service)
+        redis_host_requirements.validate! if service.kind == "redis"
       end
     end
   end

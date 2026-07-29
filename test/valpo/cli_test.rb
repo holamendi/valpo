@@ -64,6 +64,36 @@ class ValpoCLITest < Minitest::Test
     assert_equal({"dry_run" => true}, request.fetch(:payload))
   end
 
+  def test_system_secret_commands_enqueue_without_secret_payloads
+    client = FakeAPIClient.new([
+      {"id" => job_id, "status" => "queued"},
+      {"id" => job_id, "status" => "queued"}
+    ])
+
+    verify_status, verify_stdout, verify_stderr = run_cli(
+      client,
+      %w[system secrets verify --no-wait --json]
+    )
+    rotate_status, rotate_stdout, rotate_stderr = run_cli(
+      client,
+      %w[system secrets rotate --no-wait --json]
+    )
+
+    assert_equal 0, verify_status
+    assert_equal 0, rotate_status
+    assert_equal job_id, JSON.parse(verify_stdout).fetch("id")
+    assert_equal job_id, JSON.parse(rotate_stdout).fetch("id")
+    assert_empty verify_stderr
+    assert_empty rotate_stderr
+    assert_equal(
+      [
+        {method: :post, path: "/v1/system/secrets/verify", payload: nil, query: nil},
+        {method: :post, path: "/v1/system/secrets/rotate", payload: nil, query: nil}
+      ],
+      client.requests
+    )
+  end
+
   def test_create_service_documents_and_rejects_incompatible_options_locally
     client = FakeAPIClient.new([])
     status, _stdout, stderr = run_cli(client, %w[service create database --project acme --type postgres --port 3000])
@@ -381,6 +411,28 @@ class ValpoCLITest < Minitest::Test
     assert_includes stdout, "will not be shown again"
     assert_empty stderr
     assert_equal({"name" => "operator"}, client.requests.first.fetch(:payload))
+  end
+
+  def test_api_token_create_accepts_an_explicit_admin_scope
+    client = FakeAPIClient.new(
+      "id" => "acr_1",
+      "name" => "operator",
+      "scopes" => ["admin"],
+      "token" => "valpo_secret"
+    )
+
+    status, stdout, stderr = run_cli(
+      client,
+      ["auth", "token", "create", "operator", "--scope=admin", "--json"]
+    )
+
+    assert_equal 0, status
+    assert_equal "acr_1", JSON.parse(stdout).fetch("id")
+    assert_empty stderr
+    assert_equal(
+      {"name" => "operator", "scopes" => ["admin"]},
+      client.requests.first.fetch(:payload)
+    )
   end
 
   def test_wait_timeout_exits_one

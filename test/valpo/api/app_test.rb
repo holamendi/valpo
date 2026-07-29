@@ -89,6 +89,27 @@ class ValpoAPIAppTest < Minitest::Test
     assert_equal first_id, json.fetch("id")
   end
 
+  def test_secret_verification_and_rotation_require_admin_and_enqueue_jobs
+    _writer, writer_token = Valpo::APICredential.issue(name: "writer", scopes: ["write"])
+    header "Authorization", "Bearer #{writer_token}"
+    post "/v1/system/secrets/verify"
+    assert_equal 403, last_response.status
+
+    _admin, admin_token = Valpo::APICredential.issue(name: "admin", scopes: ["admin"])
+    header "Authorization", "Bearer #{admin_token}"
+    post "/v1/system/secrets/verify"
+    assert_equal 202, last_response.status
+    assert_equal "verify_secrets", json.fetch("type")
+    verification_id = json.fetch("id")
+
+    post "/v1/system/secrets/verify"
+    assert_equal verification_id, json.fetch("id")
+
+    post "/v1/system/secrets/rotate"
+    assert_equal 202, last_response.status
+    assert_equal "rotate_secrets", json.fetch("type")
+  end
+
   def test_project_create_list_show_and_empty_delete
     post_json "/v1/projects", name: "hello"
     assert_equal 201, last_response.status

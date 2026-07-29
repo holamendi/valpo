@@ -25,6 +25,8 @@ Images are selected by Valpo and cannot be overridden through the managed-servic
 
 Implemented runtime guarantees:
 
+- installer-owned `/etc/sysctl.d/99-valpo-redis.conf` with an effective `vm.overcommit_memory=1`;
+- validation of that host prerequisite before Redis provisioning, restart, or repair starts a container;
 - one private container on the shared `valpo` Docker network;
 - no public host port;
 - a persistent Docker volume;
@@ -36,6 +38,8 @@ Implemented runtime guarantees:
 - removal of the container, volume, and dependency records during deletion.
 
 Projects are grouping boundaries. Each app and managed service has its own `svc_` identity and a name unique within its project. Project deletion is refused until all services have been removed.
+
+The root installer owns the privileged Redis host configuration. The unprivileged worker only reads `/proc/sys/vm/overcommit_memory`; it refuses to start a Redis container with a clear validation error when the effective value is not `1`. Uninstall removes Valpo's sysctl configuration file without changing the live kernel value.
 
 ### Bindings
 
@@ -79,7 +83,7 @@ The unchanged `valpo.toml` schema can declare Postgres and Redis services and ap
 
 ### Encrypted Credentials And Environment
 
-Managed credentials and custom per-service environment values are encrypted with AES-256-GCM before SQLite persistence. Each envelope is bound to its record and field with authenticated additional data. The only durable secret file is the host keyring, which must be backed up with the database and kept access-restricted; losing it makes encrypted records unrecoverable. The envelope records a key version so old keys can remain readable during rotation, though an operator-facing re-encryption workflow remains future work.
+Managed credentials and custom per-service environment values are encrypted with AES-256-GCM before SQLite persistence. Each envelope is bound to its record and field with authenticated additional data. The only durable secret file is the host keyring, which must be backed up with the database and kept access-restricted; losing it makes encrypted records unrecoverable. The envelope records a key version so old keys remain readable during operator-facing verification and transactional re-encryption with `valpo system secrets verify` and `valpo system secrets rotate`.
 
 ## Future Work
 
@@ -88,7 +92,7 @@ The following are intentionally not implemented:
 - MariaDB, MySQL, and additional managed definitions;
 - backup, restore, and retention scheduling;
 - project export/import of dumps, snapshots, credentials, and dependency metadata;
-- managed credential rotation and an operator-facing host-key re-encryption workflow;
+- managed database credential rotation;
 - descriptive or enforced resource plans;
 - storage resizing and first-class volume resources;
 - public database exposure;

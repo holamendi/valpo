@@ -54,6 +54,8 @@ module Valpo
         ["system status", Commands::System::Status, false],
         ["system repair", Commands::System::Repair, false],
         ["system maintenance", Commands::System::Maintenance, false],
+        ["system secrets verify", Commands::System::Secrets::Verify, false],
+        ["system secrets rotate", Commands::System::Secrets::Rotate, false],
         ["job list", Commands::Job::List, true],
         ["job show", Commands::Job::Show, true],
         ["job wait", Commands::Job::Wait, true],

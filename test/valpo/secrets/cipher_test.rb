@@ -40,4 +40,18 @@ class ValpoSecretsCipherTest < Minitest::Test
   ensure
     File.chmod(0o600, path) if path && File.exist?(path)
   end
+
+  def test_reloads_a_keyring_rotated_by_another_process
+    path = File.join(VALPO_TEST_DIR, "cipher-reload", "master.key")
+    first = Valpo::Secrets::Keyring.new(path)
+    second = Valpo::Secrets::Keyring.new(path)
+
+    assert_equal 1, first.active_version
+    assert_equal 2, second.rotate!
+    assert_equal 2, first.active_version
+
+    cipher = Valpo::Secrets::Cipher.new(keyring: second)
+    encrypted = cipher.encrypt("rotated-secret", aad: "record")
+    assert_equal "rotated-secret", Valpo::Secrets::Cipher.new(keyring: first).decrypt(encrypted, aad: "record")
+  end
 end

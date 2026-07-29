@@ -86,6 +86,7 @@ A web release may build and pass health checks without a verified hostname. It r
 - `Services::Registry` maps service kinds to definition objects for web, worker, Postgres, and Redis.
 - `Services::Creator` is the single record-creation path.
 - `Services::ManagedLifecycle` owns managed container operations.
+- `Services::RedisHostRequirements` validates the installer-owned kernel prerequisite before Redis starts.
 - `Services::DependencyManager` owns bind and unbind behavior.
 - `Services::Runtime` contains cohesive low-level managed Docker behavior.
 
@@ -95,9 +96,9 @@ Each definition declares its supported options. Managed definitions also declare
 
 GitHub HTTPS fetches prefer short-lived, repository-scoped installation tokens minted by a per-server GitHub App behind `Sources::Fetcher`; an encrypted fine-grained PAT remains available as a fallback. Repository/ref/strategy/context preflight resolves an exact commit and chooses Dockerfile or buildpack execution before source-backed configuration mutates. `Builds::Orchestrator` serializes builds per target and dispatches to a Dockerfile or Cloud Native Buildpacks backend. Both backends stream output, share a build timeout, and produce release build metadata.
 
-The App is created through GitHub's manifest flow. After wildcard app-domain verification, Caddy reserves `github.<app-domain>` and proxies only `/integrations/github` to the local API. One-time setup state protects the manifest callback, the generated private key and webhook secret are stored in a mode-`0600` file, and installation redirects are checked with an App JWT. Signed `push` events are deduplicated by delivery ID and enqueue exact-commit deploy jobs for matching `auto_deploy` sources.
+The App is created through GitHub's manifest flow. After wildcard app-domain verification, Caddy reserves `github.<app-domain>` and proxies only `/integrations/github` to the local API. One-time setup state protects the manifest callback, the generated private key and webhook secret are encrypted in SQLite with the mode-`0600` host keyring, and installation redirects are checked with an App JWT. Signed `push` events are deduplicated by delivery ID and enqueue exact-commit deploy jobs for matching `auto_deploy` sources.
 
-The manifest creates one private App owned by either a personal account or one selected organization. A private App cannot span repository owners, so multi-owner servers require a future multi-App credential model.
+The manifest creates one private App owned by either a personal account or one selected organization. Valpo intentionally supports one App per server. An encrypted fine-grained PAT is the alternative credential mode when one server must fetch repositories outside a single App owner's scope; multi-App credentials are not planned.
 
 `Manifests::Planner` computes preview actions without mutation. `Manifests::Reconciler` applies the unchanged `valpo.toml` schema through service creation, managed lifecycle, dependency, and deployment collaborators. Omitted resources are retained.
 
@@ -190,9 +191,12 @@ Implemented packaging uses the following durable roots:
 
 /etc/valpo/
   valpo.yml
+
+/etc/sysctl.d/
+  99-valpo-redis.conf
 ```
 
-The API, worker, and migration service log to the systemd journal. The packaging creates `/var/log/valpo` through `LogsDirectory`, but no current process writes `api.log` or `worker.log` files there.
+The Redis sysctl file persists `vm.overcommit_memory=1`; the installer applies it with root privileges and the unprivileged worker only verifies the effective `/proc` value. The API, worker, and migration service log to the systemd journal. The packaging creates `/var/log/valpo` through `LogsDirectory`, but no current process writes `api.log` or `worker.log` files there.
 
 Build-target locks live beside the SQLite database. Buildpack build and launch caches are deterministic Docker volumes rather than host directories. Uploads, immutable static releases, backups, and exports are proposed future directories. They must not be documented as implemented until their owning features exist.
 
@@ -215,7 +219,7 @@ Implemented today:
 
 Known gaps and proposed behavior:
 
-- Operator-facing key rotation, bulk re-encryption, and recovery verification are not implemented.
+- Operator-facing verification and key rotation re-encrypt every encrypted record transactionally and retain old key versions; destructive key pruning is not implemented.
 - The SQLite database and host keyring must be backed up together; no first-class backup workflow enforces that yet.
 - mTLS and first-class private-network/dashboard enrollment are not implemented.
 - Audit logs, role-based access control, and secret migration policies are future work.

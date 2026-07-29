@@ -142,7 +142,7 @@ Exit criteria:
 
 Goal: close the known security and operational gaps before expanding the product surface.
 
-Status: storage foundation implemented; operational rotation and recovery workflows remain.
+Status: storage, operator-facing rotation, recovery verification, and token rollover are implemented; export/import credential migration behavior remains.
 
 Deliverables:
 
@@ -152,16 +152,18 @@ Deliverables:
 - Generate a private, versioned host keyring and document that it must be backed up with SQLite. Implemented.
 - Define credential migration behavior for future export/import.
 - Replace the single host-wide bearer token with scoped, revocable, digest-only API credentials. Implemented.
-- Add operator-facing host-key rotation, bulk re-encryption, recovery verification, and safe token-rollover workflows.
+- Add operator-facing host-key rotation, bulk re-encryption, recovery verification, and safe token-rollover workflows. Implemented.
 - Keep dependency, deployment, domain, Caddy, and system repair boundaries covered by characterization tests as internals evolve.
 
 The root keyring intentionally remains outside SQLite so possession of the database alone is insufficient to decrypt secrets. Backups must include both artifacts under separate access controls; losing the keyring makes encrypted records unrecoverable.
 
-## Phase 3A: GitHub Integration And Source Deployments
+## GitHub Integration And Source Deployments
 
 Goal: connect repositories and build/deploy on demand or webhook push.
 
-Bootstrap implemented:
+Status: complete for the supported GitHub scope.
+
+Implemented:
 
 - CLI-managed, encrypted fine-grained PAT authentication for GitHub HTTPS fetches.
 - Per-server GitHub App creation through a one-time manifest flow on `github.<app-domain>`.
@@ -176,11 +178,11 @@ Bootstrap implemented:
 - Automatic web-port resolution from explicit configuration, image `EXPOSE`, or the source-build port-3000 fallback.
 - Failed fetches leave configuration untouched; failed builds and health checks record failed releases and leave an active release untouched.
 
-Remaining deliverables:
+Supported credential scope:
 
-- Multi-App credentials for servers that deploy repositories belonging to more than one GitHub account or organization.
-- Multi-record key rotation and bulk re-encryption tooling.
-- A product decision on whether the encrypted PAT fallback remains supported after the GitHub App path is proven across installations.
+- One private GitHub App can be configured per Valpo server.
+- The encrypted fine-grained PAT remains supported as an alternative when a GitHub App is not configured.
+- Multi-App credentials are not planned. Operators needing one App per repository owner should use separate Valpo servers; the PAT mode remains available when that separation is impractical.
 
 Current build constraint:
 
@@ -193,7 +195,7 @@ Exit criteria:
 - Push webhooks can enqueue deployment jobs.
 - Failed builds leave the active release untouched.
 
-## Phase 3B: Additional Source Providers
+## Phase 3: Additional Source Providers
 
 Goal: add GitLab and other source adapters after the GitHub build path is stable.
 

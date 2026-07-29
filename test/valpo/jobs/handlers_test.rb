@@ -63,6 +63,21 @@ class ValpoJobsHandlersTest < Minitest::Test
     assert_equal "Valpo worker executed system_check", queue.events(job.id).last.message
   end
 
+  def test_secret_management_handlers_report_safe_counts
+    queue = Valpo::Jobs::Queue.new
+    manager = SecretManager.new
+    verification = queue.enqueue("verify_secrets")
+    rotation = queue.enqueue("rotate_secrets")
+
+    Valpo::Jobs::Handlers::ManageSecrets.new(manager:, operation: :verify).call(verification, queue:)
+    Valpo::Jobs::Handlers::ManageSecrets.new(manager:, operation: :rotate).call(rotation, queue:)
+
+    assert_equal %i[verify rotate], manager.calls
+    assert_match "Verified 3 encrypted records with host key version 1", queue.events(verification.id).last.message
+    assert_match "Rotated host key from version 1 to 2", queue.events(rotation.id).last.message
+    refute_match "secret-value", queue.events(rotation.id).last.message
+  end
+
   private
 
   def recorder
@@ -83,6 +98,37 @@ class ValpoJobsHandlersTest < Minitest::Test
 
     def respond_to_missing?(_method, _include_private = false)
       true
+    end
+  end
+
+  class SecretManager
+    attr_reader :calls
+
+    def initialize
+      @calls = []
+    end
+
+    def verify
+      calls << :verify
+      report(active_key_version: 1)
+    end
+
+    def rotate
+      calls << :rotate
+      report(previous_key_version: 1, active_key_version: 2)
+    end
+
+    private
+
+    def report(**versions)
+      versions.merge(
+        records: {
+          "managed_service_credentials" => 1,
+          "service_environment_variables" => 1,
+          "provider_credentials" => 1
+        },
+        total: 3
+      )
     end
   end
 end

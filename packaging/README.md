@@ -21,6 +21,7 @@ The installer:
 
 - installs runtime packages including Docker, Caddy, curl, build tools, mise, Ruby, Bundler, and gems
 - installs checksum-verified `pack` 0.40.8 on Linux amd64/arm64 for Cloud Native Buildpacks
+- configures and activates the Redis host prerequisite `vm.overcommit_memory=1`
 - installs source into `/opt/valpo`
 - stores Valpo state under `/var/lib/valpo`
 - copies the production config template to `/etc/valpo/valpo.yml` on the first install
@@ -80,7 +81,7 @@ valpo domain add web hello.example.com --project hello
 The installer binds `valpo-api` to `127.0.0.1` by default. API credentials are scoped, revocable records whose raw values are returned only once and stored as one-way digests. Create the first credential while the API is local:
 
 ```bash
-valpo auth token create operator --scope admin
+valpo auth token create operator --scope=admin
 export VALPO_API_TOKEN=valpo_...
 ```
 
@@ -184,10 +185,13 @@ The installed services use:
 - Ruby 4.0.5 installed through mise under `/var/lib/valpo`;
 - Bundler dependencies under `/var/lib/valpo/bundle`;
 - production config at `/etc/valpo/valpo.yml`;
+- Redis sysctl configuration at `/etc/sysctl.d/99-valpo-redis.conf`;
 - state under `/var/lib/valpo`;
 - the versioned encryption keyring at `/var/lib/valpo/secrets/master.key`.
 
 The keyring is the only durable secret stored outside SQLite. It is generated with mode `0600` and is required to decrypt managed credentials, service environment values, and provider credentials. Back up the database and keyring together under separate access controls; losing the keyring makes the encrypted rows unrecoverable.
+
+Use `valpo system secrets verify` to confirm that the configured database and keyring can recover every encrypted record. Before running `valpo system secrets rotate`, back up both artifacts as one recovery set. Rotation verifies the records before mutation, adds a new active key version, re-encrypts all records in one SQLite transaction, and verifies the result. Old key versions are retained. Test restored database/keyring pairs on a separate host before relying on them.
 
 `valpo-migrate.service` is a one-shot unit that runs before the API and worker. Keep migrations owned by that unit instead of adding `--migrate` to both long-running services.
 
@@ -210,7 +214,7 @@ Before uninstalling, stop Valpo and make an offline backup of all operator-owned
 
 Keep those backups access-restricted because they contain secrets and application data. Use the backup mechanism appropriate to the volume's storage driver, and verify the backup before continuing.
 
-The uninstall destroys Valpo metadata, credentials, generated routing state, and label-owned Docker containers, volumes, and networks. The copies above are a manual safety measure, not a supported restore or data-preserving schema-upgrade workflow; test any recovery procedure on a separate host. Review retained Docker images and any intentionally unlabeled Docker resources separately. Run the source installer from a checkout outside `/opt/valpo`; replacing `/opt/valpo` manually defeats the installed/incoming migration comparison.
+The uninstall destroys Valpo metadata, credentials, generated routing state, and label-owned Docker containers, volumes, and networks. It removes `/etc/sysctl.d/99-valpo-redis.conf` but does not reset the live host-wide `vm.overcommit_memory` value, because another Redis installation may depend on it; reboot or change the value explicitly if the host should return to its previous policy. The copies above are a manual safety measure, not a supported restore or data-preserving schema-upgrade workflow; test any recovery procedure on a separate host. Review retained Docker images and any intentionally unlabeled Docker resources separately. Run the source installer from a checkout outside `/opt/valpo`; replacing `/opt/valpo` manually defeats the installed/incoming migration comparison.
 
 ## Service Logs And Troubleshooting
 
@@ -243,7 +247,7 @@ suffix is `apps.valpo.dev`. Run the repeatable smoke test from a local checkout:
 packaging/vps-smoke-test.sh root@162.55.43.108 apps.valpo.dev --reboot
 ```
 
-By default the smoke test copies the current checkout to `/tmp/valpo-src`, runs the full installer, verifies the private host key, sets the host-wide app domain, deploys `nginx:alpine`, exercises encrypted set/list/reveal/unset service environment behavior, verifies HTTPS, releases, logs, optional reboot recovery, and then deletes the project. It also checks that a custom plaintext value does not occur in the SQLite files. It does not restore a previous app domain, so do not run it against a host serving unrelated projects. Use `--skip-deps` only when intentionally testing a schema-compatible development update on a host whose dependencies are already installed.
+By default the Ruby smoke controller copies the current checkout to `/tmp/valpo-src`, runs the full installer, verifies the private host key and persistent/effective Redis sysctl setting, sets the host-wide app domain, deploys `nginx:alpine`, exercises encrypted set/list/reveal/unset service environment behavior, rotates the host key while encrypted records exist, verifies HTTPS, releases, logs, optional reboot recovery, and then deletes the project. It creates a temporary admin API credential without exposing its raw token in process arguments or output, revokes it during guaranteed cleanup, and checks that a custom plaintext value does not occur in the SQLite files. It does not restore a previous app domain, so do not run it against a host serving unrelated projects. Use `--skip-deps` only when intentionally testing a schema-compatible development update on a host whose dependencies are already installed.
 
 To prove installation from a clean Valpo state, use the guarded destructive wrapper. It runs the uninstaller, verifies the absence of label-owned runtime resources and host state, then runs the full smoke test from the local checkout. Docker images, unlabeled Docker resources, Docker, Caddy, and other shared host packages remain installed.
 

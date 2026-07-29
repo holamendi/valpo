@@ -11,7 +11,7 @@ module Valpo
           desc "Authenticate a source provider"
           argument :provider, required: true, desc: "Source provider (github)"
           option :organization, desc: "Create the GitHub App under this organization"
-          option :with_token, type: :boolean, default: false, desc: "Read a temporary fallback PAT from stdin"
+          option :with_token, type: :boolean, default: false, desc: "Read a fallback PAT from stdin"
 
           def call(provider:, with_token:, api_url:, organization: nil, json: false, args: nil, **)
             reject_secret_arguments!(args)
@@ -69,7 +69,7 @@ module Valpo
             if json
               @out.puts JSON.generate(result)
             else
-              @out.puts "Authenticated GitHub as @#{result.fetch("account")} with the temporary PAT fallback"
+              @out.puts "Authenticated GitHub as @#{result.fetch("account")} using the PAT fallback"
             end
           end
         end

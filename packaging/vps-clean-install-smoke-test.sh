@@ -79,6 +79,7 @@ ssh "$ssh_target" 'test ! -e /opt/valpo &&
   test ! -e /var/lib/valpo &&
   test ! -e /var/log/valpo &&
   test ! -e /etc/valpo &&
+  test ! -e /etc/sysctl.d/99-valpo-redis.conf &&
   test ! -e /usr/local/bin/valpo &&
   test ! -e /etc/systemd/system/valpo-api.service &&
   test ! -e /etc/systemd/system/valpo-worker.service &&

@@ -104,6 +104,7 @@ module Valpo
           ),
           history_cleaner: Valpo::Storage::HistoryCleaner.new(retention: config.job_retention)
         )
+        secrets_manager = Valpo::Secrets::Manager.new
 
         handlers(
           deployment:,
@@ -116,7 +117,8 @@ module Valpo
           configurator:,
           builds:,
           updater:,
-          storage_maintainer:
+          storage_maintainer:,
+          secrets_manager:
         )
       end
 
@@ -135,12 +137,15 @@ module Valpo
         configurator:,
         builds:,
         updater:,
-        storage_maintainer:
+        storage_maintainer:,
+        secrets_manager:
       )
         {
           "system_check" => Handlers::SystemCheck.new,
           "repair_system" => Handlers::RepairSystem.new(repairer: system_repairer),
           "maintain_storage" => Handlers::MaintainStorage.new(maintainer: storage_maintainer),
+          "verify_secrets" => Handlers::ManageSecrets.new(manager: secrets_manager, operation: :verify),
+          "rotate_secrets" => Handlers::ManageSecrets.new(manager: secrets_manager, operation: :rotate),
           "deploy_registry_image" => Handlers::DeployRegistryImage.new(orchestrator: deployment),
           "deploy_source" => Handlers::DeploySource.new(orchestrator: builds),
           "create_source_service" => Handlers::CreateSource.new(

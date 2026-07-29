@@ -56,6 +56,63 @@ class ValpoServicesManagedLifecycleTest < Minitest::Test
     assert_empty docker.run_requests
   end
 
+  def test_redis_provision_validates_the_host_before_starting_a_container
+    service = create_managed_service(
+      name: "cache",
+      kind: "redis",
+      version: "8",
+      status: "provisioning",
+      runtime: false
+    )
+    docker = ValpoTestSupport::FakeDocker.new
+
+    error = assert_raises Valpo::ValidationError do
+      run_job do |queue, job|
+        lifecycle(
+          docker:,
+          redis_host_requirements: rejecting_redis_host_requirements
+        ).provision_service(service_id: service.id, queue:, job_id: job.id)
+      end
+    end
+
+    assert_includes error.message, "vm.overcommit_memory=1"
+    assert_empty docker.run_requests
+  end
+
+  def test_redis_restart_validates_the_host_before_stopping_the_container
+    service = create_managed_service(name: "cache", kind: "redis", version: "8")
+    docker = ValpoTestSupport::FakeDocker.new
+
+    assert_raises Valpo::ValidationError do
+      run_job do |queue, job|
+        lifecycle(
+          docker:,
+          redis_host_requirements: rejecting_redis_host_requirements
+        ).restart_service(service_id: service.id, queue:, job_id: job.id)
+      end
+    end
+
+    refute docker.executed?(:stop, service.managed_config.container_name)
+  end
+
+  def test_redis_repair_validates_the_host_before_recreating_a_container
+    service = create_managed_service(name: "cache", kind: "redis", version: "8")
+    docker = ValpoTestSupport::FakeDocker.new(
+      container_states: {service.managed_config.container_name => :missing}
+    )
+
+    assert_raises Valpo::ValidationError do
+      run_job do |queue, job|
+        lifecycle(
+          docker:,
+          redis_host_requirements: rejecting_redis_host_requirements
+        ).repair_services(queue:, job_id: job.id)
+      end
+    end
+
+    assert_empty docker.run_requests
+  end
+
   def test_delete_requires_force_and_removes_container_volume_and_dependencies
     project = create_project
     app = create_app_service(project:)
@@ -236,14 +293,24 @@ class ValpoServicesManagedLifecycleTest < Minitest::Test
   def lifecycle(
     docker: ValpoTestSupport::FakeDocker.new,
     dependency_manager: nil,
+    redis_host_requirements: passing_redis_host_requirements,
     clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }
   )
     Valpo::Services::ManagedLifecycle.new(
       config: VALPO_TEST_CONFIG,
       docker:,
       dependency_manager:,
+      redis_host_requirements:,
       clock:
     )
+  end
+
+  def passing_redis_host_requirements
+    Valpo::Services::RedisHostRequirements.new(reader: ->(_path) { "1" })
+  end
+
+  def rejecting_redis_host_requirements
+    Valpo::Services::RedisHostRequirements.new(reader: ->(_path) { "0" })
   end
 
   def sequence_clock(*values)

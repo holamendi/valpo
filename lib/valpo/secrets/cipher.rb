@@ -15,6 +15,14 @@ module Valpo
         @keyring = keyring
       end
 
+      def active_key_version
+        keyring.active_version
+      end
+
+      def rotate_key!
+        keyring.rotate!
+      end
+
       def encrypt(value, aad:)
         plaintext = value.to_s
         version = keyring.active_version

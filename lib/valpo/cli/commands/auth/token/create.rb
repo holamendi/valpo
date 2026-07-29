@@ -13,7 +13,7 @@ module Valpo
             def call(name:, api_url:, scope: nil, json: false, args: nil, **)
               reject_extra_arguments!(args)
               payload = {"name" => name}
-              payload["scopes"] = scope if scope
+              payload["scopes"] = Array(scope) if scope
               result = context(api_url:, json:).request(:post, "/v1/api-credentials", payload)
               if json
                 @out.puts JSON.generate(result)

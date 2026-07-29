@@ -51,6 +51,8 @@ Clients waiting on a job must drain every event page before advancing the cursor
 
 `POST /v1/system/maintenance` enqueues an ownership-scoped cleanup job and accepts an optional `dry_run` boolean. Cleanup retains the configured number of deployable local build artifacts per service, marks older artifacts unavailable without deleting their release history, removes stale buildpack caches and orphaned Valpo containers, and leaves registry images, managed data volumes, unrelated Docker resources, and global Dockerfile build cache untouched.
 
+`POST /v1/system/secrets/verify` requires an admin credential and enqueues decryption and format verification for every encrypted managed-service credential, custom service environment variable, and provider credential. `POST /v1/system/secrets/rotate` also requires admin scope; it verifies the current records, adds a new active host-key version, re-encrypts every record in one SQLite transaction, and verifies the result. Old key versions remain in the keyring so interrupted rotation does not make existing ciphertext unrecoverable. Safe record counts and active key versions are written to job events; plaintext values never enter jobs or events.
+
 Example validation response:
 
 ```json
