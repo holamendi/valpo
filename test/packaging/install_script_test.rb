@@ -2,6 +2,7 @@
 
 require "open3"
 require "fileutils"
+require "rbconfig"
 require "test_helper"
 require "tmpdir"
 
@@ -88,12 +89,19 @@ class ValpoPackagingInstallScriptTest < Minitest::Test
   end
 
   def test_primary_vps_smoke_test_help_is_available_without_a_remote_host
-    stdout, stderr, status = Open3.capture3("bash", VPS_SMOKE_SCRIPT, "--help")
+    path_without_mise = [File.dirname(RbConfig.ruby), "/usr/bin", "/bin"].join(File::PATH_SEPARATOR)
+    stdout, stderr, status = Open3.capture3(
+      {"PATH" => path_without_mise},
+      "bash",
+      VPS_SMOKE_SCRIPT,
+      "--help"
+    )
 
     assert status.success?, stderr
     assert_includes stdout, "Usage: packaging/vps-smoke-test.sh"
     assert_includes stdout, "--full-install"
     assert_includes File.read(VPS_SMOKE_SCRIPT), "vps_smoke_test.rb"
+    assert_includes File.read(VPS_SMOKE_SCRIPT), "command -v mise"
   end
 
   def test_installer_has_no_public_layout_or_lifecycle_flags
