@@ -193,6 +193,7 @@ class ValpoPackagingInstallScriptTest < Minitest::Test
     assert_includes script, "preflight_bootstrap_schema()"
     assert_includes script, 'incoming_schema="${SOURCE_DIR}/db/migrations/001_bootstrap.rb"'
     assert_includes script, 'installed_schema="${PREFIX}/db/migrations/001_bootstrap.rb"'
+    assert_includes script, '[[ -f "${SOURCE_DIR}/release.json" ]] || fail "Incoming source is missing release.json"'
     assert_includes script, '[[ "$incoming_sha" == "$installed_sha" ]]'
     assert_operator main.index("preflight_bootstrap_schema"), :<, main.index("install_packages")
   end
@@ -207,6 +208,7 @@ class ValpoPackagingInstallScriptTest < Minitest::Test
         FileUtils.mkdir_p(File.join(it, "db", "migrations"))
         File.write(File.join(it, "db", "migrations", "001_bootstrap.rb"), "same schema\n")
       end
+      File.write(File.join(incoming, "release.json"), "{}\n")
       FileUtils.mkdir_p(state)
       FileUtils.touch(File.join(state, "valpo.db"))
       FileUtils.touch(config_path)
@@ -230,6 +232,14 @@ class ValpoPackagingInstallScriptTest < Minitest::Test
       )
       assert status.success?, stderr
 
+      FileUtils.rm(File.join(incoming, "release.json"))
+      _stdout, stderr, status = Open3.capture3(
+        "bash", "-c", command, "preflight", INSTALL_SCRIPT, incoming, installed, state, config_path
+      )
+      refute status.success?
+      assert_includes stderr, "Incoming source is missing release.json"
+
+      File.write(File.join(incoming, "release.json"), "{}\n")
       File.write(File.join(incoming, "db", "migrations", "001_bootstrap.rb"), "changed schema\n")
       _stdout, stderr, status = Open3.capture3(
         "bash", "-c", command, "preflight", INSTALL_SCRIPT, incoming, installed, state, config_path

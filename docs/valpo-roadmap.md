@@ -157,6 +157,34 @@ Deliverables:
 
 The root keyring intentionally remains outside SQLite so possession of the database alone is insufficient to decrypt secrets. Backups must include both artifacts under separate access controls; losing the keyring makes encrypted records unrecoverable.
 
+## Release, Upgrade, Recovery, And Host Lifecycle Foundation
+
+Goal: make Valpo safe to install, update, recover, and operate unattended on a dedicated host before expanding the product surface.
+
+Status: release/schema identity and the permanent incremental-migration contract are implemented. Immutable artifacts, transactional upgrades, supported backup/restore, privilege separation, host hardening, and unattended update coordination remain.
+
+Deliverables:
+
+- Freeze `001_bootstrap.rb` and require contiguous incremental migrations. Implemented.
+- Record immutable code/API/database/configuration/host compatibility in `release.json`, with channel, verified artifact digest, and install time in separate root-owned installation metadata. Implemented for development fallback and metadata validation.
+- Expose current compatibility and schema identity through API health and CLI system status. Implemented.
+- Build verified amd64/arm64 production artifacts with an exact Ruby runtime, production gems, SBOM, checksums, and provenance.
+- Install artifacts into immutable release directories selected through an atomic `current` symlink.
+- Implement a serialized update transaction with job preflight, offline checkpoint, migration, health verification, history, and immediate rollback.
+- Implement consistent control-plane backup/restore for SQLite, keyring, configuration, and release metadata.
+- Implement service-aware Postgres and Redis backup/restore into fresh volumes and prove clean-host recovery.
+- Remove Docker access from the API and separate the unprivileged API from the Docker-capable worker identity.
+- Add dedicated-host preflight, guarded SSH/firewall hardening, Ubuntu security-update policy, bounded reboot coordination, and post-boot reconciliation.
+- Add preview/stable channels with signed metadata, phased rollout, pause/withdrawal, and patch-only stable automation before 1.0.
+
+Exit criteria:
+
+- A previous published release upgrades with representative encrypted and managed-service state intact.
+- An injected candidate failure restores the previous control plane without interrupting running applications.
+- A verified off-host backup restores onto a fresh compatible server.
+- SSH hardening cannot activate until a key-authenticated non-root operator and recovery path are validated.
+- Security updates and required reboots complete within a bounded maintenance policy and return the host to a reconciled healthy state.
+
 ## GitHub Integration And Source Deployments
 
 Goal: connect repositories and build/deploy on demand or webhook push.

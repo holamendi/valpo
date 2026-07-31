@@ -8,6 +8,7 @@ Valpo's root [README](../README.md) is the user-facing starting point. This fold
 - [valpo-api.md](./valpo-api.md) explains API v1 authentication, validation, and errors; [openapi.yaml](./openapi.yaml) is the OpenAPI 3.1 contract.
 - [valpo-project-manifest.md](./valpo-project-manifest.md) defines the current `valpo.toml` schema and reconciliation behavior.
 - [valpo-managed-services.md](./valpo-managed-services.md) describes managed-service behavior and the broader service roadmap.
+- [valpo-release-lifecycle.md](./valpo-release-lifecycle.md) defines release identity, schema compatibility, dedicated-host ownership, and the staged upgrade/recovery contract.
 - [../packaging/README.md](../packaging/README.md) covers installation, host configuration, and VPS smoke tests.
 
 ## Product And Engineering Notes
@@ -17,4 +18,4 @@ Valpo's root [README](../README.md) is the user-facing starting point. This fold
 - [valpo-extensibility-and-positioning.md](./valpo-extensibility-and-positioning.md) compares reference projects and defines Valpo's extensibility boundaries.
 - [valpo-roadmap.md](./valpo-roadmap.md) tracks completed phases and planned work from the single-server core to a multi-server dashboard.
 - [valpo-architecture-decisions.md](./valpo-architecture-decisions.md) captures initial high-level decisions in lightweight ADR form.
-- [development.md](./development.md) covers local setup, checks, generated documentation, and the pre-release schema policy.
+- [development.md](./development.md) covers local setup, checks, generated documentation, and the permanent schema/release metadata policy.

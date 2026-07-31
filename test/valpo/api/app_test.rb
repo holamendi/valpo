@@ -18,6 +18,14 @@ class ValpoAPIAppTest < Minitest::Test
     get "/health"
     assert_equal 200, last_response.status
     assert_equal true, json.fetch("ok")
+    assert_equal Valpo::VERSION, json.fetch("version")
+    assert_equal Valpo::API_VERSION, json.fetch("api_version")
+    assert_equal Valpo::SchemaInfo.current, json.fetch("schema_version")
+    assert_equal Valpo::ReleaseMetadata.current.schema_target, json.fetch("schema_target")
+    assert_equal Valpo::Config::CURRENT_SCHEMA, json.fetch("config_schema")
+    assert_equal 1, json.fetch("host_profile")
+    assert_equal Valpo::InstallationMetadata.current.channel, json.fetch("channel")
+    assert_nil json.fetch("artifact_digest")
 
     with_api_token("secret") do
       get "/health"

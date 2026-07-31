@@ -4,6 +4,8 @@ Valpo exposes a JSON HTTP API for the bundled CLI and future dashboard clients. 
 
 The complete machine-readable contract is [openapi.yaml](./openapi.yaml). Named contracts nested in the `API::V1` resource modules are the runtime authority; OpenAPI is the maintained public mirror and is checked against every standardized route comment. The same resource modules render response hashes without a serializer framework.
 
+`GET /health` reports process health plus the server release, API compatibility version, current and target database schemas, configuration schema, host-profile version, release channel, and artifact digest. Development checkouts have a `null` artifact digest. The current release refuses to boot when its database schema does not match the target recorded in `release.json`.
+
 ## Authentication
 
 API credentials are scoped, revocable database records. The raw bearer value is returned only when a credential is created; Valpo stores its SHA-256 digest rather than an encrypted recoverable copy. Once any active credential exists, every control-plane endpoint requires:

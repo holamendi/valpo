@@ -182,7 +182,7 @@ module Valpo
           valpo project list --api-url https://valpo.example.com
           ```
 
-          `valpo version` is fully offline. `valpo system status` calls `/health` and reports whether the client and server versions match.
+          `valpo version` is fully offline. `valpo system status` calls `/health` and reports client/server versions, API compatibility, current and target database schemas, configuration schema, host profile, release channel, and artifact digest.
 
           ## Credential Recovery And Rotation
 

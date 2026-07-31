@@ -26,5 +26,8 @@ class ValpoLoaderTest < Minitest::Test
     assert defined?(Valpo::Services::RedisHostRequirements)
     assert defined?(Valpo::Services::DependencyManager)
     assert defined?(Valpo::Sources::GitHub)
+    assert defined?(Valpo::InstallationMetadata)
+    assert defined?(Valpo::ReleaseMetadata)
+    assert defined?(Valpo::SchemaInfo)
   end
 end

@@ -250,3 +250,64 @@ Implications:
 - Usage failures exit `2`; operational failures exit `1`.
 - Background job commands remain available but are omitted from primary root help.
 - Service type definitions used by help and validation must not require database boot.
+
+## ADR 014: Require A Dedicated Host With Explicit Ownership Boundaries
+
+Status: Accepted as a release constraint; complete host preflight and hardening are not implemented.
+
+Decision:
+
+Valpo supports a fresh, dedicated Ubuntu host and may require exclusive control of its documented services, files, ports, Caddy block, Docker network, labeled resources, and policy drop-ins. It refuses conflicts instead of silently rewriting unrelated operator state.
+
+Rationale:
+
+Container orchestration, routing, security updates, and recovery are easier to make predictable on a dedicated host. Blanket ownership is still too vague to be safe, especially for SSH access, provider agents, package-manager state, and recovery tooling.
+
+Implications:
+
+- Publish a complete ownership manifest for every installed path and host policy.
+- Restrict production installation to a tested Ubuntu release and architecture set.
+- Require staged validation and an alternate recovery path before tightening SSH access.
+- Keep operator configuration outside immutable release artifacts.
+- Make unsupported conflict overrides explicit rather than automatic.
+
+## ADR 015: Install Immutable Releases Through A Transactional Updater
+
+Status: Accepted; release metadata is implemented, while immutable installation and the updater remain planned.
+
+Decision:
+
+Published Valpo code is installed in versioned immutable directories. A root-owned update transaction stages and verifies a candidate, checkpoints control-plane state, migrates while API and worker are stopped, atomically selects the candidate, verifies it, and restores the previous code and checkpoint on pre-activation failure.
+
+Rationale:
+
+Replacing `/opt/valpo` in place can mix old processes with new lazily loaded files and cannot recover cleanly from dependency or migration failures. Applications can keep running while the small Valpo control plane is updated offline.
+
+Implications:
+
+- Keep the source installer development-only.
+- Record immutable release compatibility separately from host channel, verified artifact digest, and installation time.
+- Serialize update, backup, restore, and key-rotation operations.
+- Refuse or drain active jobs before stopping the worker.
+- Treat code-only rollback and database restore as different operations.
+- Promote the exact preview artifact to stable instead of rebuilding it.
+
+## ADR 016: Freeze The Bootstrap And Use Forward Incremental Migrations
+
+Status: Accepted and implemented for migration and release identity; backup/restore remains planned.
+
+Decision:
+
+`001_bootstrap.rb` is permanent. Every later schema change receives one contiguous integer migration. Production evolution favors expand/contract compatibility, and database down-migrations are not the primary rollback mechanism.
+
+Rationale:
+
+Sequel tracks migration versions rather than file contents. A stable bootstrap plus incremental history makes installed schema state auditable and testable across releases.
+
+Implications:
+
+- Validate the frozen bootstrap digest and contiguous sequence before migrating.
+- Keep migrations independent of current application models.
+- Make the release schema target match the latest migration.
+- Test fresh installation and upgrade from each supported previous release.
+- Back up SQLite and the encryption keyring as one verified recovery set before production transitions.

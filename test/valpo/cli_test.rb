@@ -50,6 +50,59 @@ class ValpoCLITest < Minitest::Test
     assert_empty stderr
   end
 
+  def test_system_status_reports_release_and_schema_compatibility
+    health = {
+      "ok" => true,
+      "version" => "0.2.0",
+      "api_version" => Valpo::API_VERSION,
+      "schema_version" => 2,
+      "schema_target" => 2,
+      "config_schema" => 1,
+      "host_profile" => 1,
+      "channel" => "preview",
+      "artifact_digest" => "sha256:#{"a" * 64}"
+    }
+    client = FakeAPIClient.new(health)
+
+    status, stdout, stderr = run_cli(client, %w[system status --json])
+
+    assert_equal 0, status
+    output = JSON.parse(stdout)
+    assert_equal Valpo::VERSION, output.fetch("client_version")
+    assert_equal "0.2.0", output.fetch("server_version")
+    assert_equal Valpo::API_VERSION, output.fetch("client_api_version")
+    assert_equal Valpo::API_VERSION, output.fetch("server_api_version")
+    assert_equal 2, output.fetch("schema_version")
+    assert_equal 2, output.fetch("schema_target")
+    assert_equal 1, output.fetch("config_schema")
+    assert_equal 1, output.fetch("host_profile")
+    assert_equal "preview", output.fetch("channel")
+    assert_equal "sha256:#{"a" * 64}", output.fetch("artifact_digest")
+    assert_equal true, output.fetch("compatible")
+    assert_empty stderr
+    assert_equal({method: :get, path: "/health", payload: nil, query: nil}, client.requests.first)
+  end
+
+  def test_system_status_warns_when_api_versions_are_incompatible
+    health = {
+      "ok" => true,
+      "version" => Valpo::VERSION,
+      "api_version" => Valpo::API_VERSION + 1,
+      "schema_version" => 1,
+      "schema_target" => 1,
+      "config_schema" => 1,
+      "host_profile" => 1,
+      "channel" => "development",
+      "artifact_digest" => nil
+    }
+
+    status, stdout, stderr = run_cli(FakeAPIClient.new(health), %w[system status --json])
+
+    assert_equal 0, status
+    assert_equal false, JSON.parse(stdout).fetch("compatible")
+    assert_includes stderr, "client API 1 is not compatible with server API 2"
+  end
+
   def test_system_maintenance_sends_dry_run_and_can_return_without_waiting
     client = FakeAPIClient.new("id" => job_id, "status" => "queued")
 

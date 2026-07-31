@@ -24,6 +24,7 @@ Gem::Specification.new do
     "docs/**/*.md",
     "docs/**/*.yaml",
     "README.md",
+    "release.json",
     "LICENSE"
   ]
   it.require_paths = ["lib"]

@@ -16,7 +16,7 @@ sudo packaging/install.sh
 sudo valpo system status
 ```
 
-The mutable `packaging/bootstrap.sh` path is development-only, not durable installation guidance. See the [packaging guide](./packaging/README.md) for schema-compatible updates, backups, clean reinstalls, and uninstall behavior.
+The mutable `packaging/bootstrap.sh` path is development-only, not durable installation guidance. See the [packaging guide](./packaging/README.md) for development source updates, backups, clean reinstalls, and uninstall behavior, and the [release lifecycle](./docs/valpo-release-lifecycle.md) for the production upgrade/recovery contract being implemented.
 
 ## Getting Started
 

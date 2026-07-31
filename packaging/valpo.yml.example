@@ -3,6 +3,7 @@
 # then preserves operator edits and enforces root:valpo mode 0640.
 # Direct commands must set VALPO_ENV=production to select this mapping.
 production:
+  config_schema: 1
   database_path: /var/lib/valpo/valpo.db
   encryption_key_path: /var/lib/valpo/secrets/master.key
   api_host: 127.0.0.1

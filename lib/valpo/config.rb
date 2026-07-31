@@ -4,6 +4,7 @@ require "yaml"
 
 module Valpo
   class Config
+    CURRENT_SCHEMA = 1
     DEFAULT_ENV = "development"
     DEFAULT_API_PORT = 7092
     DEFAULT_WORKER_POLL_INTERVAL = 2
@@ -21,6 +22,7 @@ module Valpo
     DEFAULT_CONTAINER_LOG_MAX_SIZE = "10m"
     DEFAULT_CONTAINER_LOG_MAX_FILES = 3
     KEYS = %w[
+      config_schema
       database_path
       encryption_key_path
       api_host
@@ -46,6 +48,7 @@ module Valpo
 
     attr_reader :env,
       :root,
+      :config_schema,
       :database_path,
       :encryption_key_path,
       :api_host,
@@ -77,6 +80,7 @@ module Valpo
       new(
         env:,
         root: Valpo.root,
+        config_schema: integer_value(env_data, "config_schema", nil, CURRENT_SCHEMA),
         database_path: value(env_data, "database_path", ENV["VALPO_DATABASE_PATH"], default_database_path(env)),
         encryption_key_path: value(env_data, "encryption_key_path", ENV["VALPO_ENCRYPTION_KEY_PATH"], nil),
         api_host: value(env_data, "api_host", ENV["VALPO_API_HOST"], "127.0.0.1"),
@@ -225,6 +229,7 @@ module Valpo
       app_port_end:,
       healthcheck_timeout:,
       deploy_drain_delay:,
+      config_schema: CURRENT_SCHEMA,
       encryption_key_path: nil,
       caddy_reload_config_path: nil,
       build_timeout: DEFAULT_BUILD_TIMEOUT,
@@ -239,6 +244,7 @@ module Valpo
     )
       @env = required_string(env, "env")
       @root = required_string(root, "root")
+      @config_schema = config_schema
       @database_path = expand_path(database_path)
       @encryption_key_path = encryption_key_path ? expand_path(encryption_key_path) : File.join(File.dirname(@database_path), "secrets", "master.key")
       @api_host = required_string(api_host, "api_host")
@@ -264,6 +270,10 @@ module Valpo
     end
 
     def validate!
+      unless @config_schema == CURRENT_SCHEMA
+        raise Valpo::ValidationError,
+          "config_schema #{@config_schema} is not supported; expected #{CURRENT_SCHEMA}"
+      end
       unless (1..65_535).cover?(@api_port)
         raise Valpo::ValidationError, "api_port must be between 1 and 65535"
       end

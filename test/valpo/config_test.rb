@@ -79,6 +79,7 @@ class ValpoConfigTest < Minitest::Test
 
   def test_canonical_key_list_loads_every_supported_setting
     values = {
+      "config_schema" => 1,
       "database_path" => "tmp/full.sqlite3",
       "encryption_key_path" => "tmp/master.key",
       "api_host" => "0.0.0.0",
@@ -168,6 +169,16 @@ class ValpoConfigTest < Minitest::Test
       assert_match message, error.message
       file.unlink
     end
+  end
+
+  def test_rejects_an_unsupported_configuration_schema
+    file = write_config("config_schema: 2\n")
+
+    error = assert_raises(Valpo::ValidationError) { Valpo::Config.load(path: file.path, env: "test") }
+
+    assert_match "config_schema 2 is not supported; expected 1", error.message
+  ensure
+    file&.unlink
   end
 
   def test_validates_operational_ranges

@@ -7,7 +7,23 @@ module Valpo
         def system_status(value)
           return emit_json(value) if json?
 
-          details(value, %w[status client_version server_version compatible])
+          details(
+            value,
+            %w[
+              status
+              client_version
+              server_version
+              client_api_version
+              server_api_version
+              schema_version
+              schema_target
+              config_schema
+              host_profile
+              channel
+              artifact_digest
+              compatible
+            ]
+          )
         end
 
         def version(value)

@@ -197,9 +197,9 @@ Use `valpo system secrets verify` to confirm that the configured database and ke
 
 ## Development Updates And Clean Reinstalls
 
-The installer supports an in-place development update only when the incoming and installed `db/migrations/001_bootstrap.rb` files have the same SHA-256 digest. It performs that comparison before installing packages, copying source, changing configuration, or running migrations. An existing `/etc/valpo/valpo.yml` is preserved byte-for-byte, with ownership/mode restored to `root:valpo`/`0640`.
+The installer supports an in-place development update only when the incoming and installed `db/migrations/001_bootstrap.rb` files have the same SHA-256 digest. It performs that comparison before installing packages, copying source, changing configuration, or running migrations. Migration `001` is now permanently frozen, so this comparison is an integrity and unsupported-checkout guard. Later schema changes use contiguous incremental migrations, which the installer runs. An existing `/etc/valpo/valpo.yml` is preserved byte-for-byte, with ownership/mode restored to `root:valpo`/`0640`.
 
-Valpo deliberately rewrites its single bootstrap migration before release. Sequel does not rerun migration version `001` when its contents change, so an in-place update across a bootstrap-schema change would leave code and database out of sync. The installer refuses that update. Until incremental migrations are adopted, use a clean reinstall on a disposable/development host:
+The source installer's in-place update path still replaces `/opt/valpo` directly and has no code/database transaction or automatic rollback. Use in-place source updates only on disposable development hosts. Fresh source installation remains the current alpha installation path, but a production updater based on verified immutable releases and offline checkpoints is only specified in [the release lifecycle](../docs/valpo-release-lifecycle.md), not yet implemented. For a clean development reinstall:
 
 ```bash
 packaging/uninstall.sh

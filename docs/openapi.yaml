@@ -42,11 +42,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: false
-                required: [ok, service, version]
+                required: [ok, service, version, api_version, schema_version, schema_target, config_schema, host_profile, channel, artifact_digest]
                 properties:
                   ok: {type: boolean}
                   service: {type: string}
                   version: {type: string}
+                  api_version: {type: integer, minimum: 1}
+                  schema_version: {type: integer, minimum: 0}
+                  schema_target: {type: integer, minimum: 1}
+                  config_schema: {type: integer, minimum: 1}
+                  host_profile: {type: integer, minimum: 1}
+                  channel: {type: string, enum: [development, preview, stable]}
+                  artifact_digest:
+                    type: [string, 'null']
+                    pattern: '^sha256:[0-9a-f]{64}$'
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}

@@ -66,7 +66,20 @@ module Valpo
           # GET /health — report API process health.
           r.get true do
             validate_query
-            {ok: true, service: "valpo-api", version: Valpo::VERSION}
+            release = Valpo::ReleaseMetadata.current
+            installation = Valpo::InstallationMetadata.current
+            {
+              ok: true,
+              service: "valpo-api",
+              version: release.version,
+              api_version: release.api_version,
+              schema_version: Valpo::SchemaInfo.current,
+              schema_target: release.schema_target,
+              config_schema: Valpo.config.config_schema,
+              host_profile: release.host_profile,
+              channel: installation.channel,
+              artifact_digest: installation.artifact_digest
+            }
           end
           not_found("Route not found")
         end

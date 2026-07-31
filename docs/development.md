@@ -81,15 +81,10 @@ r.post true do
 
 Version-specific contracts and response renderers live together under `API::V1` resource modules. When a route, contract, renderer, or response changes, update both [valpo-api.md](./valpo-api.md) and [openapi.yaml](./openapi.yaml), then run `rake api:check`. The check compares OpenAPI operations with route comments and validates local references and representative contract parity.
 
-## Pre-release Schema Policy
+## Schema And Release Metadata Policy
 
-Valpo has not been released, so backward compatibility is not a goal and all current schema is kept in the first migration. That migration may be rewritten. Sequel tracks its version number, not the file contents: rerunning migration `001` does not apply later edits to a database that already records version `1`.
+`db/migrations/001_bootstrap.rb` is the permanent public bootstrap schema. Never edit it, including for formatting-only changes. Add one new, contiguously numbered migration for every schema change (`002_description.rb`, `003_description.rb`, and so on). `SchemaInfo` checks the frozen bootstrap digest and contiguous sequence before Sequel runs migrations.
 
-After any change to `db/migrations/001_bootstrap.rb`, remove the disposable development database and rerun migrations:
+Keep migrations self-contained: use Sequel schema/data operations and do not call current application models whose shape may no longer match an older database. New release work must cover fresh migration and upgrade from the previous published schema. Destructive changes should use an expand/contract sequence so the prior code release remains usable during the rollback window.
 
-```bash
-rm -f tmp/valpo-development.sqlite3 tmp/valpo-development.sqlite3-wal tmp/valpo-development.sqlite3-shm
-mise exec -- bundle exec rake db:migrate
-```
-
-Back up any local state you care about first. The packaged installer compares the installed and incoming bootstrap-migration SHA-256 digests before making changes and refuses an in-place development update when they differ. The clean-reinstall procedure and its destructive scope are documented in [packaging/README.md](../packaging/README.md).
+The tracked `release.json` is the immutable release compatibility manifest. It records the code version, API compatibility version, supported/target database schemas, configuration schema, and host profile. Update it with version or compatibility changes, and ensure its schema target equals the latest migration. Channel, verified archive digest, and installation time belong to the host's separate root-owned installation metadata so the exact same artifact can be promoted without rebuilding it.

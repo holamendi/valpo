@@ -11,6 +11,8 @@ module Valpo
       )
       Valpo::Database.connect(config)
       Valpo::Migrator.run if migrate
+      Valpo::ReleaseMetadata.current.validate_database!
+      Valpo::InstallationMetadata.current
       validate_config!(config)
       Valpo::Database.connection
     end

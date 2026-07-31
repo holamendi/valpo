@@ -6,7 +6,7 @@ Valpo is a Ruby 4.0.5 application. Production code lives in `lib/valpo/`, groupe
 
 Zeitwerk loads Valpo constants. Match filenames to constants, keep one primary class or module per file, and preserve the `API`, `CLI`, and `GitHub` inflections. `lib/valpo/models/project.rb`, for example, defines `Valpo::Project`.
 
-Valpo is pre-release. Do not preserve compatibility with retired APIs, schemas, configuration, or internal constants unless explicitly required. Remove obsolete paths and update the bootstrap migration in place.
+Valpo is pre-release. Do not preserve compatibility with retired APIs, configuration, or internal constants unless explicitly required. The public bootstrap schema is frozen: never edit `db/migrations/001_bootstrap.rb`; add a new contiguous migration for every schema change.
 
 ## Build, Test, and Development Commands
 

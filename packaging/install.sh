@@ -77,6 +77,7 @@ preflight_bootstrap_schema() {
   local installed_schema="${PREFIX}/db/migrations/001_bootstrap.rb"
 
   [[ -f "$incoming_schema" ]] || fail "Incoming source is missing db/migrations/001_bootstrap.rb"
+  [[ -f "${SOURCE_DIR}/release.json" ]] || fail "Incoming source is missing release.json"
   if [[ ! -f "$installed_schema" ]]; then
     [[ ! -e "$PREFIX" && ! -e "${STATE_DIR}/valpo.db" && ! -e "$CONFIG_PATH" ]] ||
       fail "The installed Valpo layout is incomplete. Back up required configuration, database, and managed-volume data, run packaging/uninstall.sh, then reinstall from a checkout outside /opt/valpo."
