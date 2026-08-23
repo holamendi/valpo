@@ -4,6 +4,47 @@ Valpo currently ships a source installer for one fixed Ubuntu 26.04 LTS host lay
 
 Run installation as root and use root for installed `valpo` commands that manage the host.
 
+## Immutable Release Artifacts
+
+The release workflow builds self-contained Linux amd64 and arm64 archives named
+`valpo-VERSION-linux-ARCH.tar.zst`. Each archive is rooted at
+`opt/valpo/releases/VERSION/` and contains Valpo, Ruby 4.0.5, locked production
+gems, `pack` 0.40.8, migrations, templates, and release-local launchers for the
+CLI, API, worker, maintenance, and migrations. Mise is a pinned build-time
+fetcher only and is not required by the extracted release.
+
+The compiler needed by source-only native gems is confined to a disposable
+native build stage. The runtime-fetch and artifact stages omit it, and neither
+the toolchain, Ruby headers, nor intermediate object files are packaged.
+
+Build and smoke-test an artifact on a native matching Linux or Docker host:
+
+```bash
+packaging/release/build.sh --architecture amd64 --output-dir dist
+packaging/release/smoke.sh \
+  --architecture amd64 \
+  --archive dist/valpo-0.1.0-linux-amd64.tar.zst
+packaging/release/sbom.sh \
+  --architecture amd64 \
+  --archive dist/valpo-0.1.0-linux-amd64.tar.zst \
+  --output dist/valpo-0.1.0-linux-amd64.spdx.json
+```
+
+The builder refuses emulation, unlocked or source-built Ruby resolution, unsafe
+archive paths and symlinks, compressed output above 75 MiB, and extracted output
+above 275 MiB. The expected operating range is 45–60 MiB compressed and
+180–230 MiB extracted. GitHub Actions builds amd64 for packaging pull requests
+and both native architectures for tags and manual runs. It uploads archives,
+SPDX SBOMs, sorted checksums, and attestations as one final workflow artifact;
+it does not create a GitHub Release.
+
+These artifacts establish the release payload and verification contract, not an
+installation path. Only extraction at `/opt/valpo/releases/VERSION` is
+supported by the payload. Activation, the `/opt/valpo/current` symlink, systemd
+installation, installation metadata, upgrades, and rollback are deliberately
+unchanged and remain future lifecycle work. The source installer below remains
+development-only.
+
 ## Supported Source Installation
 
 Install from a reviewed checkout pinned to an immutable full commit:

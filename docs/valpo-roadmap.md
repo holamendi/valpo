@@ -161,14 +161,14 @@ The root keyring intentionally remains outside SQLite so possession of the datab
 
 Goal: make Valpo safe to install, update, recover, and operate unattended on a dedicated host before expanding the product surface.
 
-Status: release/schema identity and the permanent incremental-migration contract are implemented. Immutable artifacts, transactional upgrades, supported backup/restore, privilege separation, host hardening, and unattended update coordination remain.
+Status: release/schema identity, the permanent incremental-migration contract, and verified native amd64/arm64 artifact generation are implemented. Artifact activation, transactional upgrades, supported backup/restore, privilege separation, host hardening, and unattended update coordination remain.
 
 Deliverables:
 
 - Freeze `001_bootstrap.rb` and require contiguous incremental migrations. Implemented.
 - Record immutable code/API/database/configuration/host compatibility in `release.json`, with channel, verified artifact digest, and install time in separate root-owned installation metadata. Implemented for development fallback and metadata validation.
 - Expose current compatibility and schema identity through API health and CLI system status. Implemented.
-- Build verified amd64/arm64 production artifacts with an exact Ruby runtime, production gems, SBOM, checksums, and provenance.
+- Build verified amd64/arm64 production artifacts with an exact Ruby runtime, production gems, SBOM, checksums, and provenance. Implemented; CI creates workflow artifacts but intentionally does not publish a GitHub Release.
 - Install artifacts into immutable release directories selected through an atomic `current` symlink.
 - Implement a serialized update transaction with job preflight, offline checkpoint, migration, health verification, history, and immediate rollback.
 - Implement consistent control-plane backup/restore for SQLite, keyring, configuration, and release metadata.

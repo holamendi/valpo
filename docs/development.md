@@ -52,6 +52,38 @@ mise exec -- bundle exec rake api:check
 mise exec -- bundle exec rake docs:check
 ```
 
+## Release Artifact Development
+
+`.mise.toml` disables Ruby compilation, while `mise.lock` records the exact
+attested Linux x64 and arm64 Ruby assets and checksums. Regenerate the lock only
+when intentionally changing the Ruby release asset, then review both platform
+entries. The artifact builder separately pins the mise, `pack`, Ubuntu builder,
+and SBOM tool downloads by version and digest.
+
+The runtime and artifact stages do not install a compiler. The locked graph
+does contain source-only native gems, so a disposable native stage compiles
+those extensions against the exact mise-provided Ruby and passes only the
+production bundle into the artifact stage. Compiler packages, Ruby headers, and
+object files do not enter the archive.
+
+Builds must run on the requested native architecture; the scripts intentionally
+refuse QEMU or another architecture mismatch:
+
+```bash
+packaging/release/build.sh --architecture amd64 --output-dir dist
+packaging/release/smoke.sh \
+  --architecture amd64 \
+  --archive dist/valpo-0.1.0-linux-amd64.tar.zst
+```
+
+`SOURCE_DATE_EPOCH` may be set to an integer Unix timestamp for reproducibility;
+otherwise the builder uses the checked-out commit timestamp. The build reports
+compressed and extracted sizes and enforces the release ceilings. Run
+`test/packaging/release_artifact_test.rb` for the fast argument, lock, launcher,
+migration, pruning, content, workflow, and size-contract checks. The container
+smoke test performs archive-safety, load-path, dynamic-library, migration, CLI,
+and API health verification with runtime networking disabled.
+
 ## Repository And Loader Conventions
 
 API, worker, CLI, models, and shared runtime code live in one Ruby gem-style repository. Valpo-owned constants are loaded lazily through Zeitwerk:

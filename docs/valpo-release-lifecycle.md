@@ -2,9 +2,23 @@
 
 ## Current Status
 
-Valpo now has a frozen bootstrap migration, contiguous incremental-migration policy, explicit configuration schema, machine-readable `release.json`, and a separate installation-metadata contract. The API and CLI report release and schema identity. Immutable release directories, transactional control-plane updates, first-class backup/restore, host hardening, signed artifact publication, and unattended Valpo updates remain to be implemented.
+Valpo now has a frozen bootstrap migration, contiguous incremental-migration policy, explicit configuration schema, machine-readable `release.json`, and a separate installation-metadata contract. The API and CLI report release and schema identity. CI can build and smoke-test deterministic native amd64/arm64 archives rooted at the future immutable release path, with pinned Ruby and `pack`, production gems, SPDX SBOMs, checksums, build provenance, and SBOM attestations. Activation of those artifacts, transactional control-plane updates, first-class backup/restore, host hardening, GitHub Release publication, and unattended Valpo updates remain to be implemented.
 
 The existing source installer remains a development path. It must not be presented as a production updater because it replaces `/opt/valpo` in place and cannot atomically restore code and database state after a failed transition.
+
+## Artifact Boundary
+
+The release payload is `valpo-VERSION-linux-ARCH.tar.zst`, rooted at
+`opt/valpo/releases/VERSION/`. It carries the application, migrations, metadata,
+templates, Ruby 4.0.5, production dependencies, `pack`, and release-local
+entrypoints. Mise participates only in the pinned build and is removed from the
+payload. Normalized archive metadata and single-threaded `zstd -10` make a build
+reproducible for the same inputs and `SOURCE_DATE_EPOCH`.
+
+The artifact assumes its final `/opt/valpo/releases/VERSION` location. It does
+not activate itself, install services, write installation metadata, modify the
+source installer, or define upgrade and rollback behavior. A future installer
+must verify the published checksum and attestations before staging this payload.
 
 ## Dedicated-Host Contract
 

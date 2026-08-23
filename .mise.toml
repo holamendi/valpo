@@ -1,2 +1,6 @@
 [tools]
 ruby = "4.0.5"
+
+[settings]
+ruby.compile = false
+ruby.github_attestations = true

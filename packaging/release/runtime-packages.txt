@@ -1,0 +1,8 @@
+# Ubuntu 26.04 packages required by the packaged-runtime smoke environment.
+ca-certificates
+caddy
+curl
+docker.io
+file
+git
+zstd
