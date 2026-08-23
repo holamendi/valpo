@@ -1,341 +1,62 @@
 # Valpo Roadmap
 
-## Roadmap Philosophy
+Valpo develops outward from a reliable single-server core. Production-safe installation and recovery take priority over additional product surface.
 
-Build from the smallest useful self-contained VPS platform outward. Avoid starting with GitHub/GitLab, static-site expansion, or the multi-server dashboard until the single-server deploy lifecycle and managed-service foundation are solid and repeatably operable.
+## Implemented Foundation
 
-The first milestone should prove that Valpo can reliably take an artifact, run it, route traffic to it, show logs, roll it back, survive routine host operations, and clean up after itself. The next product-defining milestone is managed services that feel like Heroku add-ons rather than raw container setup.
+The current pre-release provides:
 
-## Phase 0: Architecture And Scaffold
+- a Roda API, SQLite-backed jobs, a worker, and a resource-first CLI;
+- registry and GitHub deployments using Dockerfiles or Cloud Native Buildpacks;
+- web and worker services, health checks, releases, rollback, logs, and HTTPS routing;
+- project-scoped Postgres and Redis services with encrypted credentials and explicit bindings;
+- a validated `valpo.toml` manifest with dry-run, add/update reconciliation;
+- scoped API credentials, encrypted service/provider secrets, key verification and rotation;
+- storage maintenance, runtime repair, and repeatable VPS smoke tests;
+- frozen incremental migrations, release compatibility metadata, and verified native amd64/arm64 artifacts.
 
-Goal: create the project skeleton and validate the local host model.
+## 1. Production Installation And Recovery
 
-Status: implemented. The repository has the Roda API, Sequel/SQLite migrations, SQLite-backed job runner, worker, CLI, config loading, Docker/Caddy boundaries, and systemd/config templates. A pre-release foundation pass added `/v1`, strict `dry-validation` request contracts, versioned resource renderers, an OpenAPI 3.1 mirror, exact routes, stable errors, cohesive production boundaries, and synchronized documentation.
+The current source installer is for development. Before expanding the product, Valpo needs:
 
-Deliverables:
+- immutable version directories and atomic activation;
+- a serialized upgrade transaction with preflight, checkpoint, migration, verification, and rollback;
+- control-plane backup and restore for SQLite, the keyring, configuration, and release metadata;
+- service-aware Postgres and Redis backup and restore tested on a clean host;
+- separate API and Docker-capable worker privileges;
+- dedicated-host preflight, guarded SSH/firewall hardening, security-update policy, and reboot coordination;
+- preview and stable channels that promote the same verified artifact.
 
-- Ruby project structure.
-- Roda API skeleton.
-- Sequel and SQLite setup.
-- Initial migrations.
-- systemd unit templates.
-- Basic config file format.
-- Docker CLI wrapper.
-- Caddy config/apply wrapper.
-- SQLite-backed job table.
-- Worker process skeleton.
-- CLI skeleton.
+The release must survive an injected upgrade failure without interrupting running applications, and an off-host backup must restore successfully on a fresh compatible server. See the [release lifecycle](./valpo-release-lifecycle.md).
 
-Exit criteria:
+## 2. Additional Source Providers
 
-- API and worker can run locally.
-- A job can be enqueued, executed, and inspected.
-- SQLite schema is migrated reproducibly.
+Add GitLab after the GitHub path is stable. Provider support must preserve the same source, build, release, webhook, and failure behavior instead of introducing provider-specific deployment models.
 
-## Phase 1: Single-Server Container Deploy MVP
+Custom builders, build secrets, Railpack, static-output detection, and image rebase remain outside the current build scope.
 
-Goal: deploy a prebuilt Docker image to one VPS, route HTTPS traffic to it, and make the server safe to operate repeatedly.
+## 3. Static Sites
 
-Status: complete.
-
-### Phase 1A: Container Deploy Path
+Add zip upload, safe extraction into immutable releases, Caddy file serving, custom domains, and rollback. Static hosting should not require a container.
 
-Status: complete.
+## 4. Project Portability
 
-Deliverables:
+Extend the existing manifest into export/import bundles containing the required database dumps, volume snapshots, static releases, credentials, and optional images. Import must support dry-run and report missing target capabilities before mutation.
 
-- Create project.
-- Deploy from Docker image reference.
-- Pull image and record digest.
-- Start container.
-- Basic health check.
-- Configure Caddy route.
-- Add/remove/list domains.
-- Store release history.
-- Roll back to previous release.
-- Stream or retrieve deployment logs.
-- Retrieve app logs.
-- Stop/restart individual services.
-- Installer creates an operator-friendly `valpo` CLI command on `PATH`.
+Credential migration behavior must be defined before encrypted resources can be exported safely. Additional managed databases should wait until their lifecycle, backup, restore, and export behavior is tested.
 
-Example target flow:
+## 5. Multi-Server Dashboard
 
-```bash
-valpo project create hello
-valpo service create web --project hello --type web --port 3000
-valpo service deploy web --project hello --image ghcr.io/example/hello:latest
-valpo domain add web hello.example.com --project hello
-valpo service logs web --project hello
-valpo release list web --project hello
-valpo release rollback web --project hello
-```
+Build a dashboard for registering and operating independent Valpo servers through their APIs. It may cache state, but each server remains authoritative and applications continue running without the dashboard.
 
-Exit criteria:
+Initial dashboard scope is server health, projects, deployments, jobs and logs, domains, static uploads, export/import, and API credential management.
 
-- A user can deploy an existing container image behind HTTPS.
-- A failed deploy does not break the currently active release.
-- Rollback works without rebuilding.
-- Core install/deploy/domain/log/release operations work from the installed CLI on a fresh Ubuntu VPS.
+## 6. Later Polish
 
-### Phase 1B: Single-Server Operability
+Candidates include scheduled jobs, preview deployments, object-storage backups, deploy status checks, role-based access control, audit logs, templates, notifications, and stable extension APIs.
 
-Status: complete. Project deletion cleanup, default synchronous CLI operations, advanced `job wait`, `system repair` for Caddy regeneration plus active-container Docker reconciliation, reboot verification, private API defaults, token-gated non-local API binding, and repeatable VPS smoke testing are implemented.
+Public extension contracts should be extracted only after at least two real implementations need them. Extensions must keep resources, state transitions, jobs, failures, and secret access visible through Valpo's model.
 
-Deliverables:
+## Deferred
 
-- Delete project and clean up its active container, domains, releases, and generated routes.
-- Add `job wait JOB_ID` for troubleshooting and synchronous deploy/domain commands with timeouts and useful exit codes.
-- Verify active apps after host reboot.
-- Reconcile Valpo metadata with Docker and Caddy state on startup or through an explicit repair command.
-- Regenerate Caddy config from SQLite state and reload Caddy.
-- Keep the API private by default and add token-based API authentication before any non-local API exposure.
-- Add a repeatable VPS smoke test for install, deploy, domain, HTTPS, logs, reboot, and cleanup.
-
-Exit criteria:
-
-- A fresh VPS can install Valpo, deploy `nginx:alpine`, add a public HTTPS domain, reboot, and continue serving the app.
-- A test project can be deleted without leaving containers, routes, or domains behind.
-- Long-running CLI workflows can wait for completion and fail with non-zero status on job failure or timeout.
-- The Valpo control API is not publicly reachable unless explicit authentication has been configured; narrowly scoped provider callbacks use protocol-specific authentication.
-- The smoke test can be rerun on the same host without manual cleanup.
-
-## Phase 2: Managed Services And Unified Project Foundation
-
-Goal: make Postgres and Redis feel like Heroku-style add-ons instead of raw container setup.
-
-Status: implemented. Phase 2A introduced private Postgres and Redis services. Phase 2B changed projects into grouping boundaries containing multiple app and managed services.
-
-Start this phase only after Phase 1B is complete.
-
-Deliverables:
-
-- Built-in service registry with one definition object per supported type.
-- Service records and lifecycle jobs.
-- Private Docker runtime for service containers.
-- Persistent Docker volumes for stateful services.
-- Postgres managed service.
-- Redis managed service.
-- Supported version catalog: Postgres `16`, `17`, `18`; Redis `7`, `8`.
-- Curated defaults.
-- Generate service credentials and connection URLs.
-- Shared service identity with typed UUIDv7 IDs.
-- App-service kinds `web` and `worker`, plus managed `postgres` and `redis` kinds.
-- Project-scoped service names addressed with `SERVICE --project PROJECT` by the CLI.
-- Explicit app-to-managed-service dependencies.
-- Inject managed environment values only into dependent app services.
-- Restart or redeploy affected apps after binding.
-- Strict `valpo.toml` project manifest with dry-run and add/update-only reconciliation.
-- GitHub source and image build-target metadata, initially stored as unconnected configuration.
-- Health checks and readiness polling for service containers.
-- Refuse project deletion while any services remain.
-
-Exit criteria:
-
-- A project can contain multiple app services and managed dependencies.
-- A user can add Postgres without manually setting `DATABASE_URL`.
-- An app service can depend on Redis without manually assembling a Redis URL.
-- Managed service containers survive host reboot and are repaired by the same operability path as apps.
-- Services are private by default and do not expose public ports.
-- Services can be deleted with explicit confirmation, removing their containers and volumes before project cleanup.
-
-## Near-Term Foundation And Security
-
-Goal: close the known security and operational gaps before expanding the product surface.
-
-Status: storage, operator-facing rotation, recovery verification, and token rollover are implemented; export/import credential migration behavior remains.
-
-Deliverables:
-
-- Encrypt managed-service credential JSON and per-service environment values at rest with a host-local key. Implemented.
-- Store GitHub App secrets and fallback PATs in the same encrypted credential store. Implemented.
-- Derive dependency environment from encrypted managed credentials instead of persisting duplicate secret JSON. Implemented.
-- Generate a private, versioned host keyring and document that it must be backed up with SQLite. Implemented.
-- Define credential migration behavior for future export/import.
-- Replace the single host-wide bearer token with scoped, revocable, digest-only API credentials. Implemented.
-- Add operator-facing host-key rotation, bulk re-encryption, recovery verification, and safe token-rollover workflows. Implemented.
-- Keep dependency, deployment, domain, Caddy, and system repair boundaries covered by characterization tests as internals evolve.
-
-The root keyring intentionally remains outside SQLite so possession of the database alone is insufficient to decrypt secrets. Backups must include both artifacts under separate access controls; losing the keyring makes encrypted records unrecoverable.
-
-## Release, Upgrade, Recovery, And Host Lifecycle Foundation
-
-Goal: make Valpo safe to install, update, recover, and operate unattended on a dedicated host before expanding the product surface.
-
-Status: release/schema identity, the permanent incremental-migration contract, and verified native amd64/arm64 artifact generation are implemented. Artifact activation, transactional upgrades, supported backup/restore, privilege separation, host hardening, and unattended update coordination remain.
-
-Deliverables:
-
-- Freeze `001_bootstrap.rb` and require contiguous incremental migrations. Implemented.
-- Record immutable code/API/database/configuration/host compatibility in `release.json`, with channel, verified artifact digest, and install time in separate root-owned installation metadata. Implemented for development fallback and metadata validation.
-- Expose current compatibility and schema identity through API health and CLI system status. Implemented.
-- Build verified amd64/arm64 production artifacts with an exact Ruby runtime, production gems, SBOM, checksums, and provenance. Implemented; CI creates workflow artifacts but intentionally does not publish a GitHub Release.
-- Install artifacts into immutable release directories selected through an atomic `current` symlink.
-- Implement a serialized update transaction with job preflight, offline checkpoint, migration, health verification, history, and immediate rollback.
-- Implement consistent control-plane backup/restore for SQLite, keyring, configuration, and release metadata.
-- Implement service-aware Postgres and Redis backup/restore into fresh volumes and prove clean-host recovery.
-- Remove Docker access from the API and separate the unprivileged API from the Docker-capable worker identity.
-- Add dedicated-host preflight, guarded SSH/firewall hardening, Ubuntu security-update policy, bounded reboot coordination, and post-boot reconciliation.
-- Add preview/stable channels with signed metadata, phased rollout, pause/withdrawal, and patch-only stable automation before 1.0.
-
-Exit criteria:
-
-- A previous published release upgrades with representative encrypted and managed-service state intact.
-- An injected candidate failure restores the previous control plane without interrupting running applications.
-- A verified off-host backup restores onto a fresh compatible server.
-- SSH hardening cannot activate until a key-authenticated non-root operator and recovery path are validated.
-- Security updates and required reboots complete within a bounded maintenance policy and return the host to a reconciled healthy state.
-
-## GitHub Integration And Source Deployments
-
-Goal: connect repositories and build/deploy on demand or webhook push.
-
-Status: complete for the supported GitHub scope.
-
-Implemented:
-
-- CLI-managed, encrypted fine-grained PAT authentication for GitHub HTTPS fetches.
-- Per-server GitHub App creation through a one-time manifest flow on `github.<app-domain>`.
-- Encrypted database storage of the generated App key and webhook secret, with repository-scoped short-lived installation tokens for source fetches.
-- HMAC-verified, delivery-deduplicated push webhooks that enqueue matching `auto_deploy` source jobs.
-- Manifest-free source service creation and source/build/runtime updates through the public CLI.
-- Mandatory repository/ref/path preflight with exact commit resolution before configuration changes.
-- Service-owned source/build definitions, with detachment from shared manifest definitions on CLI updates.
-- Manual deploy from the configured branch or an explicit branch, tag, or commit SHA.
-- Dockerfile build logs, commit-based image tags, and git-backed releases.
-- Automatic Dockerfile/buildpack selection, explicit build strategies, pinned Paketo builds, per-target caches, timeouts, and release build metadata.
-- Automatic web-port resolution from explicit configuration, image `EXPOSE`, or the source-build port-3000 fallback.
-- Failed fetches leave configuration untouched; failed builds and health checks record failed releases and leave an active release untouched.
-
-Supported credential scope:
-
-- One private GitHub App can be configured per Valpo server.
-- The encrypted fine-grained PAT remains supported as an alternative when a GitHub App is not configured.
-- Multi-App credentials are not planned. Operators needing one App per repository owner should use separate Valpo servers; the PAT mode remains available when that separation is impractical.
-
-Current build constraint:
-
-- Support Dockerfile and Cloud Native Buildpacks builds that produce a local Docker image.
-- Defer custom builders per project, build secrets, Railpack, static output detection, and image rebase.
-
-Exit criteria:
-
-- A user can connect a private GitHub repo and deploy a branch.
-- Push webhooks can enqueue deployment jobs.
-- Failed builds leave the active release untouched.
-
-## Phase 3: Additional Source Providers
-
-Goal: add GitLab and other source adapters after the GitHub build path is stable.
-
-Deliverables:
-
-- GitLab repository connection and webhooks.
-- Provider-neutral source credentials and events.
-- Equivalent build/release behavior across supported providers.
-
-## Phase 4: Static Sites
-
-Goal: support static-site hosting as a first-class path.
-
-Deliverables:
-
-- Static project type.
-- Zip upload endpoint.
-- CLI upload command.
-- Safe zip validation.
-- Immutable release directory extraction.
-- Caddy static file routing.
-- Static release rollback.
-- Dashboard drag-and-drop prototype.
-
-Exit criteria:
-
-- A user can upload a zipped `dist` folder and serve it through a custom domain.
-- Rollback between static releases works.
-- Static hosting does not require a container.
-
-## Phase 5: Project Export And Import
-
-Goal: make migration between servers understandable and robust.
-
-Deliverables:
-
-- Export the existing project manifest with runtime state references.
-- Export project bundle.
-- Import project bundle.
-- Export database dumps.
-- Export volume snapshots.
-- Export static releases.
-- Optional Docker image archive.
-- Import preflight validation.
-- Import dry run.
-- MariaDB only after its definition, readiness, binding, backup, restore, and export semantics are specified and tested.
-
-Exit criteria:
-
-- A user can export a project from one server and import it into another.
-- Import reports missing capabilities before making changes.
-- Imported projects can be started and routed on the target server.
-
-## Phase 6: Multi-Server Dashboard
-
-Goal: manage multiple independent Valpo servers from one web UI.
-
-Deliverables:
-
-- Dashboard app.
-- Server registration.
-- Server health overview.
-- Project list grouped by server.
-- Deploy actions against a selected server.
-- Job/log views.
-- Static upload UI.
-- Domain management UI.
-- Export/import UI.
-- Token management.
-
-Architecture rule:
-
-- The dashboard operates servers through their APIs.
-- The dashboard is not required for apps to keep running.
-- Servers do not coordinate with each other.
-
-Exit criteria:
-
-- A user can manage at least two independent Valpo servers from one dashboard.
-- Losing dashboard access does not affect running apps.
-
-## Phase 7: Polish And Extensibility
-
-Goal: improve usability and add carefully chosen advanced features.
-
-Potential deliverables:
-
-- Scheduled jobs.
-- Preview deployments.
-- Object storage backup target.
-- Direct migration transfer mode.
-- GitHub/GitLab deploy status checks.
-- Role-based access control.
-- Audit log.
-- Server upgrade UI.
-- App templates.
-- Internal extension interfaces promoted to stable APIs.
-- Typed lifecycle hooks.
-- Webhook notification sink.
-- Custom backup targets.
-- Third-party service definitions.
-- Additional curated services such as MariaDB, only with complete lifecycle and data-portability behavior.
-
-## Features To Delay
-
-These should remain out of early scope:
-
-- Multi-node orchestration.
-- Automatic horizontal scaling across servers.
-- Kubernetes compatibility.
-- Plugin marketplace.
-- Feature parity with Coolify or Dokploy.
-- Full CI pipeline features.
-- Complex network overlays.
-- Server-to-server cluster state.
+Valpo does not plan early support for multi-node orchestration, automatic horizontal scaling, Kubernetes compatibility, cluster state, a plugin marketplace, a general CI system, or feature parity with broad self-hosted PaaS products.

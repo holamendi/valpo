@@ -13,10 +13,6 @@ gems, `pack` 0.40.8, migrations, templates, and release-local launchers for the
 CLI, API, worker, maintenance, and migrations. Mise is a pinned build-time
 fetcher only and is not required by the extracted release.
 
-The compiler needed by source-only native gems is confined to a disposable
-native build stage. The runtime-fetch and artifact stages omit it, and neither
-the toolchain, Ruby headers, nor intermediate object files are packaged.
-
 Build and smoke-test an artifact on a native matching Linux or Docker host:
 
 ```bash
@@ -30,13 +26,10 @@ packaging/release/sbom.sh \
   --output dist/valpo-0.1.0-linux-amd64.spdx.json
 ```
 
-The builder refuses emulation, unlocked or source-built Ruby resolution, unsafe
-archive paths and symlinks, compressed output above 75 MiB, and extracted output
-above 275 MiB. The expected operating range is 45–60 MiB compressed and
-180–230 MiB extracted. GitHub Actions builds amd64 for packaging pull requests
-and both native architectures for tags and manual runs. It uploads archives,
-SPDX SBOMs, sorted checksums, and attestations as one final workflow artifact;
-it does not create a GitHub Release.
+The builder refuses emulation, unpinned Ruby, unsafe archive paths, and artifacts
+above the configured size limits. GitHub Actions uploads archives, SPDX SBOMs,
+checksums, and attestations as workflow artifacts; it does not publish a GitHub
+Release.
 
 These artifacts establish the release payload and verification contract, not an
 installation path. Only extraction at `/opt/valpo/releases/VERSION` is
@@ -65,14 +58,12 @@ The installer:
 - configures and activates the Redis host prerequisite `vm.overcommit_memory=1`
 - installs source into `/opt/valpo`
 - stores Valpo state under `/var/lib/valpo`
-- copies the production config template to `/etc/valpo/valpo.yml` on the first install
-- preserves the existing config byte-for-byte on later compatible installs
-- creates the private host-key directory at `/var/lib/valpo/secrets`
-- writes Valpo-generated Caddy routes to `/var/lib/valpo/caddy/valpo.caddy`
-- ensures `/etc/caddy/Caddyfile` imports the generated Valpo Caddy file
+- creates the initial configuration and preserves it on compatible reinstalls
+- creates private state, host-key, and generated Caddy paths under `/var/lib/valpo`
+- imports Valpo's generated routes from the system Caddy configuration
 - installs systemd units and starts `valpo-api` and `valpo-worker`
 
-The supported layout is intentionally fixed: user/group `valpo`, Ruby `4.0.5`, source at `/opt/valpo`, configuration at `/etc/valpo/valpo.yml`, and state at `/var/lib/valpo`. The installer refuses non-Ubuntu hosts and Ubuntu releases other than 26.04 instead of attempting an untested installation.
+The layout is fixed: user/group `valpo`, Ruby `4.0.5`, source at `/opt/valpo`, configuration at `/etc/valpo/valpo.yml`, and state at `/var/lib/valpo`. Other operating systems and Ubuntu releases are rejected.
 
 Ruby is installed through mise with precompiled binaries enabled:
 
@@ -81,7 +72,7 @@ MISE_RUBY_COMPILE=false
 mise settings set ruby.compile false
 ```
 
-If mise falls back to compiling Ruby from source, the installer fails. Valpo is installed from its source checkout; the gemspec supports dependency resolution and repository tooling, not a supported `gem install valpo` distribution path.
+The installer fails if mise cannot use a precompiled Ruby. `gem install valpo` is not supported.
 
 ## Development Bootstrap
 
@@ -91,9 +82,7 @@ For a disposable development host, the bootstrap can install the current mutable
 curl -fsSL https://raw.githubusercontent.com/holamendi/valpo/main/packaging/bootstrap.sh | sudo bash
 ```
 
-The bootstrap downloads the current `main` archive into a private temporary directory, extracts it, invokes `packaging/install.sh`, and removes the temporary files.
-
-This path is deliberately development-only: the branch is mutable, the archive is not a versioned release artifact, and two runs may install different commits. It is not reproducible installation guidance. For an inspect-first development installation, download `bootstrap.sh`, review it, then run it with `sudo bash bootstrap.sh`.
+The bootstrap installs a mutable snapshot of `main`, so it is neither reproducible nor suitable for production. For an inspect-first installation, download and review the script before running it.
 
 ## App Domain
 
@@ -135,11 +124,6 @@ VALPO_ENV=production VALPO_CONFIG=/path/to/valpo.yml \
   mise exec -- bundle exec exe/valpo-api
 ```
 
-The installer also generates a frozen standalone Ruby load path under
-`/var/lib/valpo/bundle`. The long-running API and worker use that setup directly,
-so they do not retain the full Bundler runtime. Short-lived CLI, migration, and
-maintenance commands continue to use the locked Bundler environment.
-
 Without `VALPO_ENV=production`, direct development commands select the `development` section/defaults rather than the `production` mapping.
 
 ## GitHub Source Authentication
@@ -150,7 +134,7 @@ After the default app domain is verified, create the private GitHub App for this
 valpo auth login github
 ```
 
-The command prints a one-time URL on `github.<app-domain>`. Open it, name the App, create it from Valpo's manifest, and select the repositories it may access. The wildcard DNS already required for the app domain covers this hostname; no additional DNS record is needed.
+The command prints a one-time URL on `github.<app-domain>`. Open it, create the App, and select its repositories. The app-domain wildcard already covers this hostname.
 
 Private Apps can only be installed on the account that owns them. For organization repositories, create the App under that organization:
 
@@ -158,9 +142,7 @@ Private Apps can only be installed on the account that owns them. For organizati
 valpo auth login github --organization acme
 ```
 
-The manifest creates a private App with read-only Contents permission, the `push` event, a signed webhook, and server callback URLs. GitHub returns the generated private key and webhook secret to the callback. Valpo encrypts them in SQLite with the host keyring, verifies installation redirects against GitHub, and mints short-lived installation tokens for each source fetch.
-
-`auto_deploy = true` sources deploy matching branch pushes. A source using `HEAD` follows pushes to the repository's default branch. Delivery IDs are deduplicated, and a service with an active operation is skipped instead of receiving a second deployment job.
+Valpo encrypts the App key and webhook secret and uses short-lived installation tokens for source fetches. Sources with `auto_deploy = true` deploy matching signed pushes.
 
 An encrypted fine-grained PAT remains available as a fallback:
 
@@ -168,9 +150,9 @@ An encrypted fine-grained PAT remains available as a fallback:
 op read op://vault/github-pat | valpo auth login github --with-token
 ```
 
-Do not put GitHub App credentials, PATs, or installation tokens in `valpo.yml` or `valpo.toml`. `valpo auth logout github` removes the encrypted local credential records; remove the installation or App separately in GitHub when retiring it.
+Do not put provider credentials in `valpo.yml` or `valpo.toml`. `valpo auth logout github` removes only Valpo's local records; remove the App separately in GitHub.
 
-Because the App callback and webhook URLs contain the default app domain, Valpo will not replace that domain while App credentials are configured. Log out locally, change the domain, run the App setup again, and delete the old App in GitHub.
+Because callback URLs use the default app domain, change it by logging out of GitHub locally, replacing the domain, and setting up a new App. See the [CLI guide](../docs/valpo-cli.md#deployments) for full authentication behavior.
 
 ## Source Build Configuration
 
@@ -182,7 +164,7 @@ production:
   buildpack_builder: paketobuildpacks/builder-jammy-base@sha256:7510725172c8b2f1a7bce82b694e2af9599d5e2d97528c140eaeb81c569c21df
 ```
 
-Build output is available through normal job events. Buildpack caches are stable Docker volumes scoped to a build target; they are removed when their owning service or project is deleted or after the configured period without a build. A repository `project.toml` is honored, but the configured builder remains explicit. Runtime service secrets are not passed into builds.
+Build output is available through job events. Buildpack caches belong to a build target and expire after the configured retention period. Repositories may provide `project.toml`, but cannot override the builder. Runtime secrets are not passed into builds.
 
 ## Storage Maintenance
 
@@ -210,7 +192,7 @@ production:
   container_log_max_files: 3
 ```
 
-Build command output stored in SQLite is capped per build by `build_log_limit`; the runner still retains its bounded failure tail for error reporting after the persisted stream is truncated. The SQLite database uses incremental auto-vacuum so history cleanup can return freed pages to the filesystem without creating a full duplicate database.
+`build_log_limit` caps build output stored in SQLite. Incremental auto-vacuum returns pages freed by history cleanup to the filesystem.
 
 On a Linux development host with Docker and `pack`, run the opt-in build/inspect/run smoke test with:
 
@@ -238,9 +220,9 @@ Use `valpo system secrets verify` to confirm that the configured database and ke
 
 ## Development Updates And Clean Reinstalls
 
-The installer supports an in-place development update only when the incoming and installed `db/migrations/001_bootstrap.rb` files have the same SHA-256 digest. It performs that comparison before installing packages, copying source, changing configuration, or running migrations. Migration `001` is now permanently frozen, so this comparison is an integrity and unsupported-checkout guard. Later schema changes use contiguous incremental migrations, which the installer runs. An existing `/etc/valpo/valpo.yml` is preserved byte-for-byte, with ownership/mode restored to `root:valpo`/`0640`.
+The installer permits an in-place development update only when the installed and incoming frozen bootstrap migrations match. It then runs later contiguous migrations and preserves `/etc/valpo/valpo.yml`.
 
-The source installer's in-place update path still replaces `/opt/valpo` directly and has no code/database transaction or automatic rollback. Use in-place source updates only on disposable development hosts. Fresh source installation remains the current alpha installation path, but a production updater based on verified immutable releases and offline checkpoints is only specified in [the release lifecycle](../docs/valpo-release-lifecycle.md), not yet implemented. For a clean development reinstall:
+In-place source updates replace `/opt/valpo` without transactional rollback, so use them only on disposable development hosts. For a clean reinstall:
 
 ```bash
 packaging/uninstall.sh
@@ -253,9 +235,9 @@ Before uninstalling, stop Valpo and make an offline backup of all operator-owned
 - `/var/lib/valpo`, including the SQLite database, its sidecar files, and credentials;
 - every volume reported by `docker volume ls --filter label=valpo.owned=true`.
 
-Keep those backups access-restricted because they contain secrets and application data. Use the backup mechanism appropriate to the volume's storage driver, and verify the backup before continuing.
+Keep these backups access-restricted and verify them before continuing.
 
-The uninstall destroys Valpo metadata, credentials, generated routing state, and label-owned Docker containers, volumes, and networks. It removes `/etc/sysctl.d/99-valpo-redis.conf` but does not reset the live host-wide `vm.overcommit_memory` value, because another Redis installation may depend on it; reboot or change the value explicitly if the host should return to its previous policy. The copies above are a manual safety measure, not a supported restore or data-preserving schema-upgrade workflow; test any recovery procedure on a separate host. Review retained Docker images and any intentionally unlabeled Docker resources separately. Run the source installer from a checkout outside `/opt/valpo`; replacing `/opt/valpo` manually defeats the installed/incoming migration comparison.
+Uninstall removes Valpo metadata, credentials, routes, and label-owned Docker resources. It removes Valpo's Redis sysctl file but leaves the live `vm.overcommit_memory` value unchanged in case another Redis installation uses it. These manual copies are not a supported restore workflow; test recovery separately. Run the source installer from a checkout outside `/opt/valpo`.
 
 ## Service Logs And Troubleshooting
 
@@ -271,7 +253,7 @@ Use `valpo system status`, `valpo job list`, and `valpo job events JOB_ID` for c
 
 ## Uninstall
 
-Run the destructive uninstaller from a reviewed checkout:
+Back up the state described above, then run the destructive uninstaller from a reviewed checkout:
 
 ```bash
 packaging/uninstall.sh
@@ -281,25 +263,24 @@ It disables Valpo services, removes containers, volumes, and networks carrying `
 
 ## VPS Smoke Test
 
-The dedicated Valpo test VPS is `root@162.55.43.108`, and its app-domain
-suffix is `apps.valpo.dev`. Run the repeatable smoke test from a local checkout:
+Run the repeatable smoke test against a dedicated test host and app domain:
 
 ```bash
-packaging/vps-smoke-test.sh root@162.55.43.108 apps.valpo.dev --reboot
+packaging/vps-smoke-test.sh root@HOST apps.example.com --reboot
 ```
 
-By default the Ruby smoke controller copies the current checkout to `/tmp/valpo-src`, runs the full installer, verifies the private host key and persistent/effective Redis sysctl setting, sets the host-wide app domain, deploys `nginx:alpine`, exercises encrypted set/list/reveal/unset service environment behavior, rotates the host key while encrypted records exist, verifies HTTPS, releases, logs, optional reboot recovery, and then deletes the project. It creates a temporary admin API credential without exposing its raw token in process arguments or output, revokes it during guaranteed cleanup, and checks that a custom plaintext value does not occur in the SQLite files. It does not restore a previous app domain, so do not run it against a host serving unrelated projects. Use `--skip-deps` only when intentionally testing a schema-compatible development update on a host whose dependencies are already installed.
+The test installs the current checkout, exercises host prerequisites, deployment, HTTPS, encrypted environment values, key rotation, logs, and optional reboot recovery, then removes its project and temporary credential. It replaces the host's default app domain, so never run it on a host serving unrelated projects. `--skip-deps` is only for a schema-compatible update on an already prepared test host.
 
-To prove installation from a clean Valpo state, use the guarded destructive wrapper. It runs the uninstaller, verifies the absence of label-owned runtime resources and host state, then runs the full smoke test from the local checkout. Docker images, unlabeled Docker resources, Docker, Caddy, and other shared host packages remain installed.
+For a clean-state test, use the guarded wrapper. It uninstalls Valpo and deletes its label-owned resources before running the full test; shared packages, images, and unlabeled Docker resources remain.
 
 ```bash
-packaging/vps-clean-install-smoke-test.sh root@162.55.43.108 apps.valpo.dev --confirm-destroy-valpo
+packaging/vps-clean-install-smoke-test.sh root@HOST apps.example.com --confirm-destroy-valpo
 ```
 
 Use the source smoke test on a host whose GitHub App or fallback PAT is already configured:
 
 ```bash
-packaging/vps-source-smoke-test.sh root@162.55.43.108 apps.valpo.dev
+packaging/vps-source-smoke-test.sh root@HOST apps.example.com
 ```
 
-It installs the current checkout, creates a unique project without a manifest, and deploys `holamendi/smol-roda` while omitting ref, build strategy, Dockerfile, context, and port. It verifies automatic Dockerfile selection, the resolved commit, port `3000`, injected `PORT`, HTTPS, and release metadata, then removes only the generated project/runtime resources. The script checks the encrypted GitHub credential record and `auth status github` before and after; it never logs out or deletes the credential. Use `--repository OWNER/REPO` for another repository or `--skip-install` to test the already-installed version.
+This verifies the default GitHub source-build path without changing the configured provider credential. Use `--repository OWNER/REPO` for another repository or `--skip-install` to test the installed version.

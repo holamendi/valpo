@@ -1,6 +1,6 @@
 # Valpo Project Manifest
 
-`valpo.toml` describes one project containing named sources, image build targets, app services, and managed services. The server database remains authoritative; applying a manifest is an explicit reconciliation operation.
+`valpo.toml` describes one project containing sources, builds, app services, and managed services. The server database remains authoritative; the manifest changes it only when explicitly applied.
 
 ```toml
 schema = 1
@@ -42,94 +42,43 @@ type = "redis"
 version = "8"
 ```
 
-Preview and apply it with:
+Preview and apply changes with:
 
 ```bash
 valpo project apply valpo.toml --dry-run
 valpo project apply valpo.toml
 ```
 
-Applying is idempotent and creates or updates declared records. Omitted records and dependencies are retained; deletion always requires an explicit CLI operation. Service kind and managed-service version are immutable in this version.
+Applying a manifest is idempotent and adds or updates declared resources. Omitted resources and dependencies are retained; deletion always requires a separate CLI command. A service's type and managed-service version cannot be changed.
 
-Source credentials, GitHub App keys, access tokens, and application secrets never belong in this file. GitHub repositories use the `owner/repository` form; clone URLs are rejected.
+Secrets, source credentials, GitHub App keys, and access tokens do not belong in the manifest. GitHub repositories use `owner/repository`, not clone URLs.
 
-## GitHub App Authentication And Push Deployments
+## Sources And Builds
 
-Configure and verify the default app domain, then start the per-server GitHub App flow:
+GitHub sources support a branch, tag, commit, or `HEAD`. `HEAD` follows the repository's default branch. A source with `auto_deploy = true` deploys signed pushes to its configured branch; Valpo deduplicates webhook deliveries and skips a service that already has an active operation.
+
+Authenticate through a private per-server GitHub App:
 
 ```bash
 valpo auth login github
 ```
 
-The command prints a one-time setup URL under `github.<app-domain>`. The wildcard DNS used by generated application domains already covers this host. Open the URL, name the private App, create it from Valpo's manifest, and choose the repositories it may access.
+Use `--organization ORG` when the repositories belong to an organization. An encrypted fine-grained PAT is available when one App cannot cover the required repository owners. See the [CLI guide](./valpo-cli.md#deployments) for setup and credential behavior.
 
-A private App can only be installed on its owning account. For repositories owned by an organization, create the App under that organization:
+Build strategies are:
 
-```bash
-valpo auth login github --organization acme
-```
+- `auto` (default): use `<context>/Dockerfile` when present; otherwise use Cloud Native Buildpacks.
+- `dockerfile`: require `dockerfile`, which defaults to `Dockerfile` and must remain inside the checkout.
+- `buildpack`: use the configured builder and reject a `dockerfile` field.
 
-The manifest requests read-only repository Contents permission and subscribes to `push`. GitHub redirects the browser with a temporary conversion code; the server exchanges it within the allowed hour and stores the generated App ID, private key, and webhook secret. The post-install redirect is verified with an App JWT instead of trusting the browser-provided installation ID.
+Buildpacks honor `project.toml`, but Valpo selects the builder. Web services default to the `web` process unless `command` is set; buildpack workers require a command.
 
-Inspect or remove the credential without revealing it:
+Valpo validates the repository, ref, context, and build inputs before changing configuration. A deployment records the exact commit, resolved strategy, image, and available buildpack metadata. GitHub.com shallow single-ref checkouts are supported; Git submodules and Git LFS are not configured.
 
-```bash
-valpo auth status github
-valpo auth logout github
-```
+## Runtime Rules
 
-The callback stores App identity as non-secret metadata and encrypts the private key and webhook secret in SQLite with the host keyring. Each checkout looks up the App installation for the repository and mints a short-lived Contents-read token. The private key, webhook secret, and installation tokens never enter the project manifest, API request bodies, jobs, Git remotes, logs, or process arguments.
+For web services, an explicit `port` wins. Otherwise Valpo uses the image's sole TCP `EXPOSE` port, then port `3000` for a source image with no exposed port. Ambiguous images and registry images without exactly one exposed TCP port require an explicit port. Valpo injects the resolved value as `PORT`; workers have no platform port.
 
-For a manifest source with `auto_deploy = true`, a signed push to its configured branch enqueues an exact-commit deployment. `ref = "HEAD"` follows the repository's default branch. Webhook delivery IDs are persisted for replay protection; a push is skipped for a service that already has an active operation.
+`depends_on` controls which database and cache variables an app receives. Unknown fields, invalid paths, unsupported versions, and missing source, build, or dependency references fail validation before a reconciliation job is queued.
 
-The fine-grained PAT fallback must be piped explicitly, so the token does not enter shell history or process arguments. After GitHub validation, it is encrypted in SQLite:
-
-```bash
-op read op://vault/github-pat | valpo auth login github --with-token
-```
-
-The App path takes precedence when both App and PAT records exist. `auth logout` removes local credentials only; uninstall or delete the App separately in GitHub when retiring it.
-
-Then deploy the configured ref, or override it for one deployment:
-
-```bash
-valpo service deploy web --project acme
-valpo service deploy web --project acme --ref feature/candidate
-```
-
-A manifest is optional for a service owned by one CLI workflow. The equivalent manifest-free flow is:
-
-```bash
-valpo project create acme
-valpo service create web --project acme \
-  --type web \
-  --source github:acme/backend \
-  --deploy
-```
-
-An omitted ref resolves remote `HEAD`; build strategy and context default to `auto` and `.`. With `auto`, Valpo uses `Dockerfile` in the selected context when it exists and otherwise runs a Cloud Native Buildpacks build. Selecting `dockerfile` explicitly requires that Dockerfile to exist and never falls through to buildpacks after a Docker build failure. Selecting `buildpack` ignores repository Dockerfiles. Every source-backed create performs an authenticated shallow checkout, resolves an exact commit, and verifies the selected context and build inputs before creating any records. It does not build unless `--deploy` is present. `service update` performs the same preflight before source or build changes are committed:
-
-```bash
-valpo service update web --project acme --ref release --deploy
-valpo service update web --project acme --dockerfile ops/Dockerfile --context .
-valpo service update web --project acme --build-strategy buildpack --deploy
-valpo service update web --project acme --clear-port
-```
-
-CLI-created source and build definitions are private to that service. Manifest definitions remain project-owned and shareable; updating a manifest-backed service through the CLI detaches the service into private definitions instead of mutating shared manifest records.
-
-The manifest accepts these build strategies:
-
-- `auto` (default): use `<context>/Dockerfile` when present, otherwise use buildpacks.
-- `dockerfile`: use `dockerfile`, defaulting to `Dockerfile`; the path must stay inside the checkout.
-- `buildpack`: use the configured Cloud Native Buildpacks builder; `dockerfile` is invalid.
-
-Buildpack builds use `pack` and honor a repository `project.toml`. Valpo's configured `buildpack_builder` is passed explicitly and therefore remains the platform-selected builder. Web builds select `web` as the default process and may instead use an explicit service command. Buildpack worker services must define an explicit command, for example `command = ["bundle", "exec", "sidekiq"]`.
-
-For web services, an explicit configured or deployment port wins. Otherwise Valpo uses the image's sole TCP `EXPOSE` port. Source images with no exposed TCP port fall back to `3000`; ambiguous source images and registry images without exactly one exposed TCP port require `--port`. Every web container receives `PORT` with the resolved value, and the release stores that value. Worker services receive no platform port.
-
-Valpo fetches into a temporary checkout, builds the selected Dockerfile or buildpack context, tags the local image by project, build target, and commit, and records the exact commit and resolved build strategy on the release. Buildpack releases also record the pinned builder, detected buildpacks, and process types when image inspection succeeds. A create-with-deploy reuses the validated checkout rather than fetching twice. Build output streams through job events, and builds fail after the configured timeout. Named build and launch cache volumes are reused per build target and removed with the owning service or project. The repository credential is supplied to Git through an askpass environment. Runtime service secrets are not passed to buildpacks.
-
-This integration currently supports GitHub.com and shallow single-ref checkouts without Git submodule or Git LFS setup. Valpo intentionally stores one private App per server, and a private App can only access repositories belonging to its owning personal account or organization. The encrypted fine-grained PAT is the alternative credential mode for repositories outside one App owner's scope; multi-App credentials are not planned. Valpo does not expose repository discovery or installation management beyond GitHub's installation UI.
-
-App services receive generated database/cache variables only for services named in `depends_on`. Unknown keys, invalid paths, unsupported versions, and missing source/build/dependency references fail validation before a reconciliation job is queued.
+CLI-created source and build definitions belong to one service. Manifest definitions are project-owned and shareable. Updating a manifest-backed service through the CLI detaches it into private definitions rather than changing shared manifest records.
