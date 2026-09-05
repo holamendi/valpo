@@ -786,6 +786,7 @@ paths:
     post:
       operationId: createServiceDomain
       summary: Create and verify a custom domain
+      description: Creates the domain and its verification job atomically. The job payload includes domain_id. Repeating the request with the same Idempotency-Key returns the original job and domain.
       parameters:
         - {$ref: '#/components/parameters/IdempotencyKey'}
       requestBody:

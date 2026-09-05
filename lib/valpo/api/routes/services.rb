@@ -226,13 +226,13 @@ module Valpo
               validate_query
               payload = validate_body(V1::Services::CreateDomainContract)
               domain = nil
-              job_payload = {project_id: service.project_id}
               job = jobs.enqueue_service_operation(
-                "verify_domain", service_id: service.id, payload: job_payload
+                "verify_domain", service_id: service.id, payload: {project_id: service.project_id}
               ) do
                 domain = Valpo::Domain.create(service_id: service.id, hostname: payload.fetch(:hostname))
-                job_payload[:domain_id] = domain.id
+                it[:domain_id] = domain.id
               end
+              domain ||= Valpo::Domain[job.payload.fetch("domain_id")]
               response.status = 202
               {domain: V1::Services.render_domain(domain), job: V1::Jobs.render(job)}
             end

@@ -53,6 +53,8 @@ Service records retain `kind` internally, but every public service and project-l
 - Jobs expose indexed ownership, attempt and operation-generation counters, recovery strategy, latest checkpoint and heartbeat, and any required recovery action. `POST /v1/jobs/{id}/retry` requeues a failed retryable job. `POST /v1/jobs/{id}/reconcile` creates one deduplicated whole-system repair for an interrupted compensating job. A successful repair links to and explicitly resolves the interrupted job; a failed repair remains linked and the same endpoint requeues that repair job.
 - Service and project log endpoints accept `tail`; the default is `200` and the maximum is `10,000`.
 
+`POST /v1/services/{service}/domains` creates the custom domain and its verification job atomically. The job payload includes the created `domain_id`; the worker verifies that domain automatically. Repeating the request with the same `Idempotency-Key` returns the original job and domain.
+
 Clients waiting on a job must drain every event page before advancing the cursor. Daily storage maintenance expires completed jobs, their events, and GitHub webhook deliveries according to the host retention configuration.
 
 `POST /v1/system/maintenance` enqueues an ownership-scoped cleanup job and accepts an optional `dry_run` boolean. Cleanup retains the configured number of deployable local build artifacts per service, marks older artifacts unavailable without deleting their release history, removes stale buildpack caches and orphaned Valpo containers, and leaves registry images, managed data volumes, unrelated Docker resources, and global Dockerfile build cache untouched.

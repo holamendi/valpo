@@ -80,6 +80,30 @@ class ValpoJobsQueueTest < Minitest::Test
     refute called
   end
 
+  def test_service_operation_rolls_back_created_resource_when_job_cannot_be_saved
+    service = create_app_service
+    queue = Class.new(Valpo::Jobs::Queue) do
+      private
+
+      def create_job(*)
+        raise Valpo::ValidationError, "job persistence failed"
+      end
+    end.new
+
+    error = assert_raises Valpo::ValidationError do
+      queue.enqueue_service_operation(
+        "verify_domain", service_id: service.id, payload: {project_id: service.project_id}
+      ) do
+        domain = Valpo::Domain.create(service_id: service.id, hostname: "hello.example.com")
+        it[:domain_id] = domain.id
+      end
+    end
+
+    assert_equal "job persistence failed", error.message
+    assert_equal 0, Valpo::Domain.count
+    assert_equal 0, Valpo::Job.count
+  end
+
   def test_binding_locks_both_app_and_managed_service
     project = create_project
     app = create_app_service(project:)

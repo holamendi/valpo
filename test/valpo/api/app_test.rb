@@ -3,6 +3,7 @@
 require "json"
 require "openssl"
 require "rack/test"
+require "stringio"
 require "test_helper"
 require "uri"
 
@@ -351,6 +352,85 @@ class ValpoAPIAppTest < Minitest::Test
 
     get "/v1/services/#{app_service.id}/env"
     assert_equal [], json.fetch("env")
+  end
+
+  def test_domain_creation_enqueues_verification_and_replays_the_same_domain
+    service = create_app_service
+    path = "/v1/services/#{service.id}/domains"
+    header "Idempotency-Key", "create-domain"
+    post_json path, hostname: "hello.example.com"
+
+    assert_equal 202, last_response.status
+    domain = Valpo::Domain[json.dig("domain", "id")]
+    job = Valpo::Job[json.dig("job", "id")]
+    assert_equal "pending", domain.status
+    assert_equal domain.id, job.payload.fetch("domain_id")
+    assert_equal service.id, job.payload.fetch("service_id")
+    assert_equal service.project_id, job.payload.fetch("project_id")
+
+    post_json path, hostname: "hello.example.com"
+    assert_equal 202, last_response.status
+    assert_equal domain.id, json.dig("domain", "id")
+    assert_equal job.id, json.dig("job", "id")
+
+    verifier = ValpoTestSupport::FakeDomainVerifier.new
+    run_domain_verification(verifier:)
+    assert_equal "succeeded", job.refresh.status
+    assert_equal "verified", domain.refresh.status
+    assert_equal [{hostname: domain.hostname, token: domain.verification_token}], verifier.requests
+
+    post_json path, hostname: "hello.example.com"
+    assert_equal 202, last_response.status
+    assert_equal domain.id, json.dig("domain", "id")
+    assert_equal job.id, json.dig("job", "id")
+    assert_equal "verified", json.dig("domain", "status")
+    assert_equal 1, Valpo::Domain.count
+    assert_equal 1, Valpo::Job.count
+
+    post_json path, hostname: "other.example.com"
+    assert_equal 409, last_response.status
+    assert_equal 1, Valpo::Domain.count
+    assert_equal 1, Valpo::Job.count
+  end
+
+  def test_domain_creation_reports_verification_failure_on_the_created_domain
+    service = create_app_service
+    post_json "/v1/services/#{service.id}/domains", hostname: "hello.example.com"
+    assert_equal 202, last_response.status
+    domain = Valpo::Domain[json.dig("domain", "id")]
+    job = Valpo::Job[json.dig("job", "id")]
+
+    verifier = ValpoTestSupport::FakeDomainVerifier.new(error: Valpo::ValidationError.new("challenge unavailable"))
+    run_domain_verification(verifier:)
+
+    assert_equal "failed", job.refresh.status
+    assert_equal "challenge unavailable", job.error
+    assert_equal "failed", domain.refresh.status
+    assert_equal "challenge unavailable", domain.verification_error
+  end
+
+  def test_domain_creation_does_not_create_a_domain_when_service_is_busy
+    service = create_app_service
+    Valpo::Jobs::Queue.new.enqueue_service_operation(
+      "restart_service", service_id: service.id, payload: {project_id: service.project_id}
+    )
+
+    post_json "/v1/services/#{service.id}/domains", hostname: "hello.example.com"
+
+    assert_equal 409, last_response.status
+    assert_equal 0, Valpo::Domain.count
+    assert_equal 1, Valpo::Job.count
+  end
+
+  def test_domain_creation_does_not_enqueue_verification_when_hostname_is_taken
+    service = create_app_service
+    domain = create_domain(service:)
+
+    post_json "/v1/services/#{service.id}/domains", hostname: domain.hostname
+
+    assert_equal 409, last_response.status
+    assert_equal [domain.id], Valpo::Domain.select_map(:id)
+    assert_equal 0, Valpo::Job.count
   end
 
   def test_service_environment_mutations_are_encrypted_redacted_and_job_safe
@@ -886,6 +966,21 @@ class ValpoAPIAppTest < Minitest::Test
   end
 
   private
+
+  def run_domain_verification(verifier:)
+    caddy_reconciler = Valpo::Caddy::Reconciler.new(caddy: ValpoTestSupport::FakeCaddy.new)
+    orchestrator = Valpo::Domains::Orchestrator.new(
+      caddy_reconciler:,
+      activator: Valpo::Deployments::Activator.new(caddy_reconciler:),
+      docker: ValpoTestSupport::FakeDocker.new,
+      verifier:
+    )
+    Valpo::Jobs::Worker.new(
+      handlers: {"verify_domain" => Valpo::Jobs::Handlers::VerifyDomain.new(orchestrator:)},
+      worker_id: "domain-test-worker",
+      err: StringIO.new
+    ).run(once: true)
+  end
 
   def json
     JSON.parse(last_response.body)

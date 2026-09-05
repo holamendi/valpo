@@ -163,7 +163,7 @@ module Valpo
             raise Valpo::ConflictError, "Project already has an active #{project_job.type} job: #{project_job.id}"
           end
 
-          yield if block_given?
+          yield effective_payload if block_given?
 
           create_job(
             type,
