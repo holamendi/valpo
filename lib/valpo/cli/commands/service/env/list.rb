@@ -9,7 +9,7 @@ module Valpo
             desc "Show effective environment variables for an app service"
             argument :service, required: true, desc: "Service name or ID"
             project_option
-            option :reveal, type: :boolean, default: false, desc: "Reveal sensitive values"
+            option :reveal, type: :boolean, default: false, desc: "Reveal sensitive values (requires admin scope)"
 
             def call(service:, reveal:, api_url:, project: nil, json: false, args: nil, **)
               reject_extra_arguments!(args)

@@ -140,6 +140,7 @@ module Valpo
             r.get true do
               query = validate_query(V1::Services::EnvironmentQueryContract)
               require_app!(service)
+              require_admin_credential! if query[:reveal] == "true"
               {
                 service: V1::Services.render(service),
                 env: Valpo::Services::Environment.entries_for_service(

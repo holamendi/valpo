@@ -53,7 +53,7 @@ module Valpo
           valpo service env unset web DATABASE_URL --project acme
           ```
 
-          Values are sensitive and redacted by default. Use `--plain` on `env set` for non-secret configuration and `--reveal` on `env list` when plaintext output is explicitly required. Managed-service bindings remain derived by Valpo and cannot be overridden by a custom variable; `PORT` is reserved for runtime port injection. Setting or removing a variable increments the service environment revision and reconciles a running release through the job queue.
+          Values are sensitive and redacted by default. Use `--plain` on `env set` for non-secret configuration and `--reveal` on `env list` when plaintext output is explicitly required. Revealing sensitive custom values and managed-service binding credentials requires an API credential with `admin` scope; a `read` credential receives `403 forbidden`. Managed-service bindings remain derived by Valpo and cannot be overridden by a custom variable; `PORT` is reserved for runtime port injection. Setting or removing a variable increments the service environment revision and reconciles a running release through the job queue.
 
           ## Domains And Web Activation
 
