@@ -181,7 +181,8 @@ module Valpo
             reconciler: Valpo::Manifests::Reconciler.new(
               managed_lifecycle: managed,
               dependency_manager:,
-              deployment_lifecycle: deployment
+              deployment_lifecycle: deployment,
+              preflight:
             )
           )
         }

@@ -51,6 +51,8 @@ valpo project apply valpo.toml
 
 Applying a manifest is idempotent and adds or updates declared resources. Omitted resources and dependencies are retained; deletion always requires a separate CLI command. A service's type and managed-service version cannot be changed.
 
+Before applying anything, the worker performs source/build preflight for every declared source and build: it resolves the repository and ref, checks the build context, and verifies the selected Dockerfile when applicable. All failures are collected and reported with source/build names. A failed preflight leaves the project, source, build, service, dependency, and applied-manifest marker unchanged.
+
 Secrets, source credentials, GitHub App keys, and access tokens do not belong in the manifest. GitHub repositories use `owner/repository`, not clone URLs.
 
 ## Sources And Builds

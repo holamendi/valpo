@@ -6,13 +6,15 @@ require "time"
 module Valpo
   module Manifests
     class Reconciler
-      def initialize(managed_lifecycle: nil, dependency_manager: nil, deployment_lifecycle: nil)
+      def initialize(managed_lifecycle: nil, dependency_manager: nil, deployment_lifecycle: nil, preflight: nil)
         @managed_lifecycle = managed_lifecycle
         @dependency_manager = dependency_manager
         @deployment_lifecycle = deployment_lifecycle
+        @preflight = preflight
       end
 
       def apply(manifest, queue:, job_id:)
+        preflight_manifest(manifest) if preflight
         @app_snapshots = {}
         project = Valpo::Project.where(name: manifest.dig("project", "name")).first ||
           Valpo::Project.create(name: manifest.dig("project", "name"))
@@ -35,7 +37,46 @@ module Valpo
 
       private
 
-      attr_reader :managed_lifecycle, :dependency_manager, :deployment_lifecycle
+      attr_reader :managed_lifecycle, :dependency_manager, :deployment_lifecycle, :preflight
+
+      # Resolve every source/build input before creating the project or emitting
+      # an event. The checkout is deliberately scoped to Preflight's block;
+      # only its validation result is used and no checkout path or credential
+      # can escape into the manifest job.
+      def preflight_manifest(manifest)
+        sources = manifest.fetch("sources")
+        builds = manifest.fetch("builds")
+        failures = []
+        referenced = Hash.new { |hash, key| hash[key] = [] }
+        builds.each { |name, config| referenced[config.fetch("source")] << [name, config] }
+
+        sources.each do |source_name, source|
+          entries = referenced[source_name]
+          begin
+            preflight.with_source_checkout(
+              provider: source.fetch("provider"),
+              repository: source.fetch("repository"),
+              ref: source.fetch("ref")
+            ) do |source_result|
+              entries.each do |build_name, build|
+                preflight.validate_checkout(
+                  source: source_result,
+                  strategy: build.fetch("strategy"),
+                  dockerfile: build["dockerfile"],
+                  context: build.fetch("context")
+                )
+              rescue => error
+                failures << "build #{build_name} (source #{source_name}): #{error.message}"
+              end
+            end
+          rescue => error
+            failures << "source #{source_name}: #{error.message}"
+          end
+        end
+        return if failures.empty?
+
+        raise Valpo::ValidationError, "Manifest preflight failed:\n#{failures.map { "- #{it}" }.join("\n")}"
+      end
 
       def reconcile_sources(project, declarations, queue:, job_id:)
         declarations.to_h do |name, config|
