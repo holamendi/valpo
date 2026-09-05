@@ -24,7 +24,11 @@ module Valpo
         runtime = runtime_for(queue:, job_id:)
         managed = Registry.managed_config(service)
         managed.update(Registry.runtime_attributes(service))
-        service.transition_to!("provisioning")
+        # Reconciliation may retry an interrupted provisioning attempt. A
+        # provisioning resource is already in the correct transient state;
+        # avoid an illegal self-transition while allowing failed/stopped
+        # resources to re-enter provisioning.
+        service.transition_to!("provisioning") unless service.status == "provisioning"
         event(queue, job_id, "system", "Provisioning #{service.name}")
         start_service_container(runtime, service.refresh)
         service.transition_to!("running")
@@ -114,6 +118,13 @@ module Valpo
           .order(:name)
           .each { repair_service(it, runtime, queue:, job_id:) }
         true
+      end
+
+      # Reconcile one interrupted resource without blindly creating a second
+      # container. This is the per-resource retry boundary used by manifests.
+      def reconcile_service(service_id:, queue:, job_id:)
+        service = find_managed_service(service_id)
+        repair_service(service, runtime_for(queue:, job_id:), queue:, job_id:)
       end
 
       def service_logs(service_id:, tail: nil)

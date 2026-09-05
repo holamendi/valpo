@@ -58,6 +58,66 @@ class ValpoManifestReconcilerTest < Minitest::Test
     assert_equal app.id, deployment.service_id
   end
 
+  def test_failed_managed_service_is_repaired_on_identical_apply
+    managed = FakeManaged.new
+    reconciler = build_reconciler(managed:)
+    manifest = parsed_manifest
+    apply(reconciler, manifest)
+    project = Valpo::Project.find_by_id_or_name("acme")
+    service = Valpo::Service.where(project_id: project.id, name: "database").first
+    service.update(status: "failed")
+    project.update(manifest_digest: nil, last_applied_at: nil)
+
+    apply(reconciler, manifest)
+
+    assert_equal "running", service.refresh.status
+    assert_equal manifest.fetch("digest"), project.refresh.manifest_digest
+    assert_equal [service.id], managed.reconciled_ids
+  end
+
+  def test_failed_initial_managed_provision_is_retried_and_converges
+    managed = FakeManaged.new(provision_failures: 1)
+    reconciler = build_reconciler(managed:)
+    manifest = parsed_manifest
+
+    assert_raises(RuntimeError) { apply(reconciler, manifest) }
+    project = Valpo::Project.find_by_id_or_name("acme")
+    assert_nil project.manifest_digest
+    assert_nil project.last_applied_at
+
+    apply(reconciler, manifest)
+    assert_equal manifest.fetch("digest"), project.refresh.manifest_digest
+    assert_equal 2, managed.provisioned_ids.length
+    assert_equal 1, managed.reconciled_ids.length
+
+    apply(reconciler, manifest)
+    assert_equal 1, managed.reconciled_ids.length
+  end
+
+  def test_failed_reconfigure_restores_only_app_and_retries
+    deployment = FakeDeployment.new(failures: 1)
+    managed = FakeManaged.new
+    reconciler = build_reconciler(deployment:, managed:)
+    manifest = parsed_manifest
+    apply(reconciler, manifest)
+    project = Valpo::Project.find_by_id_or_name("acme")
+    app = Valpo::Service.where(project_id: project.id, name: "web").first
+    app.update(status: "running")
+    release = create_release(service: app, status: "active", container_name: "active", route_target: "127.0.0.1:20000")
+    original = Valpo::AppServiceConfig[app.id].command_json
+    changed = Marshal.load(Marshal.dump(manifest))
+    changed.fetch("services").fetch("web")["command"] = ["bin/server"]
+
+    assert_raises(RuntimeError) { apply(reconciler, changed) }
+    assert_equal manifest.fetch("digest"), project.refresh.manifest_digest
+    assert_equal original, Valpo::AppServiceConfig[app.id].command_json
+    assert_nil release.refresh.internal_port
+
+    apply(reconciler, changed)
+    assert_equal changed.fetch("digest"), project.refresh.manifest_digest
+    assert_equal 2, deployment.reconfigure_count
+  end
+
   def test_source_connection_resets_when_repository_or_ref_changes
     reconciler = build_reconciler
     manifest = parsed_manifest
@@ -96,13 +156,13 @@ class ValpoManifestReconcilerTest < Minitest::Test
     TOML
   end
 
-  def build_reconciler(deployment: FakeDeployment.new)
+  def build_reconciler(deployment: FakeDeployment.new, managed: nil)
     dependencies = Valpo::Services::DependencyManager.new(
       config: VALPO_TEST_CONFIG,
       docker: ValpoTestSupport::FakeDocker.new,
       deployment_lifecycle: deployment
     )
-    managed = Valpo::Services::ManagedLifecycle.new(
+    managed ||= Valpo::Services::ManagedLifecycle.new(
       config: VALPO_TEST_CONFIG,
       docker: ValpoTestSupport::FakeDocker.new,
       dependency_manager: dependencies,
@@ -126,9 +186,54 @@ class ValpoManifestReconcilerTest < Minitest::Test
   class FakeDeployment
     attr_reader :service_id
 
-    def restart_service(service_id:, **)
+    attr_reader :reconfigure_count
+
+    def initialize(failures: 0)
+      @failures = failures
+      @reconfigure_count = 0
+    end
+
+    def reconfigure_service(service_id:, **)
       @service_id = service_id
+      @reconfigure_count += 1
+      if @failures.positive? && (@failures -= 1)
+        release = Valpo::Release.active_for_service(service_id)
+        release&.update(internal_port: nil, healthcheck_path: nil)
+        raise "reconfigure failed"
+      end
       true
+    end
+
+    def restart_service(service_id:, **)
+      reconfigure_service(service_id:, **)
+    end
+  end
+
+  class FakeManaged
+    attr_reader :reconciled_ids
+
+    attr_reader :provisioned_ids
+
+    def initialize(provision_failures: 0)
+      @reconciled_ids = []
+      @provisioned_ids = []
+      @provision_failures = provision_failures
+    end
+
+    def provision_service(service_id:, **)
+      @provisioned_ids << service_id
+      service = Valpo::Service[service_id]
+      if @provision_failures.positive?
+        @provision_failures -= 1
+        service.transition_to!("failed")
+        raise "provision failed"
+      end
+      service.transition_to!("running") unless service.status == "running"
+    end
+
+    def reconcile_service(service_id:, **)
+      @reconciled_ids << service_id
+      Valpo::Service[service_id].transition_to!("running")
     end
   end
 end
