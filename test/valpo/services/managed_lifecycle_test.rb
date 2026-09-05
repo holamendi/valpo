@@ -106,6 +106,31 @@ class ValpoServicesManagedLifecycleTest < Minitest::Test
     assert_equal({managed.volume_name => "/var/lib/postgresql/data"}, docker.run_requests.last.fetch(:volumes))
   end
 
+  def test_stop_refuses_legacy_postgres_16_mount_before_removing_container
+    service = create_managed_service(version: "16")
+    managed = service.managed_config
+    docker = ValpoTestSupport::FakeDocker.new(
+      volumes: {managed.volume_name => {"valpo.owned" => "true"}},
+      container_mounts: {
+        managed.container_name => [
+          {"Type" => "volume", "Name" => managed.volume_name, "Destination" => "/var/lib/postgresql"},
+          {"Type" => "volume", "Name" => "anonymous-data", "Destination" => "/var/lib/postgresql/data"}
+        ]
+      }
+    )
+
+    error = assert_raises Valpo::ValidationError do
+      run_job do |queue, job|
+        lifecycle(docker:).stop_service(service_id: service.id, queue:, job_id: job.id)
+      end
+    end
+
+    assert_includes error.message, "does not have a verified data-directory layout"
+    assert_equal "running", service.refresh.status
+    refute docker.executed?(:stop, managed.container_name)
+    refute docker.executed?(:rm, managed.container_name, true)
+  end
+
   def test_repair_refuses_an_ambiguous_postgres_16_volume_after_the_container_is_missing
     service = create_managed_service(version: "16")
     managed = service.managed_config

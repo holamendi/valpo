@@ -52,7 +52,9 @@ module Valpo
       def stop_service(service_id:, queue:, job_id:)
         service = find_managed_service(service_id)
         managed = Registry.managed_config(service)
-        runtime_for(queue:, job_id:).stop_container(managed.container_name, ignore_missing: true)
+        runtime = runtime_for(queue:, job_id:)
+        runtime.validate_service_container_volume!(service)
+        runtime.stop_container(managed.container_name, ignore_missing: true)
         service.update(status: "stopped")
       end
 
