@@ -43,6 +43,12 @@ class ValpoAPIOpenAPITest < Minitest::Test
     Valpo::API::V1::Services,
     Valpo::API::V1::System
   ].freeze
+  IDEMPOTENT_ENQUEUE_OPERATIONS = %w[
+    applyProjectManifest deleteProject createService updateService deleteService restartService stopService
+    bindServiceDependency unbindServiceDependency deployService rollbackService reconcileServiceEnvironment
+    setServiceEnvironmentVariable deleteServiceEnvironmentVariable createServiceDomain verifyServiceDomain
+    deleteServiceDomain configurePlatformDomain repairSystem maintainStorage verifySecrets rotateSecrets
+  ].freeze
 
   def test_openapi_version_and_operation_ids
     assert_equal "3.1.0", spec.fetch("openapi")
@@ -64,6 +70,16 @@ class ValpoAPIOpenAPITest < Minitest::Test
     references = collect_references(spec)
     refute_empty references
     references.each { resolve_reference(it) }
+  end
+
+  def test_every_enqueue_operation_documents_the_idempotency_header
+    documented = operations.filter_map do |route, operation|
+      path = route.split(" ", 2).last
+      parameters = spec.fetch("paths").fetch(path).fetch("parameters", []) + operation.fetch("parameters", [])
+      operation.fetch("operationId") if parameters.any? { it["$ref"] == "#/components/parameters/IdempotencyKey" }
+    end
+
+    assert_equal IDEMPOTENT_ENQUEUE_OPERATIONS.sort, documented.sort
   end
 
   def test_openapi_operations_exactly_match_standardized_route_comments

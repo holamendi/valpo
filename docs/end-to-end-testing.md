@@ -129,15 +129,18 @@ Run focused control-plane scenarios before relying on the persistent canary:
    responses name the same job, including when the second request follows job
    completion.
 10. Terminate the worker after `handler_started` during a source build, restart
-    it, and confirm the same job is requeued with an incremented attempt and
-    retained checkpoint. During a normal `SIGTERM`, confirm the build drains and
-    no second job is acquired.
+    it, and confirm the job is not automatically replayed and instead requires
+    reconciliation. During a normal `SIGTERM`, confirm the build drains and no
+    second job is acquired.
 11. Terminate the worker after `handler_completed` but before terminal status;
     restart it and confirm startup marks that job succeeded without repeating
     its Docker or Caddy effects.
 12. Terminate a delete or rollback after `handler_started`; confirm restart
     marks it failed with `recovery_action=reconcile`, `retry` is rejected, and
-    two reconciliation requests return the same `repair_system` job.
+    repeated reconciliation requests use the same `repair_system` job. Confirm
+    repair failure leaves the original job actionable, retrying that repair
+    does not create a new job, and repair success sets `resolved_at` on the
+    interrupted job.
 
 The production-like configuration-file path must be part of recovery testing;
 setting only `VALPO_DATABASE_PATH` does not reproduce the installed wrapper.

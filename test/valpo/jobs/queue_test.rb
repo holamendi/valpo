@@ -16,7 +16,7 @@ class ValpoJobsQueueTest < Minitest::Test
     assert_equal "queued", recovered.status
     assert_equal "retry", recovered.recovery_action
     assert_nil recovered.locked_by
-    assert_nil recovered.lease_expires_at
+    assert_nil recovered.heartbeat_at
     assert_equal job.id, queue.lock_next("worker-2").id
     assert_equal 2, queue.find(job.id).attempt
   end
@@ -134,6 +134,17 @@ class ValpoJobsQueueTest < Minitest::Test
     refute_equal first.id, queue.enqueue_unique("maintain_storage").id
   end
 
+  def test_enqueue_unique_does_not_attach_a_new_key_to_unrelated_active_work
+    queue = Valpo::Jobs::Queue.new
+    first = queue.enqueue_unique("maintain_storage", dry_run: true)
+
+    error = assert_raises(Valpo::ConflictError) do
+      queue.enqueue_unique("maintain_storage", {dry_run: false}, idempotency_key: "maintenance-2")
+    end
+    assert_match first.id, error.message
+    assert_nil first.refresh.idempotency_key
+  end
+
   def test_idempotency_key_is_unique_across_terminal_jobs
     queue = Valpo::Jobs::Queue.new
     first = queue.enqueue("system_check", idempotency_key: "request-42")
@@ -148,6 +159,11 @@ class ValpoJobsQueueTest < Minitest::Test
       queue.enqueue("repair_system", idempotency_key: "request-42")
     end
     assert_match "already belongs", error.message
+
+    mismatch = assert_raises(Valpo::ConflictError) do
+      queue.enqueue("system_check", {different: true}, idempotency_key: "request-42")
+    end
+    assert_match "does not match the original request", mismatch.message
   end
 
   def test_scope_columns_and_generations_are_persisted
@@ -168,7 +184,7 @@ class ValpoJobsQueueTest < Minitest::Test
     assert_equal dependency.id, first.related_service_id
     assert_equal 1, first.operation_generation
     assert_equal 2, second.operation_generation
-    assert_equal "resumable", second.recovery_strategy
+    assert_equal "compensating", second.recovery_strategy
   end
 
   def test_completed_checkpoint_is_finalized_without_replaying_handler
@@ -182,7 +198,7 @@ class ValpoJobsQueueTest < Minitest::Test
     assert_equal 1, queue.find(job.id).attempt
   end
 
-  def test_interrupted_resumable_job_keeps_checkpoint_for_next_attempt
+  def test_interrupted_nonconvergent_job_is_not_automatically_replayed
     service = create_app_service
     queue = Valpo::Jobs::Queue.new
     job = queue.enqueue_service_operation(
@@ -194,9 +210,9 @@ class ValpoJobsQueueTest < Minitest::Test
 
     queue.recover_running_jobs
     recovered = queue.find(job.id)
-    assert_equal "queued", recovered.status
+    assert_equal "failed", recovered.status
     assert_equal "handler_started", recovered.checkpoint
-    assert_equal "retry", recovered.recovery_action
+    assert_equal "reconcile", recovered.recovery_action
   end
 
   def test_interrupted_compensating_job_requires_first_class_reconciliation

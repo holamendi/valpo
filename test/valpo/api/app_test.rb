@@ -684,10 +684,24 @@ class ValpoAPIAppTest < Minitest::Test
     post "/v1/system/repair"
     assert_equal first_id, json.fetch("id")
 
+    first_service = create_app_service(name: "first")
+    second_service = create_app_service(project: first_service.project, name: "second")
+    header "Idempotency-Key", "restart-request-1"
+    post "/v1/services/#{first_service.id}/restart"
+    assert_equal 202, last_response.status
+    restart_id = json.fetch("id")
+    post "/v1/services/#{second_service.id}/restart"
+    assert_equal 409, last_response.status
+    assert_match "does not match the original request", json.fetch("message")
+
     header "Idempotency-Key", nil
     queue = Valpo::Jobs::Queue.new
-    queue.lock_next("worker")
-    queue.succeed(first_id, worker_id: "worker")
+    locked = queue.lock_next("worker")
+    queue.succeed(locked.id, worker_id: "worker")
+    if locked.id != restart_id
+      queue.lock_next("worker")
+      queue.succeed(restart_id, worker_id: "worker")
+    end
     retryable = queue.enqueue("system_check")
     queue.lock_next("worker")
     queue.fail(retryable.id, "temporary", worker_id: "worker")
@@ -697,7 +711,7 @@ class ValpoAPIAppTest < Minitest::Test
     queue.lock_next("worker")
     queue.succeed(retryable.id, worker_id: "worker")
 
-    project = create_project
+    project = create_project(name: "recovery")
     compensating = queue.enqueue_project_operation("delete_project", project_id: project.id)
     queue.lock_next("worker")
     queue.fail(compensating.id, "partial delete", worker_id: "worker")

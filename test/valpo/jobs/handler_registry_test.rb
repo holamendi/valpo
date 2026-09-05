@@ -42,4 +42,15 @@ class ValpoJobsHandlerRegistryTest < Minitest::Test
 
     assert_equal expected, handlers.transform_values(&:class)
   end
+
+  def test_nonconvergent_handlers_require_compensation
+    nonconvergent = %w[
+      apply_project_manifest bind_service create_source_service delete_project delete_service deploy_registry_image
+      deploy_source provision_service reconcile_service_environment restart_service rollback_release rotate_secrets
+      unbind_service update_app_service verify_domain verify_platform_domain
+    ]
+
+    assert_equal ["compensating"], nonconvergent.map { Valpo::Jobs::RecoveryPolicy.fetch(it) }.uniq
+    assert_empty Valpo::Jobs::RecoveryPolicy::STRATEGIES.values.grep("resumable")
+  end
 end

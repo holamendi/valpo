@@ -71,7 +71,11 @@ module Valpo
 
         handler.call(job, queue:)
         queue.checkpoint(job[:id], "handler_completed")
-        queue.event(job[:id], "system", "Job succeeded") if queue.succeed(job[:id], worker_id:)
+        if (completed = queue.succeed(job[:id], worker_id:))
+          queue.event(job[:id], "system", "Job succeeded")
+          interrupted_job_id = completed.payload["interrupted_job_id"]
+          queue.resolve_reconciliation(interrupted_job_id, reconciliation_job_id: completed.id) if interrupted_job_id
+        end
       rescue => e
         queue.event(job[:id], "stderr", "#{e.class}: #{e.message}")
         queue.fail(job[:id], e.message, worker_id:)

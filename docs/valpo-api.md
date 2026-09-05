@@ -49,8 +49,8 @@ Service records retain `kind` internally, but every public service and project-l
 
 - `GET /v1/jobs` accepts `limit`; the default is `100` and the maximum is `500`.
 - `GET /v1/jobs/{id}/events` accepts `after` and `limit`; the default is `200` and the maximum is `500`. `after` is an event ID from the same job, and events are ordered by creation time and ID.
-- Mutating endpoints that enqueue work accept an optional `Idempotency-Key` header (maximum 255 bytes). Repeating the same request key returns the original job, including after it finishes; reusing it for a different job type returns `409`.
-- Jobs expose indexed ownership, attempt and operation-generation counters, recovery strategy, latest checkpoint, lease expiry, and any required recovery action. `POST /v1/jobs/{id}/retry` requeues a failed retryable or resumable job. `POST /v1/jobs/{id}/reconcile` creates one deduplicated whole-system repair for an interrupted compensating job.
+- Mutating endpoints that enqueue work accept an optional `Idempotency-Key` header (maximum 255 bytes). Repeating the same method, path, query, and body with the same key returns the original job, including after it finishes. Reusing a key for different request semantics returns `409`.
+- Jobs expose indexed ownership, attempt and operation-generation counters, recovery strategy, latest checkpoint and heartbeat, and any required recovery action. `POST /v1/jobs/{id}/retry` requeues a failed retryable job. `POST /v1/jobs/{id}/reconcile` creates one deduplicated whole-system repair for an interrupted compensating job. A successful repair links to and explicitly resolves the interrupted job; a failed repair remains linked and the same endpoint requeues that repair job.
 - Service and project log endpoints accept `tail`; the default is `200` and the maximum is `10,000`.
 
 Clients waiting on a job must drain every event page before advancing the cursor. Daily storage maintenance expires completed jobs, their events, and GitHub webhook deliveries according to the host retention configuration.

@@ -333,6 +333,8 @@ paths:
     post:
       operationId: applyProjectManifest
       summary: Preview or enqueue a project manifest
+      parameters:
+        - {$ref: '#/components/parameters/IdempotencyKey'}
       requestBody:
         required: true
         content:
@@ -367,6 +369,8 @@ paths:
     delete:
       operationId: deleteProject
       summary: Enqueue deletion of an empty project
+      parameters:
+        - {$ref: '#/components/parameters/IdempotencyKey'}
       responses:
         '202': {$ref: '#/components/responses/Job'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
@@ -392,6 +396,8 @@ paths:
     post:
       operationId: createService
       summary: Create a service in a project
+      parameters:
+        - {$ref: '#/components/parameters/IdempotencyKey'}
       requestBody:
         required: true
         content:
@@ -495,6 +501,8 @@ paths:
     patch:
       operationId: updateService
       summary: Update application configuration
+      parameters:
+        - {$ref: '#/components/parameters/IdempotencyKey'}
       requestBody:
         required: true
         content:
@@ -513,6 +521,7 @@ paths:
       operationId: deleteService
       summary: Enqueue forced service deletion
       parameters:
+        - {$ref: '#/components/parameters/IdempotencyKey'}
         - name: force
           in: query
           required: false
@@ -548,6 +557,7 @@ paths:
   /v1/services/{service}/restart:
     parameters:
       - {$ref: '#/components/parameters/ServiceReference'}
+      - {$ref: '#/components/parameters/IdempotencyKey'}
     post:
       operationId: restartService
       summary: Enqueue a service restart
@@ -563,6 +573,7 @@ paths:
   /v1/services/{service}/stop:
     parameters:
       - {$ref: '#/components/parameters/ServiceReference'}
+      - {$ref: '#/components/parameters/IdempotencyKey'}
     post:
       operationId: stopService
       summary: Enqueue a service stop
@@ -578,6 +589,7 @@ paths:
   /v1/services/{service}/dependencies:
     parameters:
       - {$ref: '#/components/parameters/ServiceReference'}
+      - {$ref: '#/components/parameters/IdempotencyKey'}
     post:
       operationId: bindServiceDependency
       summary: Bind a managed dependency
@@ -599,6 +611,7 @@ paths:
     parameters:
       - {$ref: '#/components/parameters/ServiceReference'}
       - {$ref: '#/components/parameters/DependencyReference'}
+      - {$ref: '#/components/parameters/IdempotencyKey'}
     delete:
       operationId: unbindServiceDependency
       summary: Unbind a managed dependency
@@ -614,6 +627,7 @@ paths:
   /v1/services/{service}/deployments:
     parameters:
       - {$ref: '#/components/parameters/ServiceReference'}
+      - {$ref: '#/components/parameters/IdempotencyKey'}
     post:
       operationId: deployService
       summary: Enqueue a registry or source deployment
@@ -654,6 +668,7 @@ paths:
   /v1/services/{service}/rollback:
     parameters:
       - {$ref: '#/components/parameters/ServiceReference'}
+      - {$ref: '#/components/parameters/IdempotencyKey'}
     post:
       operationId: rollbackService
       summary: Enqueue rollback to the prior release
@@ -693,6 +708,7 @@ paths:
   /v1/services/{service}/env/reconcile:
     parameters:
       - {$ref: '#/components/parameters/ServiceReference'}
+      - {$ref: '#/components/parameters/IdempotencyKey'}
     post:
       operationId: reconcileServiceEnvironment
       summary: Apply the latest service environment revision
@@ -709,6 +725,7 @@ paths:
     parameters:
       - {$ref: '#/components/parameters/ServiceReference'}
       - {$ref: '#/components/parameters/EnvironmentVariableName'}
+      - {$ref: '#/components/parameters/IdempotencyKey'}
     put:
       operationId: setServiceEnvironmentVariable
       summary: Set a custom service environment variable
@@ -769,6 +786,8 @@ paths:
     post:
       operationId: createServiceDomain
       summary: Create and verify a custom domain
+      parameters:
+        - {$ref: '#/components/parameters/IdempotencyKey'}
       requestBody:
         required: true
         content:
@@ -787,6 +806,7 @@ paths:
     parameters:
       - {$ref: '#/components/parameters/ServiceReference'}
       - {$ref: '#/components/parameters/DomainReference'}
+      - {$ref: '#/components/parameters/IdempotencyKey'}
     post:
       operationId: verifyServiceDomain
       summary: Recheck a domain
@@ -803,6 +823,7 @@ paths:
     parameters:
       - {$ref: '#/components/parameters/ServiceReference'}
       - {$ref: '#/components/parameters/DomainReference'}
+      - {$ref: '#/components/parameters/IdempotencyKey'}
     delete:
       operationId: deleteServiceDomain
       summary: Remove a custom domain
@@ -832,6 +853,8 @@ paths:
     put:
       operationId: configurePlatformDomain
       summary: Stage and verify the platform app domain
+      parameters:
+        - {$ref: '#/components/parameters/IdempotencyKey'}
       requestBody:
         required: true
         content:
@@ -847,6 +870,8 @@ paths:
         '422': {$ref: '#/components/responses/ValidationFailed'}
         '500': {$ref: '#/components/responses/InternalError'}
   /v1/system/repair:
+    parameters:
+      - {$ref: '#/components/parameters/IdempotencyKey'}
     post:
       operationId: repairSystem
       summary: Enqueue whole-system reconciliation
@@ -859,6 +884,8 @@ paths:
         '422': {$ref: '#/components/responses/ValidationFailed'}
         '500': {$ref: '#/components/responses/InternalError'}
   /v1/system/maintenance:
+    parameters:
+      - {$ref: '#/components/parameters/IdempotencyKey'}
     post:
       operationId: maintainStorage
       summary: Enqueue ownership-scoped storage maintenance
@@ -876,6 +903,8 @@ paths:
         '422': {$ref: '#/components/responses/ValidationFailed'}
         '500': {$ref: '#/components/responses/InternalError'}
   /v1/system/secrets/verify:
+    parameters:
+      - {$ref: '#/components/parameters/IdempotencyKey'}
     post:
       operationId: verifySecrets
       summary: Enqueue encrypted-record recovery verification
@@ -888,6 +917,8 @@ paths:
         '422': {$ref: '#/components/responses/ValidationFailed'}
         '500': {$ref: '#/components/responses/InternalError'}
   /v1/system/secrets/rotate:
+    parameters:
+      - {$ref: '#/components/parameters/IdempotencyKey'}
     post:
       operationId: rotateSecrets
       summary: Enqueue host-key rotation and bulk re-encryption
@@ -1573,7 +1604,7 @@ components:
     Job:
       type: object
       additionalProperties: false
-      required: [id, type, status, progress, error, project_id, project_name, service_id, related_service_id, idempotency_key, attempt, operation_generation, recovery_strategy, checkpoint, recovery_action, locked_by, locked_at, lease_expires_at, started_at, finished_at, created_at, payload]
+      required: [id, type, status, progress, error, project_id, project_name, service_id, related_service_id, idempotency_key, request_fingerprint, attempt, operation_generation, recovery_strategy, checkpoint, recovery_action, reconciliation_job_id, resolved_at, locked_by, locked_at, heartbeat_at, started_at, finished_at, created_at, payload]
       properties:
         id: {type: string}
         type: {type: string}
@@ -1585,14 +1616,17 @@ components:
         service_id: {type: [string, 'null']}
         related_service_id: {type: [string, 'null']}
         idempotency_key: {type: [string, 'null']}
+        request_fingerprint: {type: [string, 'null'], pattern: '^[0-9a-f]{64}$'}
         attempt: {type: integer, minimum: 0}
         operation_generation: {type: integer, minimum: 1}
         recovery_strategy: {type: string, enum: [retryable, resumable, compensating]}
         checkpoint: {type: [string, 'null']}
         recovery_action: {type: [string, 'null'], enum: [retry, reconcile, null]}
+        reconciliation_job_id: {type: [string, 'null']}
+        resolved_at: {$ref: '#/components/schemas/Timestamp'}
         locked_by: {type: [string, 'null']}
         locked_at: {$ref: '#/components/schemas/Timestamp'}
-        lease_expires_at: {$ref: '#/components/schemas/Timestamp'}
+        heartbeat_at: {$ref: '#/components/schemas/Timestamp'}
         started_at: {$ref: '#/components/schemas/Timestamp'}
         finished_at: {$ref: '#/components/schemas/Timestamp'}
         created_at: {$ref: '#/components/schemas/Timestamp'}

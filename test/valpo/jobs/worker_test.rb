@@ -88,7 +88,7 @@ class ValpoJobsWorkerTest < Minitest::Test
     assert_equal "succeeded", queue.find(job.id).status
   end
 
-  def test_restart_retries_interruption_inside_resumable_handler
+  def test_restart_does_not_replay_interruption_inside_nonconvergent_handler
     service = create_app_service
     queue = Valpo::Jobs::Queue.new
     job = queue.enqueue_service_operation(
@@ -98,7 +98,7 @@ class ValpoJobsWorkerTest < Minitest::Test
     calls = 0
     handler = lambda do |_job, queue:|
       calls += 1
-      raise Interrupt if calls == 1
+      raise Interrupt
     end
 
     assert_raises(Interrupt) do
@@ -106,10 +106,75 @@ class ValpoJobsWorkerTest < Minitest::Test
     end
     assert_equal "handler_started", queue.find(job.id).checkpoint
 
-    Valpo::Jobs::Worker.new(queue:, handlers: {"deploy_source" => handler}, worker_id: "new-worker").run(once: true)
-    assert_equal 2, calls
-    assert_equal 2, queue.find(job.id).attempt
-    assert_equal "succeeded", queue.find(job.id).status
+    processed = Valpo::Jobs::Worker.new(
+      queue:,
+      handlers: {"deploy_source" => handler, "maintain_storage" => ->(_job, queue:) {}},
+      worker_id: "new-worker"
+    ).run(once: true)
+    assert_equal "maintain_storage", processed.type
+    assert_equal 1, calls
+    assert_equal 1, queue.find(job.id).attempt
+    assert_equal "failed", queue.find(job.id).status
+    assert_equal "reconcile", queue.find(job.id).recovery_action
+  end
+
+  def test_successful_reconciliation_explicitly_resolves_interrupted_job
+    project = create_project
+    queue = Valpo::Jobs::Queue.new
+    interrupted = queue.enqueue_project_operation("delete_project", project_id: project.id)
+    queue.lock_next("old-worker")
+    queue.recover_running_jobs
+    repair = queue.reconcile(interrupted.id)
+
+    Valpo::Jobs::Worker.new(
+      queue:,
+      handlers: {"repair_system" => ->(_job, queue:) {}},
+      worker_id: "new-worker"
+    ).run(once: true)
+
+    resolved = queue.find(interrupted.id)
+    assert_nil resolved.recovery_action
+    assert resolved.resolved_at
+    assert_equal repair.id, resolved.reconciliation_job_id
+    assert_equal repair.id, queue.reconcile(interrupted.id).id
+  end
+
+  def test_failed_reconciliation_can_be_retried_through_same_link
+    project = create_project
+    queue = Valpo::Jobs::Queue.new
+    interrupted = queue.enqueue_project_operation("delete_project", project_id: project.id)
+    queue.lock_next("old-worker")
+    queue.recover_running_jobs
+    repair = queue.reconcile(interrupted.id)
+
+    Valpo::Jobs::Worker.new(
+      queue:,
+      handlers: {"repair_system" => ->(_job, queue:) { raise "repair failed" }},
+      worker_id: "repair-worker",
+      err: StringIO.new
+    ).run(once: true)
+    assert_equal "failed", queue.find(repair.id).status
+    assert_equal "reconcile", queue.find(interrupted.id).recovery_action
+
+    assert_equal repair.id, queue.reconcile(interrupted.id).id
+    assert_equal "queued", queue.find(repair.id).status
+  end
+
+  def test_restart_resolves_reconciliation_completed_before_terminal_write
+    project = create_project
+    queue = Valpo::Jobs::Queue.new
+    interrupted = queue.enqueue_project_operation("delete_project", project_id: project.id)
+    queue.lock_next("old-worker")
+    queue.recover_running_jobs
+    repair = queue.reconcile(interrupted.id)
+    queue.lock_next("repair-worker")
+    queue.checkpoint(repair.id, "handler_completed")
+
+    queue.recover_running_jobs
+
+    assert_equal "succeeded", queue.find(repair.id).status
+    assert_nil queue.find(interrupted.id).recovery_action
+    assert queue.find(interrupted.id).resolved_at
   end
 
   def test_deploy_handler_dispatches_service_id
