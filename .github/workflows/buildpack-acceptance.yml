@@ -34,6 +34,8 @@ jobs:
         run: |
           cd /opt/valpo
           sudo -u valpo env HOME=/var/lib/valpo USER=valpo \
+            XDG_CONFIG_HOME=/var/lib/valpo/.config XDG_DATA_HOME=/var/lib/valpo/.local/share XDG_CACHE_HOME=/var/lib/valpo/.cache \
+            MISE_CONFIG_DIR=/var/lib/valpo/.config/mise MISE_DATA_DIR=/var/lib/valpo/.local/share/mise MISE_CACHE_DIR=/var/lib/valpo/.cache/mise \
             VALPO_ENV=production VALPO_CONFIG=/etc/valpo/valpo.yml VALPO_ACCEPTANCE=1 \
             PATH=/var/lib/valpo/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
             /var/lib/valpo/.local/bin/mise x ruby@4.0.5 -- \

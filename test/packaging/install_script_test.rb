@@ -27,6 +27,21 @@ class ValpoPackagingInstallScriptTest < Minitest::Test
     *Dir[File.expand_path("../../packaging/**/*.sh", __dir__)]
   ].sort.freeze
 
+  def test_installer_isolates_mise_from_the_callers_environment
+    script = <<~BASH
+      install_script="$1"
+      set --
+      source "$install_script"
+      runuser() { shift 3; "$@"; }
+      export MISE_CONFIG_DIR=/caller/config
+      export XDG_CONFIG_HOME=/caller/config
+      run_as_valpo_shell 'printf "%s %s" "$MISE_CONFIG_DIR" "$XDG_CONFIG_HOME"'
+    BASH
+    stdout, stderr, status = Open3.capture3("bash", "-c", script, "test", INSTALL_SCRIPT)
+    assert status.success?, stderr
+    assert_equal "/var/lib/valpo/.config/mise /var/lib/valpo/.config", stdout
+  end
+
   def test_network_preflight_rejects_broken_advertised_ipv6
     script = <<~BASH
       install_script="$1"

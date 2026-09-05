@@ -171,10 +171,16 @@ run_as_valpo_shell() {
   runuser -u "$VALPO_USER" -- env \
     HOME="$STATE_DIR" \
     USER="$VALPO_USER" \
+    XDG_CONFIG_HOME="${STATE_DIR}/.config" \
+    XDG_DATA_HOME="${STATE_DIR}/.local/share" \
+    XDG_CACHE_HOME="${STATE_DIR}/.cache" \
+    MISE_CONFIG_DIR="${STATE_DIR}/.config/mise" \
+    MISE_DATA_DIR="${STATE_DIR}/.local/share/mise" \
+    MISE_CACHE_DIR="${STATE_DIR}/.cache/mise" \
     PATH="${STATE_DIR}/.local/bin:${PATH}" \
     MISE_RUBY_COMPILE=false \
     MISE_YES=1 \
-    bash -lc "$1"
+    bash -c "$1"
 }
 
 install_mise() {
@@ -410,6 +416,12 @@ fi
 
 export HOME="\${STATE_DIR}"
 export USER="\${VALPO_USER}"
+export XDG_CONFIG_HOME="\${STATE_DIR}/.config"
+export XDG_DATA_HOME="\${STATE_DIR}/.local/share"
+export XDG_CACHE_HOME="\${STATE_DIR}/.cache"
+export MISE_CONFIG_DIR="\${STATE_DIR}/.config/mise"
+export MISE_DATA_DIR="\${STATE_DIR}/.local/share/mise"
+export MISE_CACHE_DIR="\${STATE_DIR}/.cache/mise"
 export PATH="\${STATE_DIR}/.local/bin:\${PATH}"
 export MISE_RUBY_COMPILE=false
 export MISE_YES=1
