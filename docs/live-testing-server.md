@@ -17,10 +17,11 @@ scripts against it or install Valpo on Starbook itself.
 - Initial stopped-VM recovery snapshot: `initial-20260905`.
 - Pre-fix recovery snapshot: `before-domain-fix-20260905`.
 
-The installed source revision is `1cb0f8e1dbeeb2ca681f4e9b5eccf00b53b12c88`,
-recorded in `/etc/valpo/source-revision`. It includes the domain-verification
-fix and persistent CLI login. The recovery snapshot for this update is
-`before-cli-login-20260905`.
+The installed source revision is `84e521e1668341c141d0cc6f678e992dc479e7b0`,
+recorded in `/etc/valpo/source-revision`. It includes stable single-label service
+slugs (schema 5) and releases database read cursors before domain network
+verification. The recovery snapshot for this update is
+`before-domain-slugs-20260905`.
 
 On the operator's Mac, the `live` CLI profile selects `https://api-live.valpo.dev`
 with a dedicated `pablo-mac` admin credential. Login stores credentials in
@@ -39,7 +40,8 @@ from being sent to another endpoint. `valpo logout --revoke` revokes the
 selected saved credential and removes its local profile.
 
 Porkbun remains the registrar; Cloudflare hosts DNS. Each public hostname uses
-a proxied CNAME pointing at the dedicated tunnel. Existing `apps.valpo.dev`
+a proxied CNAME pointing at the dedicated tunnel. `*.valpo.dev` also points
+at this tunnel for generated service domains and the GitHub integration. Existing `apps.valpo.dev`
 and `*.apps.valpo.dev` records belong to other infrastructure.
 
 The tunnel runs inside the VM. It forwards application ACME HTTP-01 paths to
@@ -57,10 +59,17 @@ ssh pablo@starbook 'incus exec valpo-live -- valpo-operator system status'
 ssh pablo@starbook 'incus exec valpo-live -- valpo-operator service show web --project live-canary'
 ```
 
-There is no default generated app domain. Start with explicit first-level
-hostnames and attach them through `valpo domain add`. Cloudflare Universal SSL
-does not cover deeper generated hostnames on a full DNS setup. Additional
-names also require matching tunnel rules and DNS records.
+The verified default app domain is `valpo.dev`. The canary
+uses `https://live-canary-web.valpo.dev`, with its existing custom domains
+preserved. GitHub setup and webhooks use `https://github.valpo.dev`.
+Wildcard tunnel rules follow the explicit API and canary rules, routing ACME
+challenges to Caddy port 80 and other traffic to verified HTTPS on port 443.
+First-level generated names fit Cloudflare Universal SSL coverage. Domains
+outside `*.valpo.dev` still need their own DNS and tunnel routing.
+
+If restoring the pre-update snapshot, also restore the wildcard DNS record:
+`*.valpo.dev` previously targeted `pixie.porkbun.com`, DNS-only, TTL 600.
+The VM snapshot does not include Cloudflare DNS changes.
 
 ## Updating Valpo
 
