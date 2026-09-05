@@ -38,6 +38,26 @@ mise exec -- bundle exec rake standard:fix
 
 These tasks run Standard plus `.rubocop-project.yml`.
 
+## Caddy ACME Integration
+
+The normal test suite uses Caddy fakes and does not contact a certificate
+authority. Run the opt-in [Pebble](https://github.com/letsencrypt/pebble)
+integration to exercise real ACME issuance against Valpo-rendered routes
+without consuming Let's Encrypt rate limits:
+
+```bash
+mise exec -- bundle exec rake test:pebble
+```
+
+The test requires Docker with Compose support. It starts pinned Pebble and Caddy
+containers on an isolated Compose network, renders two Valpo routes to the same
+test application, waits for Caddy to obtain an untrusted test certificate for
+each hostname, and proves that the certificates have the expected names and
+distinct serial numbers. The containers, network, and certificate state are
+removed at the end of the test. Pebble is only a local ACME protocol integration;
+retain a persistent production-certificate canary for public DNS and trust-path
+coverage.
+
 After changing CLI registration, arguments, or service definitions, regenerate the canonical CLI guide:
 
 ```bash

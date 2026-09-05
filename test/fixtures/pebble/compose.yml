@@ -1,0 +1,35 @@
+services:
+  pebble:
+    image: ghcr.io/letsencrypt/pebble@sha256:ddf230642b1a584f519f32e347de1b05a6e4c1f6c35c1863b33effeab5f78199
+    command: -config /test/config/pebble-config.json -strict
+    environment:
+      PEBBLE_VA_NOSLEEP: "1"
+      PEBBLE_WFE_NONCEREJECT: "0"
+    volumes:
+      - ./pebble-config.json:/test/config/pebble-config.json:ro
+
+  caddy:
+    image: caddy:2.11.4-alpine
+    depends_on:
+      - app
+      - pebble
+    ports:
+      - "127.0.0.1::443"
+    volumes:
+      - ${VALPO_PEBBLE_CADDYFILE:?set VALPO_PEBBLE_CADDYFILE}:/etc/caddy/Caddyfile:ro
+      - ./pebble.minica.pem:/test/certs/pebble.minica.pem:ro
+      - caddy_data:/data
+    networks:
+      default:
+        aliases:
+          - api.valpo.test
+          - web.valpo.test
+
+  app:
+    image: caddy:2.11.4-alpine
+    command: caddy run --config /test/app.Caddyfile
+    volumes:
+      - ./app.Caddyfile:/test/app.Caddyfile:ro
+
+volumes:
+  caddy_data:
