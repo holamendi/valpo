@@ -1,0 +1,112 @@
+# Persistent Live Testing Server
+
+This is a pre-release testing environment, not a supported production host.
+It is separate from the canonical `valpo` E2E VM. Do not run destructive E2E
+scripts against it or install Valpo on Starbook itself.
+
+## Inventory
+
+- SSH host: `pablo@starbook` over Tailscale.
+- Incus VM: `valpo-live`, Ubuntu 26.04, 4 CPUs, 8 GiB RAM, 80 GiB disk.
+- Reserved guest address: `10.238.201.30` on `incusbr0`.
+- Application: `https://live.valpo.dev`.
+- Secondary domain-attachment canary: `https://verify-live.valpo.dev`.
+- Authenticated API: `https://api-live.valpo.dev`.
+- Cloudflare Tunnel: `valpo-live`, ID `574e9c61-2c32-4392-9859-368ca5b37ef3`.
+- Initial source revision: `9191d62990194fbfb4053c159498920757a99b4a`.
+- Initial stopped-VM recovery snapshot: `initial-20260905`.
+- Pre-fix recovery snapshot: `before-domain-fix-20260905`.
+
+The installed source revision is `1cb0f8e1dbeeb2ca681f4e9b5eccf00b53b12c88`,
+recorded in `/etc/valpo/source-revision`. It includes the domain-verification
+fix and persistent CLI login. The recovery snapshot for this update is
+`before-cli-login-20260905`.
+
+On the operator's Mac, the `live` CLI profile selects `https://api-live.valpo.dev`
+with a dedicated `pablo-mac` admin credential. Login stores credentials in
+`~/.config/valpo/cli.json` with mode 0600 inside a mode-0700 directory. Tokens
+are plaintext; keep this file out of Git and shared folders. To configure
+another computer, issue a separate token and enter it at the hidden prompt:
+
+```bash
+valpo login --server https://api-live.valpo.dev --name live
+valpo system status
+```
+
+`VALPO_API_TOKEN` overrides the saved token. Explicit `VALPO_API_URL` or
+`--api-url` uses only the environment token, preventing a saved credential
+from being sent to another endpoint. `valpo logout --revoke` revokes the
+selected saved credential and removes its local profile.
+
+Porkbun remains the registrar; Cloudflare hosts DNS. Each public hostname uses
+a proxied CNAME pointing at the dedicated tunnel. Existing `apps.valpo.dev`
+and `*.apps.valpo.dev` records belong to other infrastructure.
+
+The tunnel runs inside the VM. It forwards application ACME HTTP-01 paths to
+local Caddy port 80, other application traffic to verified HTTPS on port 443
+with `matchSNItoHost`, and API traffic to loopback port 7092. The API requires
+a credential before its tunnel route is activated. Unknown hosts return 404.
+
+Configuration and tunnel credentials reside under `/etc/cloudflared`.
+The operator token is root-owned under `/root/.config/valpo/operator-token`
+with mode 0600. Do not print it or commit it. Use the root-only
+`/usr/local/sbin/valpo-operator` wrapper for authenticated operations:
+
+```bash
+ssh pablo@starbook 'incus exec valpo-live -- valpo-operator system status'
+ssh pablo@starbook 'incus exec valpo-live -- valpo-operator service show web --project live-canary'
+```
+
+There is no default generated app domain. Start with explicit first-level
+hostnames and attach them through `valpo domain add`. Cloudflare Universal SSL
+does not cover deeper generated hostnames on a full DNS setup. Additional
+names also require matching tunnel rules and DNS records.
+
+## Updating Valpo
+
+Updates are manual. Select and review a full commit, run the appropriate tests,
+and preserve its identity; the initial setup found no published GitHub releases.
+The source installer is not transactional. A stopped VM snapshot preserves the
+database, keyring, application volumes, configuration, and code together.
+
+1. Confirm no jobs are active and stop accepting writes. Allow active work to
+   finish before shutting down the guest.
+2. Stop `valpo-live` cleanly and take a uniquely named Incus snapshot. Start the
+   VM again. Expect public downtime during this process.
+3. Transfer a complete `git archive` file of the reviewed commit, push it into
+   the guest with `incus file push`, and extract into a fresh directory under
+   `/root`. Verify the archive contains the bootstrap migration before stopping
+   services. The installer sets `/opt/valpo` to mode 0755 for the Valpo account.
+4. Run that checkout's `packaging/install.sh` inside the VM. Use the full
+   installer when dependencies change. Never modify the frozen bootstrap
+   migration or bypass its compatibility check.
+5. Record the installed commit in `/etc/valpo/source-revision` after success.
+6. Verify the API, worker, Caddy, Docker, and tunnel services; authenticated
+   system status; the public canary; and rejection of unauthenticated API calls.
+   Test a guest restart when changing host configuration.
+
+If an update fails, stop the guest and restore the pre-update snapshot before
+restarting. Restoring discards all writes since the snapshot; coordinate this
+before accepting further traffic. Local snapshots are recovery points, not
+off-host backups, and do not survive loss of Starbook's disk.
+
+## Operational Checks
+
+```bash
+curl --fail https://live.valpo.dev/
+curl -s -o /dev/null -w '%{http_code}\n' https://api-live.valpo.dev/v1/projects
+ssh pablo@starbook 'incus exec valpo-live -- systemctl is-active valpo-api valpo-worker caddy docker cloudflared'
+ssh pablo@starbook 'incus exec valpo-live -- valpo-operator system secrets verify'
+ssh pablo@starbook 'incus exec valpo-live -- journalctl -u valpo-api -u valpo-worker -u cloudflared --since "10 minutes ago" --no-pager'
+```
+
+The unauthenticated API request must return 401. Tunnel health alone does not
+prove the application works; compare the public response with the deployed
+service and verify its domain through Valpo's normal verification workflow.
+
+Initial verification confirmed a running canary with a verified domain,
+matching public/container response digests, authenticated public API access,
+unauthenticated API rejection, and recovery after a full guest stop/start.
+After installing the domain-creation fix, a single `domain add` created and
+verified `verify-live.valpo.dev` successfully. Both public canary hostnames
+returned the same body digest as the container.

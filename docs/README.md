@@ -11,6 +11,7 @@ Start with the root [README](../README.md). Use this index for reference and pro
 - [Installation and host operations](../packaging/README.md)
 - [Release and host lifecycle](./valpo-release-lifecycle.md)
 - [End-to-end testing](./end-to-end-testing.md)
+- [Persistent live testing server](./live-testing-server.md)
 
 ## Product And Engineering Notes
 
