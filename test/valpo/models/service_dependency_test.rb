@@ -36,4 +36,19 @@ class ValpoServiceDependencyTest < Minitest::Test
     end
     assert_match "same project", error.message
   end
+
+  def test_dependency_transitions_allow_binding_and_reject_skipped_recovery
+    project = create_project
+    app = create_app_service(project:)
+    database = create_managed_service(project:)
+    dependency = Valpo::ServiceDependency.create(
+      service_id: app.id,
+      dependency_service_id: database.id
+    )
+
+    assert_equal "active", dependency.transition_to!("active").status
+    assert_equal "deleting", dependency.transition_to!("deleting").status
+    error = assert_raises(Valpo::ValidationError) { dependency.transition_to!("binding") }
+    assert_equal "Forbidden service dependency transition from deleting to binding", error.message
+  end
 end

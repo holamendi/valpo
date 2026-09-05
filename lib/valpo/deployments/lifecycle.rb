@@ -90,7 +90,7 @@ module Valpo
         previous_route_target = target.route_target
         domain_orchestrator.ensure_verified!(service)
         new_container = nil
-        service.update(status: "provisioning")
+        service.transition_to!("provisioning")
         new_container = runtime.start_release_container(target)
         wait_for_release(target, queue:, job_id:)
         activator.activate(
@@ -108,7 +108,7 @@ module Valpo
         target&.refresh
         service&.refresh
         target&.update(container_name: previous_container, route_target: previous_route_target)
-        service&.update(status: current ? "running" : "failed")
+        service&.transition_to!(current ? "running" : "failed")
         raise
       end
 
@@ -120,7 +120,7 @@ module Valpo
           runtime.stop_container(release.container_name, ignore_missing: true)
           release.update(container_name: nil, route_target: nil)
         end
-        service.update(status: "stopped")
+        service.transition_to!("stopped")
         activator.apply_routes(queue:, job_id:)
         service
       end
@@ -134,12 +134,12 @@ module Valpo
         old_container = release.container_name
         previous_route_target = release.route_target
         new_container = nil
-        service.update(status: "restarting")
+        service.transition_to!("restarting")
         new_container = runtime.start_release_container(release)
         wait_for_release(release, queue:, job_id:)
         if service.web? && !domain_orchestrator.verified?(service)
           release.ready!
-          service.update(status: "ready")
+          service.transition_to!("ready")
           activator.apply_routes(queue:, job_id:)
         else
           activator.activate(
@@ -166,7 +166,7 @@ module Valpo
         else
           "running"
         end
-        service&.update(status:)
+        service&.transition_to!(status)
         raise
       end
 
@@ -202,7 +202,7 @@ module Valpo
         runtime = runtime_for(queue:, job_id:)
         service = find_app_service(service_id)
         service_name = service.name
-        service.update(status: "deleting")
+        service.transition_to!("deleting")
         activator.apply_routes(queue:, job_id:, exclude_service_id: service.id)
         Valpo::Release.where(service_id: service.id).exclude(container_name: nil).select_map(:container_name).uniq.each do
           runtime.stop_container(it, ignore_missing: true)
@@ -251,7 +251,7 @@ module Valpo
         release = nil
         container_name = nil
 
-        service.update(status: "provisioning")
+        service.transition_to!("provisioning")
         if pull
           event(queue, job_id, "Pulling #{image}")
           runtime.pull_image(image)
@@ -287,7 +287,7 @@ module Valpo
         end
         if service.web? && !domain_orchestrator.verified?(service)
           release.ready!
-          service.update(status: old_active ? "running" : "ready")
+          service.transition_to!(old_active ? "running" : "ready")
           retire_release_safely(old_ready, runtime, queue:, job_id:)
           event(queue, job_id, "Release is ready but remains private until a domain is verified")
         else
@@ -307,7 +307,7 @@ module Valpo
         release&.fail!
         cleaned = runtime&.cleanup_container(container_name)
         release&.update(container_name: nil, route_target: nil) if cleaned
-        service&.update(status: old_active ? "running" : "failed")
+        service&.transition_to!(old_active ? "running" : "failed")
         raise
       end
 

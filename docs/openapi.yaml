@@ -1373,7 +1373,7 @@ components:
         repository: {type: string}
         ref: {type: string}
         auto_deploy: {type: boolean}
-        status: {type: string}
+        status: {type: string, enum: [unconnected, connected, failed]}
         created_at: {$ref: '#/components/schemas/Timestamp'}
         updated_at: {$ref: '#/components/schemas/Timestamp'}
     BuildTarget:
@@ -1398,7 +1398,7 @@ components:
         id: {type: string}
         service_id: {type: string}
         dependency_service_id: {type: string}
-        status: {type: string}
+        status: {type: string, enum: [binding, active, deleting, failed]}
         created_at: {$ref: '#/components/schemas/Timestamp'}
         updated_at: {$ref: '#/components/schemas/Timestamp'}
     AppConfiguration:
@@ -1435,7 +1435,7 @@ components:
         project: {type: string}
         name: {type: string}
         type: {type: string, enum: [web, worker, postgres, redis]}
-        status: {type: string}
+        status: {type: string, enum: [created, provisioning, ready, running, stopped, restarting, deleting, failed]}
         created_at: {$ref: '#/components/schemas/Timestamp'}
         updated_at: {$ref: '#/components/schemas/Timestamp'}
         app: {$ref: '#/components/schemas/AppConfiguration'}
@@ -1464,7 +1464,7 @@ components:
           anyOf:
             - {$ref: '#/components/schemas/ReleaseBuild'}
             - {type: 'null'}
-        status: {type: string}
+        status: {type: string, enum: [pending, ready, active, inactive, failed]}
         internal_port: {anyOf: [{$ref: '#/components/schemas/Port'}, {type: 'null'}]}
         healthcheck_path: {type: [string, 'null']}
         container_name: {type: [string, 'null']}
@@ -1507,7 +1507,7 @@ components:
         platform_domain_id: {type: [string, 'null']}
         hostname: {type: string}
         kind: {type: string}
-        status: {type: string}
+        status: {type: string, enum: [pending, verified, failed]}
         verification_error: {type: [string, 'null']}
         verified_at: {$ref: '#/components/schemas/Timestamp'}
         route_target: {type: [string, 'null']}
@@ -1520,7 +1520,7 @@ components:
       properties:
         id: {type: string}
         hostname: {type: string}
-        status: {type: string}
+        status: {type: string, enum: [pending, verified, failed]}
         active: {type: boolean}
         verification_error: {type: [string, 'null']}
         verified_at: {$ref: '#/components/schemas/Timestamp'}
@@ -1533,7 +1533,7 @@ components:
       properties:
         id: {type: string}
         type: {type: string}
-        status: {type: string}
+        status: {type: string, enum: [queued, running, succeeded, failed]}
         progress: {type: integer, minimum: 0, maximum: 100}
         error: {type: [string, 'null']}
         locked_by: {type: [string, 'null']}

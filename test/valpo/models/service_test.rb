@@ -40,4 +40,15 @@ class ValpoServiceTest < Minitest::Test
 
     refute_includes columns, :plan
   end
+
+  def test_service_transitions_allow_operational_progression_and_reject_unknown_edges
+    service = create_app_service
+
+    assert_equal "provisioning", service.transition_to!("provisioning").status
+    assert_equal "running", service.transition_to!("running").status
+    assert_equal "stopped", service.transition_to!("stopped").status
+
+    error = assert_raises(Valpo::ValidationError) { service.transition_to!("active") }
+    assert_equal "Forbidden service transition from stopped to active", error.message
+  end
 end

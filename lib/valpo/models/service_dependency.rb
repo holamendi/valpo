@@ -5,7 +5,15 @@ require "time"
 
 module Valpo
   class ServiceDependency < Sequel::Model(:service_dependencies)
+    include Valpo::LifecycleTransitions
+
     STATUSES = %w[binding active deleting failed].freeze
+    TRANSITIONS = {
+      "binding" => %w[active deleting failed],
+      "active" => %w[deleting failed],
+      "deleting" => %w[active failed],
+      "failed" => %w[binding active deleting]
+    }.freeze
 
     many_to_one :service
     many_to_one :dependency_service, class: "Valpo::Service", key: :dependency_service_id

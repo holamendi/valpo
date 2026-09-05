@@ -57,4 +57,17 @@ class ValpoReleaseTest < Minitest::Test
       create_release(service:, build_strategy: "auto", build_metadata_json: "[]")
     end
   end
+
+  def test_release_transitions_allow_documented_progression_and_reject_terminal_revival
+    service = create_app_service
+    release = create_release(service:)
+
+    assert_equal "ready", release.transition_to!("ready").status
+    assert_equal "active", release.transition_to!("active").status
+    assert_equal "inactive", release.transition_to!("inactive").status
+    assert_equal "failed", release.transition_to!("failed").status
+
+    error = assert_raises(Valpo::ValidationError) { release.transition_to!("active") }
+    assert_equal "Forbidden release transition from failed to active", error.message
+  end
 end

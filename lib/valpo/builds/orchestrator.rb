@@ -129,7 +129,7 @@ module Valpo
           internal_port: internal_port || app_config&.internal_port,
           healthcheck_path: blank_to_nil(healthcheck_path) || app_config&.healthcheck_path
         )
-        service.update(status: old_active ? "running" : "failed")
+        service.transition_to!(old_active ? "running" : "failed")
       end
 
       def event(queue, job_id, stream, message)

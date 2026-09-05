@@ -22,6 +22,8 @@ The current release boots only when the database matches its target schema. A fu
 
 `001_bootstrap.rb` is permanent; every schema change adds one contiguous migration. Migrations are self-contained and use expand/contract changes where practical. Database down-migrations are not the primary rollback mechanism.
 
+SQLite check constraints enforce the finite service, release, dependency, domain, platform-domain, and job states even for direct dataset writes. Partial unique indexes permit at most one active release per service and one active platform domain. Application transition methods reject forbidden lifecycle edges before writing; compare-and-set job transitions remain atomic. Upgrade preflight reports unknown states for explicit operator repair and deterministically retires duplicate active rows before installing these constraints.
+
 ## Upgrade Transaction
 
 Production installation will use immutable version directories and an atomic `current` symlink. An update will:

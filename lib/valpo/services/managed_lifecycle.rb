@@ -24,13 +24,13 @@ module Valpo
         runtime = runtime_for(queue:, job_id:)
         managed = Registry.managed_config(service)
         managed.update(Registry.runtime_attributes(service))
-        service.update(status: "provisioning")
+        service.transition_to!("provisioning")
         event(queue, job_id, "system", "Provisioning #{service.name}")
         start_service_container(runtime, service.refresh)
-        service.update(status: "running")
+        service.transition_to!("running")
         service.refresh
       rescue
-        service&.update(status: "failed") unless service&.status == "deleting"
+        service&.transition_to!("failed") unless service&.status == "deleting"
         raise
       end
 
@@ -39,13 +39,13 @@ module Valpo
         runtime = runtime_for(queue:, job_id:)
         validate_host_start!(service)
         runtime.validate_service_container_volume!(service)
-        service.update(status: "restarting")
+        service.transition_to!("restarting")
         event(queue, job_id, "system", "Restarting #{service.name}")
         runtime.restart_service_container(service)
-        service.update(status: "running")
+        service.transition_to!("running")
         service.refresh
       rescue
-        service&.update(status: "failed") if service&.status == "restarting"
+        service&.transition_to!("failed") if service&.status == "restarting"
         raise
       end
 
@@ -55,7 +55,7 @@ module Valpo
         runtime = runtime_for(queue:, job_id:)
         runtime.validate_service_container_volume!(service)
         runtime.stop_container(managed.container_name, ignore_missing: true)
-        service.update(status: "stopped")
+        service.transition_to!("stopped")
       end
 
       def delete_service(service_id:, force:, queue:, job_id:)
@@ -70,8 +70,8 @@ module Valpo
         restarted_apps = []
         container_removed = false
         volume_deleted = false
-        service.update(status: "deleting")
-        dependencies.each { it.update(status: "deleting") }
+        service.transition_to!("deleting")
+        dependencies.each { it.transition_to!("deleting") }
         dependencies.each do
           app = Valpo::Service[it.service_id]
           next unless app
@@ -89,7 +89,7 @@ module Valpo
         true
       rescue
         if volume_deleted
-          Valpo::Service.where(id: service&.id).update(status: "failed") if service
+          service&.refresh&.transition_to!("failed")
         else
           restore_managed_runtime(
             service,
@@ -100,7 +100,7 @@ module Valpo
             job_id:
           )
           original_statuses&.each do |id, status|
-            Valpo::ServiceDependency.where(id:).update(status:)
+            Valpo::ServiceDependency[id]&.transition_to!(status)
           end
           restore_restarted_apps(restarted_apps, queue:, job_id:)
         end
@@ -146,9 +146,9 @@ module Valpo
           event(queue, job_id, "system", "Recreating service runtime for #{service.name}")
           start_service_container(runtime, service)
         end
-        service.update(status: "running")
+        service.transition_to!("running")
       rescue
-        service.update(status: "failed")
+        service.transition_to!("failed")
         raise
       end
 
@@ -199,9 +199,9 @@ module Valpo
             end
           end
         end
-        Valpo::Service.where(id: service.id).update(status: original_status)
+        service.refresh.transition_to!(original_status)
       rescue => e
-        Valpo::Service.where(id: service.id).update(status: "failed")
+        service.refresh.transition_to!("failed")
         event(queue, job_id, "stderr", "Could not restore #{service.name} after failed deletion: #{e.message}")
       end
 

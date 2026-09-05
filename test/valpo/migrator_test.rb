@@ -30,8 +30,8 @@ class ValpoMigratorTest < Minitest::Test
     bootstrap = File.join(Valpo::SchemaInfo::MIGRATIONS_PATH, Valpo::SchemaInfo::BOOTSTRAP_FILENAME)
 
     assert Valpo::SchemaInfo.validate_migrations!
-    assert_equal [1, 2], Valpo::SchemaInfo.versions
-    assert_equal 2, Valpo::SchemaInfo.latest
+    assert_equal [1, 2, 3], Valpo::SchemaInfo.versions
+    assert_equal 3, Valpo::SchemaInfo.latest
     assert_equal Valpo::SchemaInfo::BOOTSTRAP_SHA256, Digest::SHA256.file(bootstrap).hexdigest
     assert_includes db.schema(:sources).to_h, :owner_service_id
     assert_includes db.schema(:build_targets).to_h, :owner_service_id
@@ -87,6 +87,66 @@ class ValpoMigratorTest < Minitest::Test
     end
   end
 
+  def test_lifecycle_migration_reports_unknown_states_before_changing_schema
+    Dir.mktmpdir("valpo-invalid-lifecycle") do
+      database = Sequel.sqlite(File.join(it, "valpo.sqlite3"))
+      Valpo::Migrator.run(db: database, target: 2)
+      project_id, service_id = insert_upgrade_service(database)
+      database[:services].where(id: service_id).update(status: "lost")
+
+      error = assert_raises(Sequel::Error) { Valpo::Migrator.run(db: database) }
+
+      assert_match "Lifecycle invariant preflight failed", error.message
+      assert_match "services: #{service_id}=\"lost\"", error.message
+      assert_equal 2, database[:schema_info].get(:version)
+      assert_equal project_id, database[:projects].get(:id)
+    ensure
+      database&.disconnect
+    end
+  end
+
+  def test_lifecycle_migration_repairs_duplicate_active_resources
+    Dir.mktmpdir("valpo-duplicate-lifecycle") do
+      database = Sequel.sqlite(File.join(it, "valpo.sqlite3"))
+      Valpo::Migrator.run(db: database, target: 2)
+      _project_id, service_id = insert_upgrade_service(database)
+      timestamp = Time.now.utc
+      2.times do
+        database[:releases].insert(
+          id: "rel_0190000000007000800000000000000#{it}",
+          service_id:,
+          version: it + 1,
+          source_type: "registry",
+          status: "active",
+          build_metadata_json: "{}",
+          artifact_available: true,
+          environment_revision: 0,
+          created_at: timestamp + it
+        )
+        database[:platform_domains].insert(
+          id: "pdm_0190000000007000800000000000000#{it}",
+          hostname: "apps#{it}.example.com",
+          status: "verified",
+          active: true,
+          verification_token: "token#{it}",
+          verified_at: timestamp + it,
+          created_at: timestamp + it,
+          updated_at: timestamp + it
+        )
+      end
+
+      _out, warning = capture_io { Valpo::Migrator.run(db: database) }
+
+      assert_match "repaired duplicate active releases", warning
+      assert_match "repaired active platform domains", warning
+      assert_equal ["rel_01900000000070008000000000000001"], database[:releases].where(status: "active").select_map(:id)
+      assert_equal 1, database[:platform_domains].where(active: true).count
+      assert_equal 3, database[:schema_info].get(:version)
+    ensure
+      database&.disconnect
+    end
+  end
+
   def test_incremental_migration_policy_rejects_bootstrap_edits_and_version_gaps
     Dir.mktmpdir("valpo-migrations") do |path|
       copy_bootstrap(path)
@@ -102,6 +162,24 @@ class ValpoMigratorTest < Minitest::Test
   end
 
   private
+
+  def insert_upgrade_service(database)
+    timestamp = Time.now.utc
+    project_id = "prj_01900000000070008000000000000000"
+    service_id = "svc_01900000000070008000000000000000"
+    database[:projects].insert(id: project_id, name: "upgrade", created_at: timestamp, updated_at: timestamp)
+    database[:services].insert(
+      id: service_id,
+      project_id:,
+      name: "web",
+      kind: "web",
+      status: "running",
+      environment_revision: 0,
+      created_at: timestamp,
+      updated_at: timestamp
+    )
+    [project_id, service_id]
+  end
 
   def copy_bootstrap(path)
     FileUtils.cp(

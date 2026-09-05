@@ -21,4 +21,14 @@ class ValpoDomainTest < Minitest::Test
     end
     assert_match "hostname", error.message
   end
+
+  def test_domain_transitions_allow_verification_and_reject_unknown_edges
+    service = create_app_service
+    domain = Valpo::Domain.create(service_id: service.id, hostname: "hello.example.com")
+
+    assert_equal "verified", domain.transition_to!("verified", verified_at: Time.now.utc).status
+    assert_equal "pending", domain.transition_to!("pending", verified_at: nil).status
+    error = assert_raises(Valpo::ValidationError) { domain.transition_to!("retired") }
+    assert_equal "Forbidden domain transition from pending to retired", error.message
+  end
 end

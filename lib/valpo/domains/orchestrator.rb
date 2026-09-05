@@ -56,7 +56,7 @@ module Valpo
         record.refresh
       rescue => e
         if record && !record.verified?
-          record.update(status: "failed", active: false, verification_error: e.message, verified_at: nil)
+          record.transition_to!("failed", active: false, verification_error: e.message, verified_at: nil)
         end
         safely_apply_routes(queue:, job_id:)
         raise
@@ -66,12 +66,10 @@ module Valpo
         domain = Valpo::Domain[domain_id]
         raise Valpo::ValidationError, "Domain not found: #{domain_id}" unless domain
 
-        domain.update(
-          status: "pending",
+        domain.transition_to!("pending",
           verification_token: SecureRandom.hex(24),
           verification_error: nil,
-          verified_at: nil
-        )
+          verified_at: nil)
         verify_domain_record(domain, queue:, job_id:, activate_ready: true)
       end
 
@@ -107,7 +105,7 @@ module Valpo
       def verify_domain_record(domain, queue:, job_id:, activate_ready:)
         event(queue, job_id, "system", "Verifying #{domain.hostname}")
         verify_challenge!(hostname: domain.hostname, token: domain.verification_token, queue:, job_id:)
-        domain.update(status: "verified", verification_error: nil, verified_at: Time.now.utc)
+        domain.transition_to!("verified", verification_error: nil, verified_at: Time.now.utc)
         active_platform = Valpo::Domains::Configuration.active
         if activate_ready
           activator.activate_ready(
@@ -125,7 +123,7 @@ module Valpo
         end
         domain.refresh
       rescue => e
-        domain&.update(status: "failed", verification_error: e.message, verified_at: nil)
+        domain&.transition_to!("failed", verification_error: e.message, verified_at: nil)
         safely_apply_routes(queue:, job_id:)
         raise
       end

@@ -174,12 +174,10 @@ module Valpo
           return nil unless job
 
           timestamp = now
-          updated = Valpo::Job.where(id: job.id, status: "queued").update(
-            status: "running",
+          updated = Valpo::Job.transition_dataset!(Valpo::Job.where(id: job.id), from: "queued", to: "running",
             locked_by: worker_id,
             locked_at: timestamp,
-            started_at: timestamp
-          )
+            started_at: timestamp)
           (updated == 1) ? find(job.id) : nil
         end
       end
@@ -188,13 +186,11 @@ module Valpo
         Valpo::Database.connection.transaction(mode: :immediate) do
           abandoned = 0
           Valpo::Job.where(status: "running").order(:created_at, :id).each do
-            updated = Valpo::Job.where(id: it.id, status: "running").update(
-              status: "failed",
+            updated = Valpo::Job.transition_dataset!(Valpo::Job.where(id: it.id), from: "running", to: "failed",
               error: ABANDONED_ERROR,
               locked_by: nil,
               locked_at: nil,
-              finished_at: now
-            )
+              finished_at: now)
             next unless updated == 1
 
             event(it.id, "stderr", ABANDONED_EVENT)
@@ -205,27 +201,23 @@ module Valpo
       end
 
       def succeed(job_id, worker_id:, progress: 100)
-        updated = Valpo::Job.where(id: job_id, status: "running", locked_by: worker_id).update(
-          status: "succeeded",
+        updated = Valpo::Job.transition_dataset!(Valpo::Job.where(id: job_id, locked_by: worker_id), from: "running", to: "succeeded",
           progress:,
           error: nil,
           locked_by: nil,
           locked_at: nil,
-          finished_at: now
-        )
+          finished_at: now)
         return nil unless updated == 1
 
         find(job_id)
       end
 
       def fail(job_id, error, worker_id:)
-        updated = Valpo::Job.where(id: job_id, status: "running", locked_by: worker_id).update(
-          status: "failed",
+        updated = Valpo::Job.transition_dataset!(Valpo::Job.where(id: job_id, locked_by: worker_id), from: "running", to: "failed",
           error:,
           locked_by: nil,
           locked_at: nil,
-          finished_at: now
-        )
+          finished_at: now)
         return nil unless updated == 1
 
         find(job_id)

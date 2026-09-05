@@ -29,6 +29,16 @@ class ValpoJobsQueueTest < Minitest::Test
     assert_equal "succeeded", queue.succeed(job.id, worker_id: "worker-1").status
   end
 
+  def test_job_transition_rejects_skipping_running_and_reopening_completion
+    queue = Valpo::Jobs::Queue.new
+    job = queue.enqueue("system_check")
+    assert_raises(Valpo::ValidationError) { job.transition_to!("succeeded") }
+
+    queue.lock_next("worker")
+    completed = queue.succeed(job.id, worker_id: "worker")
+    assert_raises(Valpo::ValidationError) { completed.transition_to!("running") }
+  end
+
   def test_service_operations_are_serialized_per_service
     project = create_project
     first_service = create_app_service(project:)
