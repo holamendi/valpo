@@ -248,6 +248,7 @@ copy_source() {
     --exclude 'test' \
     "${SOURCE_DIR}/" "${PREFIX}/"
   chown -R root:root "$PREFIX"
+  chmod 0755 "$PREFIX"
 }
 
 write_valpo_config() {
@@ -421,6 +422,28 @@ systemd_available() {
   command -v systemctl >/dev/null 2>&1 && [[ -d /run/systemd/system ]]
 }
 
+bootstrap_api_credential() {
+  log "Ensuring the initial API credential exists"
+  local temporary
+  temporary="$(mktemp "${CONFIG_DIR}/.bootstrap-token.XXXXXX")"
+  if ! run_as_valpo_shell "cd '${PREFIX}' && VALPO_ENV=production VALPO_CONFIG='${CONFIG_PATH}' '${MISE_BIN}' x ruby@${RUBY_VERSION} -- bundle exec ruby exe/valpo-bootstrap" > "$temporary"; then
+    rm -f "$temporary"
+    fail "Initial API credential setup failed"
+  fi
+  if [[ -s "$temporary" ]]; then
+    if [[ -e "${CONFIG_DIR}/bootstrap-token" ]]; then
+      fail "An existing bootstrap-token file was preserved. The new credential is saved privately at ${temporary}; inspect both before continuing."
+    fi
+    mv "$temporary" "${CONFIG_DIR}/bootstrap-token"
+    chmod 0600 "${CONFIG_DIR}/bootstrap-token"
+    log "Initial admin token saved at ${CONFIG_DIR}/bootstrap-token (root-only); it is not printed in installation logs"
+    log "After startup, run: valpo login --server http://127.0.0.1:7092 --name local --with-token < ${CONFIG_DIR}/bootstrap-token"
+  else
+    rm -f "$temporary"
+    log "API bootstrap already completed; existing credentials are unchanged"
+  fi
+}
+
 start_services() {
   [[ "$NO_START" -eq 0 ]] || return 0
   systemd_available || fail "systemd is not running"
@@ -459,6 +482,7 @@ main() {
   install_gems
   install_cli_wrapper
   run_migrations
+  bootstrap_api_credential
   start_services
   log "Valpo installation complete"
 }

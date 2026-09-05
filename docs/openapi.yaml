@@ -249,6 +249,34 @@ paths:
         '403': {$ref: '#/components/responses/Forbidden'}
         '422': {$ref: '#/components/responses/ValidationFailed'}
         '500': {$ref: '#/components/responses/InternalError'}
+  /v1/session:
+    get:
+      operationId: getCurrentAPICredential
+      summary: Inspect the authenticated API credential
+      description: Any valid credential scope may inspect its own metadata. No token or digest is returned.
+      responses:
+        '200':
+          description: Current API credential
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/APICredential'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '500': {$ref: '#/components/responses/InternalError'}
+    delete:
+      operationId: revokeCurrentAPICredential
+      summary: Revoke the authenticated API credential
+      description: Any valid scope may revoke itself. The final active admin cannot be revoked.
+      responses:
+        '200':
+          description: Revoked current API credential
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RevokeAPICredentialResult'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '500': {$ref: '#/components/responses/InternalError'}
   /v1/api-credentials:
     get:
       operationId: listAPICredentials

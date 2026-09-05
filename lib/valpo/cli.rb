@@ -10,6 +10,7 @@ module Valpo
     GITHUB_VALIDATOR_KEY = :valpo_cli_github_validator
     API_CREDENTIAL_RECOVERY_FACTORY_KEY = :valpo_cli_api_credential_recovery_factory
     INPUT_KEY = :valpo_cli_input
+    SESSIONS_KEY = :valpo_cli_sessions
 
     module_function
 
@@ -20,12 +21,15 @@ module Valpo
       input: $stdin,
       context_factory: nil,
       github_validator: nil,
-      api_credential_recovery_factory: nil
+      api_credential_recovery_factory: nil,
+      sessions: nil
     )
       previous_factory = Thread.current[CONTEXT_FACTORY_KEY]
       previous_validator = Thread.current[GITHUB_VALIDATOR_KEY]
       previous_recovery_factory = Thread.current[API_CREDENTIAL_RECOVERY_FACTORY_KEY]
       previous_input = Thread.current[INPUT_KEY]
+      previous_sessions = Thread.current[SESSIONS_KEY]
+      Thread.current[SESSIONS_KEY] = sessions
       Thread.current[CONTEXT_FACTORY_KEY] = context_factory if context_factory
       Thread.current[GITHUB_VALIDATOR_KEY] = github_validator if github_validator
       if api_credential_recovery_factory
@@ -38,6 +42,7 @@ module Valpo
       Thread.current[GITHUB_VALIDATOR_KEY] = previous_validator
       Thread.current[API_CREDENTIAL_RECOVERY_FACTORY_KEY] = previous_recovery_factory
       Thread.current[INPUT_KEY] = previous_input
+      Thread.current[SESSIONS_KEY] = previous_sessions
     end
 
     def context_factory
@@ -46,6 +51,10 @@ module Valpo
 
     def input
       Thread.current[INPUT_KEY] || $stdin
+    end
+
+    def sessions
+      Thread.current[SESSIONS_KEY] ||= Sessions.new
     end
 
     def github_validator

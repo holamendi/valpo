@@ -12,8 +12,9 @@ module Valpo
       DEFAULT_READ_TIMEOUT = 60
       MAX_ERROR_BODY_BYTES = 4096
 
-      def initialize(base_url:, http_factory: nil)
+      def initialize(base_url:, token: ENV["VALPO_API_TOKEN"], http_factory: nil)
         @base_uri = parse_base_uri(base_url)
+        @token = blank_to_nil(token)
         @http_factory = http_factory || -> { Net::HTTP.new(it.host, it.port) }
       end
 
@@ -21,11 +22,11 @@ module Valpo
         uri = build_uri(path, query)
         request = request_class(method).new(uri)
         request["Content-Type"] = "application/json"
-        token = blank_to_nil(ENV["VALPO_API_TOKEN"])
-        request["Authorization"] = "Bearer #{token}" if token
+        request["Authorization"] = "Bearer #{@token}" if @token
         request.body = JSON.generate(payload) if payload
 
         response = perform(uri, request)
+        raise Error, "API redirects are not followed" if (300...400).cover?(response.code.to_i)
         parsed = parse_response(response)
         return parsed if response.code.to_i < 400
 
@@ -85,8 +86,14 @@ module Valpo
       end
 
       def build_uri(path, query)
+        unless path.to_s.start_with?("/") && !path.to_s.start_with?("//")
+          raise Error, "API paths must be relative to the configured server"
+        end
         relative_path = path.to_s.sub(%r{\A/+}, "")
         uri = URI.join(base_uri.to_s, relative_path)
+        unless uri.scheme == base_uri.scheme && uri.host == base_uri.host && uri.port == base_uri.port && uri.path.start_with?(base_uri.path)
+          raise Error, "API path escapes the configured server"
+        end
         uri.query = URI.encode_www_form(query.compact) if query && !query.compact.empty?
         uri
       rescue URI::InvalidURIError => e
@@ -95,6 +102,7 @@ module Valpo
 
       def bounded_body(value)
         body = value.to_s
+        body = body.gsub(@token, "[REDACTED]") if @token
         return body if body.bytesize <= MAX_ERROR_BODY_BYTES
 
         "#{body.byteslice(0, MAX_ERROR_BODY_BYTES)}..."

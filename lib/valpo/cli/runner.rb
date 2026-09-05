@@ -3,7 +3,7 @@
 module Valpo
   module CLI
     class Runner
-      GLOBAL_VALUE_OPTIONS = %w[--api-url].freeze
+      GLOBAL_VALUE_OPTIONS = %w[--api-url --server].freeze
       GLOBAL_BOOLEAN_OPTIONS = %w[--json --no-json].freeze
 
       def initialize(out:, err:)
@@ -109,7 +109,7 @@ module Valpo
       def commands_for(path)
         if path.empty?
           groups = Registry::GROUPS.except("job").map { |name, description| [name, GroupDescription.new(description)] }
-          groups + [["version", Commands::Version]]
+          groups + Registry::COMMANDS.filter_map { |name, command, hidden| [name, command] if !hidden && !name.include?(" ") }
         else
           prefix = "#{path.join(" ")} "
           Registry::COMMANDS.filter_map do |name, command, _hidden|
@@ -125,10 +125,10 @@ module Valpo
       end
 
       def usage_message(message, arguments)
-        canonical = canonicalize(message)
+        canonical = canonicalize(message).gsub(/valpo_[A-Za-z0-9_-]+/, "[REDACTED]")
         path = arguments.take_while { !it.start_with?("-") }.take(2)
         suggestion = path.empty? ? "Run `valpo --help` for usage." : "Run `valpo #{path.join(" ")} --help` for usage."
-        "#{canonical}\n#{suggestion}"
+        "#{canonical}\n#{suggestion}".gsub(/valpo_[A-Za-z0-9_-]+/, "[REDACTED]")
       end
 
       GroupDescription = Struct.new(:description)

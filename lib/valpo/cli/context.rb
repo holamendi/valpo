@@ -5,8 +5,8 @@ module Valpo
     class Context
       attr_reader :client, :presenter, :resolver, :waiter
 
-      def self.build(api_url:, json:, out:, err:)
-        client = Valpo::API::Client.new(base_url: api_url)
+      def self.build(api_url:, json:, out:, err:, server: nil)
+        client = CLI.sessions.client(api_url:, server:)
         new(
           client:,
           presenter: Presenter.new(out:, err:, json:),

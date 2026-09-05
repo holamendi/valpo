@@ -165,22 +165,54 @@ module Valpo
 
           ## Configuration
 
-          The API URL defaults to `#{DEFAULT_API_URL}` and can be set with `--api-url` or `VALPO_API_URL`. API bearer credentials are issued by the server, stored as one-way digests, and supplied to the CLI through `VALPO_API_TOKEN`:
+          ### Server Login
+
+          `valpo login` authenticates this CLI to a Valpo server. It is separate from `valpo auth login github`, which configures the server's source-provider access. No user account or password is required: each computer uses a named API credential issued by an administrator.
 
           ```bash
-          valpo auth token create operator --scope=admin
-          export VALPO_API_TOKEN=valpo_...
-          valpo auth token list
+          valpo login --server https://api.example.com --name live
+          valpo system status
+          valpo project list --server live
+          valpo server list
+          valpo server use live
           ```
 
-          The raw token is returned only when it is created. A new installation accepts exactly one unauthenticated local operation: creating the first admin credential. Bootstrap is then permanently closed, including when every credential is later revoked or expires. Only admin credentials can issue, list, or revoke credentials. Valpo refuses to bind the API to a non-local address until an active credential exists.
+          Login prompts for the API token without echoing it, validates it with `GET /v1/session`, saves it, and selects that server. The default profile name is `default`; pass `--name` to keep multiple servers. Failed login leaves saved credentials and the selected server unchanged. A name cannot silently move to a different URL; log out first or choose another name.
 
-          Global options may appear before or after the resource command:
+          For automation, pipe one token line explicitly with `--with-token`. There is no token-value command-line option. Remote URLs require HTTPS; HTTP is allowed only for `localhost`, `127.0.0.1`, and `::1`. Redirects are rejected.
+
+          Profiles, including **plaintext API tokens**, are stored in `~/.config/valpo/cli.json` with mode `0600` inside a `0700` directory. `VALPO_CLI_CONFIG` overrides this client-only path; it is separate from the server's `VALPO_CONFIG`. Existing insecure files, directories, and symlinks are rejected. Keep this file out of Git and shared backups. `server list`, login output, and JSON output never display saved tokens. On an installed host, the wrapper runs as `valpo`, so its profile file lives below `/var/lib/valpo`.
+
+          ### Environment Overrides
+
+          `VALPO_API_TOKEN` overrides the selected profile's token. This supports credentials supplied by 1Password environments or another secret manager without persisting them through login. An explicitly empty token disables saved authentication.
+
+          `--server NAME` selects a saved profile for one command and takes precedence over `VALPO_API_URL`. `--api-url URL` or, without an explicit server, `VALPO_API_URL` selects an explicit URL and uses **only** `VALPO_API_TOKEN`, never a saved token. This prevents sending a saved credential to a different endpoint. `--server` and `--api-url` cannot be combined. Without a saved selection or URL override, the CLI uses `#{DEFAULT_API_URL}`.
+
+          Global options may appear before or after the command:
 
           ```bash
-          valpo --api-url http://127.0.0.1:7092 project list
-          valpo project list --api-url https://valpo.example.com
+          valpo --server live project list
+          valpo project list --server live --json
           ```
+
+          ### Initial Setup And Logout
+
+          The source installer creates the first admin credential before starting the API, saves it root-only at `/etc/valpo/bootstrap-token`, and never prints it in installation logs. Reinstalling does not replace credentials or reopen bootstrap. On the installed host, initialize its local CLI profile and issue a separate credential for your computer:
+
+          ```bash
+          valpo login --server http://127.0.0.1:7092 --name local --with-token < /etc/valpo/bootstrap-token
+          valpo auth token create my-computer --scope=admin
+          ```
+
+          The second command prints the new token once. Enter that token into `valpo login` on your computer. For checkouts installed without the source installer, the first admin can still be created with `valpo auth token create initial-admin --scope=admin` through the local API. Bootstrap closes permanently after issuance, even if all credentials are later revoked or expire.
+
+          ```bash
+          valpo logout --server live
+          valpo logout --server staging --revoke
+          ```
+
+          Ordinary logout removes the saved login locally and works offline; its server credential remains valid. `--revoke` revokes the saved credential itself before removing the profile. If revocation fails, the profile is retained. Logging out of the selected profile clears the selection instead of switching to another server. Every scope can inspect and revoke its own credential; only administrators can issue credentials, list all credentials, or revoke other credentials. The final active admin cannot be revoked.
 
           `valpo version` is fully offline. `valpo system status` calls `/health` and reports client/server versions, API compatibility, current and target database schemas, configuration schema, host profile, release channel, and artifact digest.
 

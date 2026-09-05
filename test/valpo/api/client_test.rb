@@ -32,6 +32,34 @@ class ValpoAPIClientTest < Minitest::Test
     assert_equal "/v1/services?project=hello+world", http.last_request.path
   end
 
+  def test_explicit_token_overrides_environment_and_nil_disables_it
+    with_env("VALPO_API_TOKEN", "environment-secret") do
+      http = fake_http("200", "{}")
+      Valpo::API::Client.new(base_url: "https://valpo.test", token: "saved-secret", http_factory: ->(_uri) { http }).request(:get, "/health")
+      assert_equal "Bearer saved-secret", http.last_request["Authorization"]
+      Valpo::API::Client.new(base_url: "https://valpo.test", token: nil, http_factory: ->(_uri) { http }).request(:get, "/health")
+      assert_nil http.last_request["Authorization"]
+    end
+  end
+
+  def test_credentials_cannot_be_forwarded_by_a_redirect_or_absolute_path
+    http = fake_http("302", "{}")
+    authenticated = Valpo::API::Client.new(base_url: "https://valpo.test/api", token: "saved-secret", http_factory: ->(_uri) { http })
+    %w[https://other.test/ //other.test/ /../outside].each do |path|
+      assert_raises(Valpo::API::Client::Error) { authenticated.request(:get, path) }
+    end
+    assert_nil http.last_request
+    error = assert_raises(Valpo::API::Client::Error) { authenticated.request(:get, "/health") }
+    assert_equal "API redirects are not followed", error.message
+  end
+
+  def test_error_bodies_do_not_echo_the_credential
+    http = fake_http("401", JSON.generate("message" => "Rejected saved-secret"))
+    authenticated = Valpo::API::Client.new(base_url: "https://valpo.test", token: "saved-secret", http_factory: ->(_uri) { http })
+    error = assert_raises(Valpo::API::Client::Error) { authenticated.request(:get, "/health") }
+    refute_includes error.message, "saved-secret"
+  end
+
   def test_put_and_patch_are_supported
     {
       put: Net::HTTP::Put,

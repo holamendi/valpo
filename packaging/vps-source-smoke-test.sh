@@ -195,7 +195,7 @@ if [[ "$install_mode" != "none" ]]; then
 fi
 
 remote "systemctl is-active docker caddy valpo-api valpo-worker valpo-maintenance.timer"
-remote "curl -fsS http://127.0.0.1:7092/health"
+remote "valpo system status --json"
 assert_github_auth
 
 remote "valpo domain set-default '${domain_suffix}' --timeout 180"

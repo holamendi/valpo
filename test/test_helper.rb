@@ -9,6 +9,7 @@ require "minitest/autorun"
 require "valpo"
 
 VALPO_TEST_DIR = Dir.mktmpdir("valpo-test")
+ENV["VALPO_CLI_CONFIG"] = File.join(VALPO_TEST_DIR, "cli", "cli.json")
 VALPO_TEST_CONFIG = Valpo::Config.new(
   env: "test",
   root: Valpo.root,

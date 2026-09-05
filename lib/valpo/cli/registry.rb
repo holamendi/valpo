@@ -6,6 +6,7 @@ module Valpo
       extend Dry::CLI::Registry
 
       GROUPS = {
+        "server" => "Manage saved CLI servers",
         "auth" => "Manage source-provider authentication",
         "project" => "Manage projects",
         "service" => "Manage app and managed services",
@@ -16,6 +17,10 @@ module Valpo
       }.freeze
 
       COMMANDS = [
+        ["login", Commands::Login, false],
+        ["logout", Commands::Logout, false],
+        ["server list", Commands::Server::List, false],
+        ["server use", Commands::Server::Use, false],
         ["auth login", Commands::Auth::Login, false],
         ["auth status", Commands::Auth::Status, false],
         ["auth logout", Commands::Auth::Logout, false],

@@ -675,7 +675,7 @@ class ValpoCLITest < Minitest::Test
   )
     stdout = StringIO.new
     stderr = StringIO.new
-    factory = lambda do |api_url:, json:, out:, err:|
+    factory = lambda do |api_url:, json:, out:, err:, server: nil|
       presenter = Valpo::CLI::Presenter.new(out:, err:, json:)
       waiter = Valpo::CLI::JobWaiter.new(client:, err:, clock:, sleeper: ->(_duration) {})
       Valpo::CLI::Context.new(client:, presenter:, waiter:)

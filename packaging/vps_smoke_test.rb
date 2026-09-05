@@ -84,6 +84,9 @@ class VPSSmokeTest
     def run(script, capture: false, allow_failure: false, auth: true, connect_timeout: nil)
       lines = ["set -euo pipefail"]
       lines << "export VALPO_API_TOKEN=#{Shellwords.escape(api_token)}" if auth && api_token
+      if auth && !api_token
+        lines << 'if [[ -r /etc/valpo/bootstrap-token ]]; then export VALPO_API_TOKEN="$(cat /etc/valpo/bootstrap-token)"; fi'
+      end
       lines << script
       argv = ["ssh"]
       argv.concat(["-o", "ConnectTimeout=#{connect_timeout}"]) if connect_timeout
@@ -246,7 +249,7 @@ class VPSSmokeTest
   def verify_services
     puts "[smoke] verifying services"
     remote.run("systemctl is-active #{SERVICES.map { q(it) }.join(" ")}")
-    remote.run("curl -fsS http://127.0.0.1:7092/health")
+    remote.run("valpo system status --json")
     remote.run(<<~SH)
       test -f /var/lib/valpo/secrets/master.key
       test "$(stat -c '%a' /var/lib/valpo/secrets/master.key)" = 600
@@ -376,8 +379,7 @@ class VPSSmokeTest
   def verify_host_key_rotation
     puts "[smoke] creating temporary admin credential"
     credential = remote_json(
-      "valpo auth token create #{q("smoke-#{options.project}")} --scope=admin --json",
-      auth: false
+      "valpo auth token create #{q("smoke-#{options.project}")} --scope=admin --json"
     )
     @api_credential_id = credential.fetch("id")
     remote.api_token = credential.fetch("token")
@@ -460,7 +462,7 @@ class VPSSmokeTest
 
     puts "[smoke] verifying post-reboot services and app"
     remote.run("systemctl is-active #{SERVICES.map { q(it) }.join(" ")}")
-    remote.run("curl -fsS http://127.0.0.1:7092/health")
+    remote.run("valpo system status --json")
     wait_for_https
     remote.run("valpo system repair --timeout 180")
     remote.run("valpo service list --project #{q(options.project)}")

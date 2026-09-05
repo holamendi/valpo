@@ -78,6 +78,28 @@ class ValpoPackagingInstallScriptTest < Minitest::Test
     refute_includes stdout, "--app-domain"
   end
 
+  def test_installer_saves_bootstrap_token_privately_without_printing_it
+    Dir.mktmpdir("valpo-install-credential") do
+      script = <<~BASH
+        install_script="$1"
+        destination="$2"
+        set --
+        source "$install_script"
+        CONFIG_DIR="$destination"
+        run_as_valpo_shell() { printf 'valpo_test_secret\\n'; }
+        bootstrap_api_credential
+        run_as_valpo_shell() { :; }
+        bootstrap_api_credential
+      BASH
+      stdout, stderr, status = Open3.capture3("bash", "-c", script, "test", INSTALL_SCRIPT, it)
+      assert status.success?, stderr
+      refute_includes stdout + stderr, "valpo_test_secret"
+      assert_equal "valpo_test_secret\n", File.read(File.join(it, "bootstrap-token"))
+      assert_equal 0o600, File.stat(File.join(it, "bootstrap-token")).mode & 0o777
+      assert_empty Dir.glob(File.join(it, ".bootstrap-token.*"))
+    end
+  end
+
   def test_clean_install_smoke_test_requires_destructive_confirmation
     script = File.read(CLEAN_INSTALL_SMOKE_SCRIPT)
     stdout, stderr, status = Open3.capture3("bash", CLEAN_INSTALL_SMOKE_SCRIPT, "--help")

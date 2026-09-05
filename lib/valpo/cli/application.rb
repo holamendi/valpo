@@ -7,6 +7,8 @@ module Valpo
 
       def parse(command, arguments, names)
         built_command, parsed = super
+        parsed[:api_url] = nil unless parsed.key?(:api_url)
+        built_command.server = parsed[:server]
         extras = Array(parsed[:args]).dup
         built_command.optional_arguments.each do
           argument = it

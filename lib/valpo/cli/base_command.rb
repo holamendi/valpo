@@ -5,8 +5,11 @@ require "uri"
 module Valpo
   module CLI
     class BaseCommand < Dry::CLI::Command
-      option :api_url, default: ENV.fetch("VALPO_API_URL", DEFAULT_API_URL), desc: "Valpo API URL"
+      option :api_url, desc: "Explicit API URL (uses only VALPO_API_TOKEN)"
+      option :server, desc: "Saved server name"
       option :json, type: :boolean, default: false, desc: "Emit one JSON document"
+
+      attr_accessor :server
 
       class << self
         def project_option
@@ -22,7 +25,7 @@ module Valpo
       private
 
       def context(api_url:, json:, **)
-        @context ||= CLI.context_factory.call(api_url:, json:, out: @out, err: @err)
+        @context ||= CLI.context_factory.call(api_url:, server:, json:, out: @out, err: @err)
       rescue Valpo::API::Client::Error, Valpo::ValidationError => e
         raise OperationalError, e.message
       end

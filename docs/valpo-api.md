@@ -95,3 +95,11 @@ Error envelopes are flat and stable:
 | `500` | `internal_error` | Unexpected failure; the client receives a generic message and the server logs the exception |
 
 Unsupported methods, unversioned resource paths, unknown paths, and extra trailing segments return a JSON 404 response.
+
+## CLI Sessions
+
+`GET /v1/session` returns the authenticated credential's public metadata (ID, name, scopes, expiry, and timestamps), never its token or digest. It is available to every valid scope, including write-only credentials, so `valpo login` can validate a token without listing other credentials.
+
+`DELETE /v1/session` revokes only the presented credential. Every valid scope can revoke itself, but revoking the final active administrator returns `409`. Unknown, expired, and revoked tokens return `401`; these routes never participate in initial bootstrap. The scope exception applies only to these exact method/path pairs.
+
+The source installer performs initial credential issuance locally before API startup and stores the raw token root-only in `/etc/valpo/bootstrap-token`. Existing installations keep their credentials. HTTP bootstrap remains available for manual development setups until the first credential has been issued.

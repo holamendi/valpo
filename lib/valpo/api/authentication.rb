@@ -12,7 +12,7 @@ module Valpo
         scheme, token = provided.split(" ", 2)
         credential = Valpo::APICredential.authenticate(token) if scheme == "Bearer"
         request.env["valpo.api_credential"] = credential if credential
-        return nil if credential&.allows?(request.request_method)
+        return nil if credential && (credential_session_request? || credential.allows?(request.request_method))
 
         response.status = credential ? 403 : 401
         response["WWW-Authenticate"] = "Bearer"
@@ -25,6 +25,10 @@ module Valpo
         !Valpo::ControlPlaneState.api_bootstrapped? &&
           request.request_method == "POST" &&
           request.path_info == "/v1/api-credentials"
+      end
+
+      def credential_session_request?
+        request.path_info == "/v1/session" && %w[GET DELETE].include?(request.request_method)
       end
     end
   end

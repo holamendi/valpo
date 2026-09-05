@@ -108,14 +108,18 @@ valpo domain add web hello.example.com --project hello
 
 ## API Binding And Auth
 
-The installer binds `valpo-api` to `127.0.0.1` by default. API credentials are scoped, revocable records whose raw values are returned only once and stored as one-way digests. Create the first credential while the API is local:
+The installer binds `valpo-api` to `127.0.0.1` by default. It creates the initial admin credential before starting the API and saves the raw token in `/etc/valpo/bootstrap-token` with root-only mode `0600`. It never prints this token in installation logs. Reinstalling preserves existing credentials and never reopens bootstrap.
+
+Initialize the installed host's local CLI profile, then issue a separate token for your computer:
 
 ```bash
-valpo auth token create operator --scope=admin
-export VALPO_API_TOKEN=valpo_...
+valpo login --server http://127.0.0.1:7092 --name local --with-token < /etc/valpo/bootstrap-token
+valpo auth token create my-computer --scope=admin
 ```
 
-After the first active credential is created, all API calls require one. Supply it to the CLI with `VALPO_API_TOKEN`; there is intentionally no token command-line flag or config-file value. Valpo refuses to boot on a non-local `api_host` until the database contains an active credential.
+On your computer, run `valpo login --server https://YOUR-API-HOST --name live` and enter the new token at the hidden prompt. Login validates and saves it in a private client config file; later commands use it automatically. Client tokens are plaintext in that file, protected by owner-only permissions. Keep client profiles and bootstrap tokens out of Git and shared backups. `VALPO_API_TOKEN` remains an override for environments and secret managers. See the [CLI guide](../docs/valpo-cli.md#server-login) for profile selection and logout.
+
+Server-side credentials are scoped and revocable, and SQLite stores only their digests. All API calls require authentication once bootstrap completes. Valpo refuses to boot on a non-local `api_host` until the database contains an active credential. Recovery after losing all administrator access remains an explicit offline operation.
 
 The packaged wrapper and systemd units set `VALPO_ENV=production`. When running an executable directly from a development checkout with an environment-keyed config file, set both variables explicitly:
 
