@@ -71,6 +71,13 @@ namespace :standard do
   end
 end
 
+namespace :test do
+  desc "Run the opt-in Caddy ACME integration against Pebble"
+  task :pebble do
+    sh({"VALPO_PEBBLE_TEST" => "1"}, "bundle exec ruby -Itest test/integration/caddy_pebble_test.rb")
+  end
+end
+
 Rake::TestTask.new(:test) do
   it.libs << "test"
   it.pattern = "test/**/*_test.rb"
