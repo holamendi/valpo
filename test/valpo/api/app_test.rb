@@ -10,6 +10,12 @@ class ValpoAPIAppTest < Minitest::Test
   include Rack::Test::Methods
   include ValpoTestDatabase
 
+  def setup
+    super
+    @admin_credential, @admin_token = Valpo::APICredential.issue(name: "test-admin")
+    header "Authorization", "Bearer #{@admin_token}"
+  end
+
   def app
     Valpo::API::App
   end
@@ -44,12 +50,13 @@ class ValpoAPIAppTest < Minitest::Test
     credential_id = json.fetch("id")
     refute_equal token, Valpo::APICredential[credential_id].token_digest
 
+    header "Authorization", nil
     get "/v1/api-credentials"
     assert_equal 401, last_response.status
     header "Authorization", "Bearer #{token}"
     get "/v1/api-credentials"
-    assert_equal [credential_id], json.map { it.fetch("id") }
-    refute json.first.key?("token")
+    assert_equal [@admin_credential.id, credential_id], json.map { it.fetch("id") }
+    assert json.none? { it.key?("token") }
 
     reader, reader_token = Valpo::APICredential.issue(name: "reader", scopes: ["read"])
     header "Authorization", "Bearer #{reader_token}"
@@ -72,10 +79,61 @@ class ValpoAPIAppTest < Minitest::Test
   end
 
   def test_first_api_credential_must_have_admin_scope
+    reset_api_bootstrap
     post_json "/v1/api-credentials", name: "reader", scopes: ["read"]
 
     assert_equal 403, last_response.status
     assert_equal 0, Valpo::APICredential.count
+    refute Valpo::ControlPlaneState.api_bootstrapped?
+  end
+
+  def test_api_bootstrap_is_local_one_way_and_only_opens_credential_creation
+    reset_api_bootstrap
+
+    get "/v1/projects"
+    assert_equal 401, last_response.status
+
+    post_json "/v1/api-credentials", {name: "remote-admin"}, "REMOTE_ADDR" => "203.0.113.10"
+    assert_equal 403, last_response.status
+    assert_equal "API bootstrap is restricted to a local request", json.fetch("message")
+    refute Valpo::ControlPlaneState.api_bootstrapped?
+
+    post_json "/v1/api-credentials", name: "local-admin"
+    assert_equal 201, last_response.status
+    token = json.fetch("token")
+    credential_id = json.fetch("id")
+    assert Valpo::ControlPlaneState.api_bootstrapped?
+
+    header "Authorization", nil
+    get "/v1/projects"
+    assert_equal 401, last_response.status
+
+    header "Authorization", "Bearer #{token}"
+    delete "/v1/api-credentials/#{credential_id}"
+    assert_equal 409, last_response.status
+    assert_equal "Cannot revoke the final active admin API credential", json.fetch("message")
+  end
+
+  def test_expired_credentials_do_not_reopen_api_bootstrap
+    @admin_credential.update(expires_at: Time.now.utc - 1)
+    header "Authorization", nil
+
+    post_json "/v1/api-credentials", name: "replacement"
+
+    assert_equal 401, last_response.status
+    assert Valpo::ControlPlaneState.api_bootstrapped?
+    assert_equal 1, Valpo::APICredential.count
+  end
+
+  def test_admin_can_be_revoked_after_a_replacement_is_authenticated
+    post_json "/v1/api-credentials", name: "replacement"
+    replacement_token = json.fetch("token")
+
+    header "Authorization", "Bearer #{replacement_token}"
+    delete "/v1/api-credentials/#{@admin_credential.id}"
+
+    assert_equal 200, last_response.status
+    assert @admin_credential.refresh.revoked_at
   end
 
   def test_system_repair_enqueues_job
@@ -739,8 +797,8 @@ class ValpoAPIAppTest < Minitest::Test
     JSON.parse(last_response.body)
   end
 
-  def post_json(path, payload)
-    post path, JSON.generate(payload), "CONTENT_TYPE" => "application/json"
+  def post_json(path, payload, environment = {})
+    post path, JSON.generate(payload), {"CONTENT_TYPE" => "application/json"}.merge(environment)
   end
 
   def patch_json(path, payload)
@@ -766,9 +824,18 @@ class ValpoAPIAppTest < Minitest::Test
       token_digest: Valpo::APICredential.digest(token),
       scopes_json: JSON.generate(["admin"])
     )
+    header "Authorization", nil
     yield
   ensure
     credential&.destroy
+    header "Authorization", nil
+  end
+
+  def reset_api_bootstrap
+    Valpo::Database.connection.transaction(mode: :immediate) do
+      Valpo::APICredential.dataset.delete
+      Valpo::ControlPlaneState.current.update(api_bootstrapped_at: nil, updated_at: Time.now.utc)
+    end
     header "Authorization", nil
   end
 end

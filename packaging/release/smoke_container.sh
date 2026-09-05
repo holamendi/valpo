@@ -107,9 +107,10 @@ cleanup() {
 }
 trap cleanup EXIT
 
-health=""
+health_status=""
 for _attempt in $(seq 1 50); do
-  if health="$(curl --fail --silent --show-error "http://127.0.0.1:17092/health" 2>/dev/null)"; then
+  health_status="$(curl --silent --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:17092/health" 2>/dev/null || true)"
+  if [[ "$health_status" == 401 ]]; then
     break
   fi
   if ! kill -0 "$api_pid" >/dev/null 2>&1; then
@@ -118,10 +119,20 @@ for _attempt in $(seq 1 50); do
   fi
   sleep 0.1
 done
-[[ -n "$health" ]] || {
+[[ "$health_status" == 401 ]] || {
   cat "$api_log" >&2
   exit 1
 }
+
+bootstrap="$(curl --fail --silent --show-error \
+  --request POST \
+  --header 'Content-Type: application/json' \
+  --data '{"name":"release-smoke","scopes":["admin"]}' \
+  "http://127.0.0.1:17092/v1/api-credentials")"
+api_token="$("$ruby" -rjson -e 'print JSON.parse(ARGV.fetch(0)).fetch("token")' "$bootstrap")"
+health="$(curl --fail --silent --show-error \
+  --header "Authorization: Bearer ${api_token}" \
+  "http://127.0.0.1:17092/health")"
 "$ruby" -rjson -e '
   payload = JSON.parse(ARGV.fetch(0))
   abort "unhealthy API" unless payload.fetch("ok")

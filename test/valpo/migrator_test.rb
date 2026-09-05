@@ -2,6 +2,7 @@
 
 require "digest"
 require "fileutils"
+require "json"
 require "test_helper"
 
 class ValpoMigratorTest < Minitest::Test
@@ -22,14 +23,15 @@ class ValpoMigratorTest < Minitest::Test
     assert_includes db.tables, :github_webhook_deliveries
     assert_includes db.tables, :jobs
     assert_includes db.tables, :job_events
+    assert_includes db.tables, :control_plane_states
   end
 
   def test_bootstrap_schema_is_frozen_and_migration_versions_are_contiguous
     bootstrap = File.join(Valpo::SchemaInfo::MIGRATIONS_PATH, Valpo::SchemaInfo::BOOTSTRAP_FILENAME)
 
     assert Valpo::SchemaInfo.validate_migrations!
-    assert_equal [1], Valpo::SchemaInfo.versions
-    assert_equal 1, Valpo::SchemaInfo.latest
+    assert_equal [1, 2], Valpo::SchemaInfo.versions
+    assert_equal 2, Valpo::SchemaInfo.latest
     assert_equal Valpo::SchemaInfo::BOOTSTRAP_SHA256, Digest::SHA256.file(bootstrap).hexdigest
     assert_includes db.schema(:sources).to_h, :owner_service_id
     assert_includes db.schema(:build_targets).to_h, :owner_service_id
@@ -58,6 +60,30 @@ class ValpoMigratorTest < Minitest::Test
       assert Valpo::SchemaInfo.validate_migrations!(path: it)
       assert_equal [1, 2], Valpo::SchemaInfo.versions(path: it)
       assert_equal 2, Valpo::SchemaInfo.latest(path: it)
+    end
+  end
+
+  def test_control_plane_state_migration_closes_bootstrap_for_existing_credentials
+    Dir.mktmpdir("valpo-bootstrap-state") do
+      database = Sequel.sqlite(File.join(it, "valpo.sqlite3"))
+      Valpo::Migrator.run(db: database, target: 1)
+      timestamp = Time.now.utc
+      database[:api_credentials].insert(
+        id: Valpo::Identifier.generate(:api_credential),
+        name: "existing-admin",
+        token_prefix: "valpo_existing",
+        token_digest: "a" * 64,
+        scopes_json: JSON.generate(["admin"]),
+        created_at: timestamp,
+        updated_at: timestamp
+      )
+
+      Valpo::Migrator.run(db: database)
+
+      state = database[:control_plane_states].where(id: 1).first
+      assert_equal timestamp.to_i, state.fetch(:api_bootstrapped_at).to_i
+    ensure
+      database&.disconnect
     end
   end
 

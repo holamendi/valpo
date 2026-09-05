@@ -173,7 +173,7 @@ module Valpo
           valpo auth token list
           ```
 
-          The raw token is returned only when it is created. A new local installation with no API credentials accepts local requests so the first admin credential can be issued. Only admin credentials can issue, list, or revoke credentials. Once any active credential exists, all API requests require one; Valpo refuses to bind the API to a non-local address until a credential has been created.
+          The raw token is returned only when it is created. A new installation accepts exactly one unauthenticated local operation: creating the first admin credential. Bootstrap is then permanently closed, including when every credential is later revoked or expires. Only admin credentials can issue, list, or revoke credentials. Valpo refuses to bind the API to a non-local address until an active credential exists.
 
           Global options may appear before or after the resource command:
 
@@ -201,6 +201,14 @@ module Valpo
           Both commands require an admin API credential and run through the job worker. Rotation verifies all records before mutation, adds a new key version, re-encrypts the records in one SQLite transaction, and verifies them again. Old key versions remain readable; Valpo does not prune them automatically. A restored database and keyring should be tested together on a separate host with `system secrets verify` before being treated as recoverable.
 
           Roll API credentials without an authentication gap: create and save a replacement token, use it from a second shell to run `system status` and `auth token list`, then revoke the old credential by ID with `auth token revoke CREDENTIAL_ID`. Never revoke the old admin credential until the replacement has successfully authenticated.
+
+          Valpo refuses to revoke the final active admin. If all admins expire or their tokens are lost, stop or network-isolate the API and use the host-local database recovery path:
+
+          ```bash
+          valpo auth token recover rescue-admin --confirm-offline-recovery
+          ```
+
+          Recovery works directly against the configured SQLite database, refuses to run while an active admin exists, and never reopens HTTP bootstrap. Save the returned token, restart the API if it was stopped, and verify it before resuming normal operation.
 
           ## Storage Maintenance
 

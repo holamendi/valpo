@@ -6,7 +6,7 @@ module Valpo
       private
 
       def authenticate_request
-        return nil if Valpo::APICredential.active.empty?
+        return nil if api_bootstrap_request?
 
         provided = request.env["HTTP_AUTHORIZATION"].to_s
         scheme, token = provided.split(" ", 2)
@@ -19,6 +19,12 @@ module Valpo
         credential ?
           {error: "forbidden", message: "Credential scope does not allow this operation"} :
           {error: "unauthorized", message: "Unauthorized"}
+      end
+
+      def api_bootstrap_request?
+        !Valpo::ControlPlaneState.api_bootstrapped? &&
+          request.request_method == "POST" &&
+          request.path_info == "/v1/api-credentials"
       end
     end
   end

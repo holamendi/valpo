@@ -24,7 +24,7 @@ class ValpoReleaseMetadataTest < Minitest::Test
     wrong_version = metadata_hash.merge("version" => "9.9.9")
     assert_metadata_error(wrong_version, "does not match Valpo::VERSION")
 
-    wrong_schema = metadata_hash.merge("schema_target" => 2, "schema_max" => 2)
+    wrong_schema = metadata_hash.merge("schema_target" => 3, "schema_max" => 3)
     assert_metadata_error(wrong_schema, "does not match latest migration")
   end
 
