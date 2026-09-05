@@ -28,6 +28,9 @@ jobs:
       - name: Run tests
         run: bundle exec rake test
 
+      - name: Test Caddy ACME issuance with Pebble
+        run: bundle exec rake test:pebble
+
       - name: Check Ruby style
         run: bundle exec rake standard
 
