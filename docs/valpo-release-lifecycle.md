@@ -6,7 +6,12 @@ Valpo builds native amd64/arm64 archives and supports transactional upgrades of 
 
 Release archives are named `valpo-VERSION-linux-ARCH.tar.zst` and rooted at `/opt/valpo/releases/VERSION/`. They contain the application, migrations, metadata, templates, Ruby, production dependencies, `pack`, and release-local entrypoints. Mise and compiler tooling are build-time dependencies and are not packaged.
 
-An artifact assumes its final versioned path but does not activate itself, install services, or modify the current source installer. A production installer must verify its checksum and attestations before staging it.
+An artifact assumes its final versioned path but does not activate itself, install services, or modify the current source installer. The host updater verifies checksums before extraction; preview/stable channels additionally require tagged release-workflow attestations. Development artifacts are locally built and checksum-verified, without claiming GitHub provenance.
+
+Tag-only updates and durable GitHub Release publication remain tracked in
+[#31](https://github.com/holamendi/valpo/issues/31). The current operator interface
+is `valpo-upgrade apply ARCHIVE --sha256 DIGEST --channel CHANNEL`, with `recover`
+for interrupted transactions; a tag alone is not yet accepted.
 
 ## Host Contract
 
@@ -22,7 +27,7 @@ The current release boots only when the database matches its target schema. The 
 
 `001_bootstrap.rb` is permanent; every schema change adds one contiguous migration. Migrations are self-contained and use expand/contract changes where practical. Database down-migrations are not the primary rollback mechanism.
 
-SQLite check constraints enforce the finite service, release, dependency, domain, platform-domain, and job states even for direct dataset writes. Partial unique indexes permit at most one active release per service and one active platform domain. Application transition methods reject forbidden lifecycle edges before writing; compare-and-set job transitions remain atomic. Upgrade preflight reports unknown states for explicit operator repair and deterministically retires duplicate active rows before installing these constraints.
+SQLite check constraints enforce the finite service, release, dependency, domain, platform-domain, and job states even for direct dataset writes. Partial unique indexes permit at most one active release per service and one active platform domain. Application transition methods reject forbidden lifecycle edges before writing; compare-and-set job transitions remain atomic. The lifecycle-invariants migration reports unknown states for explicit operator repair and deterministically retires duplicate active rows before installing these constraints.
 
 ## Upgrade Transaction
 
@@ -43,10 +48,10 @@ See [host upgrade commands](../packaging/README.md#host-upgrades). Upgrade check
 
 Valpo distinguishes three artifacts:
 
-1. A short-lived local checkpoint for immediate upgrade rollback.
-2. An encrypted off-host backup for rebuilding a server.
-3. A portable project export for moving selected projects.
+1. An implemented local checkpoint for immediate upgrade rollback, retained until explicitly removed.
+2. A planned encrypted off-host backup for rebuilding a server.
+3. A planned portable project export for moving selected projects.
 
-SQLite and the encryption keyring form one recovery set. Postgres and Redis also require service-aware, consistent backups into fresh volumes. Recovery is supported only after automated clean-host restore tests verify application state.
+SQLite and the encryption keyring form one recovery set. Postgres and Redis also require service-aware, consistent backups into fresh volumes. Off-host disaster recovery must not be claimed as supported until automated clean-host restore tests verify application state. Local interrupted-upgrade recovery is already implemented and tested.
 
 Ubuntu security packages remain managed by APT. Valpo may coordinate reboots around active work and backup freshness, but LTS-to-LTS upgrades require a separate tested procedure; the preferred path is a fresh host and verified restore.

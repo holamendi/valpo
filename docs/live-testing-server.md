@@ -17,12 +17,18 @@ scripts against it or install Valpo on Starbook itself.
 - Initial stopped-VM recovery snapshot: `initial-20260905`.
 - Pre-fix recovery snapshot: `before-domain-fix-20260905`.
 
-The installed source revision is `3ae45b29b4c3bb7c9f75a106b04a776b2ce629ce`,
-recorded in `/etc/valpo/source-revision`. It includes stable single-label service
-slugs (schema 5) and releases database read cursors before domain network
-verification. It also recognizes lowercase Docker missing-volume errors for
-Postgres provisioning. The recovery snapshot for this update is
-`before-postgres-buildpack-20260905`.
+As verified on 2026-09-05, the live control plane runs **Valpo 0.1.1**, schema 6,
+from `/opt/valpo/releases/0.1.1`, selected by `/opt/valpo/current`. It was built
+from commit `362ab1ac7459d1b1a2fc7e7f5db7ec709b4ceef2` and installed through the
+Ruby upgrade transaction with channel `development`. Its artifact digest is
+`sha256:6713a620c79ec0bde92538f281869c1ecb22e1f04ade73faccdd4062adbdd49a`.
+This was a locally built, checksum-verified artifact, not a GitHub-attested release.
+
+Use authenticated `system status` and `/var/lib/valpo-updater/installation.json`
+for the active release identity. `/etc/valpo/source-revision` describes the
+retained source installation and is no longer the active artifact identity.
+The upgrade checkpoint is
+`/var/lib/valpo-updater/checkpoints/20260905T163330.840348Z`.
 
 On the operator's Mac, the `live` CLI profile selects `https://api-live.valpo.dev`
 with a dedicated `pablo-mac` admin credential. Login stores credentials in
@@ -74,38 +80,39 @@ The VM snapshot does not include Cloudflare DNS changes.
 
 ## Updating Valpo
 
-Updates are manual. Select and review a full commit, run the appropriate tests,
-and preserve its identity; the initial setup found no published GitHub releases.
-The source installer is not transactional. A stopped VM snapshot preserves the
-database, keyring, application volumes, configuration, and code together.
+Updates are manual artifact transactions. Build or obtain a newer native amd64
+artifact from a reviewed revision and trusted checksum. Copy it into the guest
+with `incus file push`, then run as root inside `valpo-live`:
 
-1. Confirm no jobs are active and stop accepting writes. Allow active work to
-   finish before shutting down the guest.
-2. Stop `valpo-live` cleanly and take a uniquely named Incus snapshot. Start the
-   VM again. Expect public downtime during this process.
-3. Transfer a complete `git archive` file of the reviewed commit, push it into
-   the guest with `incus file push`, and extract into a fresh directory under
-   `/root`. Verify the archive contains the bootstrap migration before stopping
-   services. The installer sets `/opt/valpo` to mode 0755 for the Valpo account.
-4. Run that checkout's `packaging/install.sh` inside the VM. Use the full
-   installer when dependencies change. Never modify the frozen bootstrap
-   migration or bypass its compatibility check.
-5. Record the installed commit in `/etc/valpo/source-revision` after success.
-6. Verify the API, worker, Caddy, Docker, and tunnel services; authenticated
-   system status; the public canary; and rejection of unauthenticated API calls.
-   Test a guest restart when changing host configuration.
+```bash
+valpo-upgrade apply /root/valpo-VERSION-linux-amd64.tar.zst \
+  --sha256 VERIFIED_SHA256 --channel development
+valpo-operator system status
+```
 
-If an update fails, stop the guest and restore the pre-update snapshot before
-restarting. Restoring discards all writes since the snapshot; coordinate this
-before accepting further traffic. Local snapshots are recovery points, not
-off-host backups, and do not survive loss of Starbook's disk.
+Use the incoming reviewed checkout's `packaging/upgrade.sh` to refresh updater
+tooling when needed. `preview` and `stable` additionally require tagged GitHub
+release-workflow provenance. Tag-only download/update is still planned.
+Do not run `packaging/install.sh` over this packaged installation.
+
+The transaction refuses queued/running jobs, pauses the API and idle worker,
+checkpoints SQLite/configuration/keyring/host metadata, verifies the candidate,
+and switches the release. App containers, Caddy, and the tunnel remain running.
+After an interrupted transaction, use `valpo-upgrade recover`; pre-activation
+recovery restores the checkpoint, while committed recovery only restarts the
+new release to preserve subsequent writes.
+
+The retained root-only checkpoint contains encryption keys but no application
+volumes. Incus snapshots and these local checkpoints are not off-host backups.
+Full-VM snapshot restoration is a separate recovery action that discards later
+writes and must not be used as ordinary post-activation rollback.
 
 ## Operational Checks
 
 ```bash
 curl --fail https://live.valpo.dev/
 curl -s -o /dev/null -w '%{http_code}\n' https://api-live.valpo.dev/v1/projects
-ssh pablo@starbook 'incus exec valpo-live -- systemctl is-active valpo-api valpo-worker caddy docker cloudflared'
+ssh pablo@starbook 'incus exec valpo-live -- systemctl show valpo-api valpo-worker caddy docker cloudflared --property=Id,ActiveState'
 ssh pablo@starbook 'incus exec valpo-live -- valpo-operator system secrets verify'
 ssh pablo@starbook 'incus exec valpo-live -- journalctl -u valpo-api -u valpo-worker -u cloudflared --since "10 minutes ago" --no-pager'
 ```
@@ -165,3 +172,18 @@ The full GitHub Actions run for `a63bac2` passed both normal checks and clean-in
 The live manifest now stores its own pinned builder and ordered buildpacks. Deployment `job_01a0720206f473fca39fcdf83b3f2d64` succeeded as release 6 (application commit `46cb57a`), and maintenance dry run `job_01a07202dc86700ab15fb73baa8cb666` succeeded. The live Ruby archive download was slow across multiple S3 addresses but completed; the old release continued serving during the build. A temporary Mac-to-API timeout interrupted polling without stopping the server job. Job polling now retries transient reads with bounded backoff and retains its event cursor; deployment submissions are not automatically retried.
 
 The control-plane database, configuration, and keyring were backed up to `/root/before-buildpack-hardening-669edd2` before upgrading to schema 6. Existing application containers remained running during the API/worker update.
+
+## Upgrade verification (2026-09-05)
+
+[CI for 362ab1a](https://github.com/holamendi/valpo/actions/runs/33977736550)
+passed normal checks, clean-install buildpack/Postgres acceptance, injected
+migration and API readiness failures, checkpoint recovery, valid activation,
+and a persisted application-data check. A separate QA VM test killed the updater
+after a schema mutation and rebooted: both control-plane services stayed blocked
+until `valpo-upgrade recover` restored the previous release and database.
+
+The live upgrade preserved all application container IDs. During the change,
+142 public app HTTP checks reported no failures. The upgraded worker subsequently
+completed secret verification (`job_01a0726c29e676f99fe304539575fe03`) and a
+maintenance dry run (`job_01a0726c9c7077a8b6b8b4fe7e2c2cfc`). The QA VM
+`valpo-buildpack-qa` was stopped after verification.

@@ -26,7 +26,7 @@ Current host stack:
 - Ruby 4.0, Roda, Sequel, SQLite, Puma, and Zeitwerk;
 - a custom SQLite-backed job queue and one worker process;
 - Docker Engine through a strict CLI wrapper;
-- Cloud Native Buildpacks through pinned `pack` and Paketo builder versions;
+- Cloud Native Buildpacks through pinned `pack`, a pinned Heroku 26 default builder, and per-build-target builder/ordered-buildpack overrides;
 - Caddy through generated configuration and an explicit reload boundary;
 - systemd units and Ubuntu packaging;
 - a bundled Ruby CLI built with `dry-cli`.
@@ -199,9 +199,22 @@ Valpo stores routing intent in SQLite. `Caddy::Reconciler` renders only verified
 
 ## Filesystem Layout
 
-Implemented packaging uses the following durable roots:
+Installed state uses the following durable roots. Packaged upgrades add immutable releases and separate root-owned recovery tooling:
 
 ```text
+/opt/valpo/
+  releases/VERSION/
+  current -> releases/VERSION
+
+/var/lib/valpo-updater/
+  installation.json
+  upgrade.lock
+  pending.json  # only while an upgrade needs completion/recovery
+  hold          # blocks service starts before activation/recovery
+  checkpoints/
+  tooling/
+  runtime/ruby/
+
 /var/lib/valpo/
   valpo.db
   secrets/
@@ -216,9 +229,9 @@ Implemented packaging uses the following durable roots:
   99-valpo-redis.conf
 ```
 
-The Redis sysctl file persists `vm.overcommit_memory=1`; the installer applies it with root privileges and the unprivileged worker only verifies the effective `/proc` value. The API, worker, and migration service log to the systemd journal. The packaging creates `/var/log/valpo` through `LogsDirectory`, but no current process writes `api.log` or `worker.log` files there.
+The Redis sysctl file persists `vm.overcommit_memory=1`; the installer applies it with root privileges and the unprivileged worker only verifies the effective `/proc` value. The API, worker, and migration service log to the systemd journal. Source-install units create `/var/log/valpo` through `LogsDirectory`; upgraded units also log to the journal. No current process writes `api.log` or `worker.log` files there.
 
-Build-target locks live beside the SQLite database. Buildpack build and launch caches are deterministic Docker volumes rather than host directories. Uploads, immutable static releases, backups, and exports are proposed future directories. They must not be documented as implemented until their owning features exist.
+Build-target locks live beside the SQLite database. Buildpack build and launch caches are deterministic Docker volumes rather than host directories. Local control-plane checkpoints are implemented under `/var/lib/valpo-updater/checkpoints`. Uploads, immutable static releases, off-host backups, and exports remain proposed future storage. They must not be documented as implemented until their owning features exist.
 
 ## Security: Implemented And Proposed
 

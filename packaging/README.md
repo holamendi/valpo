@@ -83,6 +83,11 @@ Coordinate host administration so no direct local database writers run during an
 upgrade. Custom systemd drop-ins require review and are rejected. Source installs
 cannot overwrite an activated packaged installation.
 
+Tag-based update discovery and downloads are not implemented. The proposed
+`valpo-upgrade vVERSION` workflow must first have durable release assets and
+verified provenance; see [the release-tag issue](https://github.com/holamendi/valpo/issues/31).
+The existing `apply` command remains the local/offline interface.
+
 ## Supported Source Installation
 
 Install from a reviewed checkout pinned to an immutable full commit:
@@ -141,7 +146,7 @@ The recommended setup dedicates a base hostname such as `apps.example.com` to Va
 valpo domain set-default apps.example.com
 ```
 
-Valpo first verifies a unique HTTPS challenge below the base hostname. It then creates and verifies generated hostnames for existing web services. A service named `web` in project `hello` receives `web.hello.apps.example.com`. Avoid creating intermediate DNS records such as `hello.apps.example.com`, because a more specific DNS node can prevent the parent wildcard from answering below it.
+Valpo first verifies a unique HTTPS challenge below the base hostname. It then creates and verifies generated hostnames for existing web services. A service named `web` in project `hello` initially receives `hello-web.apps.example.com`. Each service gets a stable slug, with a random suffix on collision; renames and default-domain changes preserve that slug. For Cloudflare Universal SSL, use a zone root such as `example.com` as the default to keep generated names within first-level wildcard certificate coverage.
 
 Custom domains can be attached alongside the generated default after their DNS points to the server:
 

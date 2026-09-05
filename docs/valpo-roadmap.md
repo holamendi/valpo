@@ -20,14 +20,15 @@ The current pre-release provides:
 
 The current source installer is for development. Before expanding the product, Valpo needs:
 
+- durable GitHub Releases and updates by verified tag ([#31](https://github.com/holamendi/valpo/issues/31));
 - fresh-host installation directly from verified artifacts;
-- control-plane backup and restore for SQLite, the keyring, configuration, and release metadata;
+- off-host control-plane backup and clean-host restore for SQLite, the keyring, configuration, and release metadata; local upgrade checkpoints already exist;
 - service-aware Postgres and Redis backup and restore tested on a clean host;
 - separate API and Docker-capable worker privileges;
 - dedicated-host preflight, guarded SSH/firewall hardening, security-update policy, and reboot coordination;
 - preview and stable channels that promote the same verified artifact.
 
-The release must survive an injected upgrade failure without interrupting running applications, and an off-host backup must restore successfully on a fresh compatible server. See the [release lifecycle](./valpo-release-lifecycle.md).
+CI now gates injected migration/readiness failure recovery and artifact activation with existing app data. Crash-and-reboot upgrade recovery has also been verified on a disposable VM. Automated clean-host restore from an off-host backup remains required before production support. See the [release lifecycle](./valpo-release-lifecycle.md).
 
 ## 2. Additional Source Providers
 

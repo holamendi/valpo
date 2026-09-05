@@ -273,11 +273,11 @@ Implications:
 
 ## ADR 015: Install Immutable Releases Through A Transactional Updater
 
-Status: Accepted; release metadata is implemented, while immutable installation and the updater remain planned.
+Status: Accepted and implemented for upgrades of existing hosts, atomic activation, local checkpoints, and interrupted-upgrade recovery. Fresh-host artifact installation, tag-based downloads, and off-host restore remain planned.
 
 Decision:
 
-Published Valpo code is installed in versioned immutable directories. A root-owned update transaction stages and verifies a candidate, checkpoints control-plane state, migrates while API and worker are stopped, atomically selects the candidate, verifies it, and restores the previous code and checkpoint on pre-activation failure.
+Published Valpo code is installed in versioned immutable directories. A root-owned update transaction stages and verifies a candidate, checkpoints control-plane state, migrates while API and worker are stopped, verifies the candidate in a private network namespace before atomically selecting it, and restores the previous code and checkpoint on pre-activation failure.
 
 Rationale:
 
@@ -294,7 +294,7 @@ Implications:
 
 ## ADR 016: Freeze The Bootstrap And Use Forward Incremental Migrations
 
-Status: Accepted and implemented for migration and release identity; backup/restore remains planned.
+Status: Accepted and implemented for migration, release identity, and local upgrade checkpoints; off-host backup and clean-host restore remain planned.
 
 Decision:
 

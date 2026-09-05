@@ -100,6 +100,21 @@ the commit timestamp is used. The build enforces archive size limits. Run
 `test/packaging/release_artifact_test.rb` for fast contract checks and the smoke
 script for archive, runtime, migration, CLI, and API verification.
 
+## Installed Upgrade Acceptance
+
+CI's buildpack acceptance workflow installs a disposable host, deploys the
+Ruby/Postgres fixture, builds a synthetic next-version artifact, injects migration
+and API readiness failures, then activates the valid artifact and verifies the
+existing application data. `packaging/upgrade/acceptance.sh` requires an existing
+disposable installation, a newer unstaged artifact, root, and
+`VALPO_UPGRADE_ACCEPTANCE=1`; never run it on the persistent live server.
+
+The standalone Ruby updater preserves a separate runtime and loads no Valpo
+application bundle during recovery. Its regression tests live in
+`test/packaging/upgrade_script_test.rb`. Full crash-and-reboot recovery has been
+verified on the QA VM; automated reboot and off-host restore gates remain tracked
+in [#20](https://github.com/holamendi/valpo/issues/20).
+
 ## Repository And Loader Conventions
 
 Zeitwerk loads Valpo constants. Repository-specific rules are:

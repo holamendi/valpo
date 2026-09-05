@@ -21,9 +21,9 @@ Each server owns its state and remains manageable through its API and CLI. A fut
 
 ## Scope
 
-The current pre-release supports registry and GitHub deployments, Dockerfile and buildpack builds, web and worker applications, Postgres and Redis, domains, releases, and a project manifest.
+The current pre-release supports registry and GitHub deployments, Dockerfile and buildpack builds, web and worker applications, Postgres and Redis, domains, releases, a project manifest, and transactional upgrades of existing installations with local recovery checkpoints.
 
-Planned work includes production-safe installation and recovery, more source providers, static sites, backups, project export/import, and a multi-server dashboard. See the [roadmap](./valpo-roadmap.md) for sequencing.
+Planned work includes updates by verified release tag, fresh-host artifact installation, off-host backup/restore, more source providers, static sites, project export/import, and a multi-server dashboard. See the [roadmap](./valpo-roadmap.md) for sequencing.
 
 Valpo is not intended to provide Kubernetes orchestration, multi-node scheduling, automatic horizontal scaling, a service mesh, a general CI platform, or a broad plugin marketplace. Raw container configuration may become an escape hatch, but it is not the primary product model.
 

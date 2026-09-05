@@ -16,7 +16,22 @@ sudo packaging/install.sh
 sudo valpo system status
 ```
 
-This is a development path: transactional upgrades and recovery are not implemented. See the [packaging guide](./packaging/README.md) for host operations and the [release lifecycle](./docs/valpo-release-lifecycle.md) for the production contract.
+The source installer is the development bootstrap. Existing installations support transactional artifact upgrades with local checkpoints and interrupted-upgrade recovery; fresh-host artifact installation and off-host backup/restore remain planned. See the [packaging guide](./packaging/README.md) for host operations and the [release lifecycle](./docs/valpo-release-lifecycle.md) for the production contract.
+
+## Updating An Installed Host
+
+Updates currently require a newer native release archive and a trusted checksum:
+
+```bash
+sudo valpo-upgrade apply /path/to/valpo-VERSION-linux-amd64.tar.zst \
+  --sha256 VERIFIED_SHA256 --channel development
+sudo valpo system status
+```
+
+Use `development` for locally built artifacts; `preview` and `stable` also require
+verified tagged release-workflow provenance. Tag-only discovery and downloads
+are planned, not available yet. See the [upgrade guide](./packaging/README.md#host-upgrades)
+for first-use setup, tool refresh, and `valpo-upgrade recover`.
 
 ## Getting Started
 
@@ -34,7 +49,7 @@ Without a domain, the release remains private in the `ready` state. To publish i
 sudo valpo domain set-default apps.example.com
 ```
 
-Valpo verifies HTTPS, assigns `web.hello.apps.example.com`, and activates the release. Avoid intermediate DNS records such as `hello.apps.example.com`, which can shadow the wildcard.
+Valpo verifies HTTPS, assigns `hello-web.apps.example.com`, and activates the release. Generated names use one stable service slug; collisions receive a random suffix. For Cloudflare Universal SSL, use the zone root (for example, `example.com`) as the default so generated names remain first-level subdomains.
 
 Alternatively, point a custom domain at the server and attach it directly:
 
