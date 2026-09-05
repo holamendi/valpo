@@ -118,6 +118,8 @@ The manifest creates one private App owned by either a personal account or one s
 
 `Manifests::Planner` computes preview actions without mutation. `Manifests::Reconciler` applies the unchanged `valpo.toml` schema through service creation, managed lifecycle, dependency, and deployment collaborators. Omitted resources are retained.
 
+Manifest reconciliation uses a deliberately small convergence model: the parsed manifest is the desired state, persisted service/configuration rows and inspected runtimes are the observed state, and `projects.manifest_digest`/`last_applied_at` are the applied marker. The marker advances only after declared managed services, dependencies, and app runtime operations converge. Numeric per-resource generations are not required because a failed attempt remains observable and is retried from that state; job `operation_generation` is only ordering metadata for queued operations, not a convergence claim.
+
 ## Source-To-Release Model
 
 Every deployment normalizes to:
