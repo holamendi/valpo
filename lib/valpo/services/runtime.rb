@@ -262,8 +262,8 @@ module Valpo
       end
 
       def missing_volume?(result)
-        stderr = result.fetch(:stderr)
-        stderr.include?("No such volume") || stderr.include?("No such object")
+        stderr = result.fetch(:stderr).downcase
+        stderr.include?("no such volume") || stderr.include?("no such object")
       end
 
       def command_failed?(result, ignore_missing:)
