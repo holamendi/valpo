@@ -31,7 +31,9 @@ module Valpo
           5432
         end
 
-        def volume_path
+        def volume_path(version = default_version)
+          return "/var/lib/postgresql/data" if %w[16 17].include?(version.to_s)
+
           "/var/lib/postgresql"
         end
 

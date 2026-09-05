@@ -129,6 +129,10 @@ module Valpo
         command(*args, name)
       end
 
+      def volume_inspect_command(name)
+        command("volume", "inspect", name)
+      end
+
       def volume_list_command(filters: [])
         args = ["volume", "ls"]
         filters.each { args += ["--filter", it] }

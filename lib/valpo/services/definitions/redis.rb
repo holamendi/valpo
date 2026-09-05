@@ -31,7 +31,7 @@ module Valpo
           6379
         end
 
-        def volume_path
+        def volume_path(_version = nil)
           "/data"
         end
 
