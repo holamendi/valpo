@@ -50,7 +50,7 @@ module Valpo
           verified_at: nil
         }
         if record
-          record.update(attributes)
+          record.transition_to!("pending", **attributes.except(:status))
         else
           record = Valpo::PlatformDomain.create(attributes.merge(hostname: normalized))
         end
@@ -59,8 +59,7 @@ module Valpo
 
       def activate!(record, verified_at: Time.now.utc)
         Valpo::Database.connection.transaction do
-          Valpo::PlatformDomain.exclude(id: record.id).where(active: true).update(active: false)
-          record.update(status: "verified", active: true, verification_error: nil, verified_at:)
+          record.activate!(verified_at:)
           Valpo::Service.where(kind: "web").order(:created_at).each { reconcile_service(it, platform_domain: record) }
         end
         record.refresh

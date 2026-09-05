@@ -6,8 +6,15 @@ require "time"
 
 module Valpo
   class Domain < Sequel::Model(:domains)
+    include Valpo::LifecycleTransitions
+
     KINDS = %w[generated custom].freeze
     STATUSES = %w[pending verified failed].freeze
+    TRANSITIONS = {
+      "pending" => %w[verified failed],
+      "verified" => %w[pending failed],
+      "failed" => %w[pending verified]
+    }.freeze
 
     many_to_one :service
     many_to_one :platform_domain

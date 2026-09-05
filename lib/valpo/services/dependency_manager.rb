@@ -50,13 +50,13 @@ module Valpo
         ).first
         raise Valpo::ValidationError, "Service dependency not found" unless dependency
 
-        dependency.update(status: "deleting")
+        dependency.transition_to!("deleting")
         restart_app_if_running(app, queue:, job_id:)
         dependency.destroy
         event(queue, job_id, "system", "Unbound #{managed.name} from #{app.name}")
         true
       rescue
-        dependency&.update(status: "active") if dependency&.pk && Valpo::ServiceDependency[dependency.id]
+        dependency&.transition_to!("active") if dependency&.pk && Valpo::ServiceDependency[dependency.id]
         raise
       end
 
@@ -73,7 +73,7 @@ module Valpo
 
       def upsert_dependency(app:, managed:, existing:)
         attributes = {status: "active"}
-        return existing.update(attributes) if existing
+        return existing.transition_to!("active") if existing
 
         Valpo::ServiceDependency.create(
           attributes.merge(service_id: app.id, dependency_service_id: managed.id)
@@ -83,7 +83,7 @@ module Valpo
       def restore_dependency(dependency, previous)
         return unless dependency&.pk && Valpo::ServiceDependency[dependency.id]
 
-        previous ? dependency.update(previous) : dependency.destroy
+        previous ? dependency.transition_to!(previous.fetch(:status)) : dependency.destroy
       end
 
       def find_app_service(service_id)

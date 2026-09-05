@@ -41,7 +41,7 @@ module Valpo
             runtime.start_container(release.container_name)
             wait_for_release(release, queue:, job_id:)
           end
-          service.update(status: desired_status) unless service.status == desired_status
+          service.transition_to!(desired_status) unless service.status == desired_status
           return
         end
 
@@ -53,7 +53,7 @@ module Valpo
         runtime.start_release_container(release)
         wait_for_release(release, queue:, job_id:)
         release.update(environment_revision: service.environment_revision)
-        service.update(status: desired_status)
+        service.transition_to!(desired_status)
       end
 
       def wait_for_release(release, queue:, job_id:)

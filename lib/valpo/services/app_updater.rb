@@ -119,7 +119,7 @@ module Valpo
           end
           current_build&.update(snapshot.fetch(:build).except(:id)) if snapshot[:build]
           Valpo::AppServiceConfig[service.id].update(snapshot.fetch(:app))
-          service.update(status: snapshot.fetch(:service_status))
+          service.transition_to!(snapshot.fetch(:service_status))
         end
       end
     end

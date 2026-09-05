@@ -5,11 +5,23 @@ require "time"
 
 module Valpo
   class Service < Sequel::Model(:services)
+    include Valpo::LifecycleTransitions
+
     NAME_PATTERN = Valpo::Project::NAME_PATTERN
     APP_KINDS = Valpo::Services::Registry.app_types
     MANAGED_KINDS = Valpo::Services::Registry.managed_types
     KINDS = (APP_KINDS + MANAGED_KINDS).freeze
     STATUSES = %w[created provisioning ready running stopped restarting deleting failed].freeze
+    TRANSITIONS = {
+      "created" => %w[provisioning ready running stopped deleting failed],
+      "provisioning" => %w[ready running stopped deleting failed],
+      "ready" => %w[provisioning running restarting stopped deleting failed],
+      "running" => %w[provisioning ready restarting stopped deleting failed],
+      "stopped" => %w[provisioning restarting deleting failed],
+      "restarting" => %w[ready running stopped deleting failed],
+      "deleting" => %w[created provisioning ready running stopped failed],
+      "failed" => %w[provisioning ready running restarting stopped deleting]
+    }.freeze
 
     many_to_one :project
     one_to_one :app_config, class: "Valpo::AppServiceConfig", key: :service_id

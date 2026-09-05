@@ -6,7 +6,16 @@ require "time"
 
 module Valpo
   class Release < Sequel::Model(:releases)
+    include Valpo::LifecycleTransitions
+
     STATUSES = %w[pending ready active inactive failed].freeze
+    TRANSITIONS = {
+      "pending" => %w[ready active failed],
+      "ready" => %w[active inactive failed],
+      "active" => %w[ready inactive failed],
+      "inactive" => %w[active failed],
+      "failed" => []
+    }.freeze
     SOURCE_TYPES = %w[registry git].freeze
     BUILD_STRATEGIES = Valpo::Builds::RESOLVED_STRATEGIES
 
@@ -60,20 +69,28 @@ module Valpo
 
     def activate!(activated_at: Time.now.utc)
       db.transaction do
-        self.class.where(service_id:, status: "active").exclude(id:).update(status: "inactive")
-        update(status: "active", activated_at:)
+        self.class.transition_dataset!(
+          self.class.where(service_id:).exclude(id:),
+          from: "active",
+          to: "inactive"
+        )
+        transition_to!("active", activated_at:)
       end
     end
 
     def ready!
       db.transaction do
-        self.class.where(service_id:, status: "ready").exclude(id:).update(status: "inactive")
-        update(status: "ready", activated_at: nil)
+        self.class.transition_dataset!(
+          self.class.where(service_id:).exclude(id:),
+          from: "ready",
+          to: "inactive"
+        )
+        transition_to!("ready", activated_at: nil)
       end
     end
 
     def fail!
-      update(status: "failed")
+      transition_to!("failed")
     end
 
     def build_metadata
