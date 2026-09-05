@@ -10,6 +10,7 @@ module Valpo
       OWNED_LABEL = "valpo.owned"
       SERVICE_ID_LABEL = "valpo.service_id"
       SERVICE_TYPE_LABEL = "valpo.service_type"
+      VOLUME_PATH_LABEL = "valpo.volume_path"
       READY_RETRY_INTERVAL = 0.25
 
       include Valpo::Deployments::CommandOutput
@@ -30,11 +31,21 @@ module Valpo
         @clock = clock
       end
 
-      def start_service_container(service)
+      def restart_service_container(service)
+        verified_existing_volume = validate_service_container_volume!(service)
+        stop_container(Registry.managed_config(service).container_name, ignore_missing: true)
+        start_service_container(service, allow_unlabeled_existing_volume: verified_existing_volume)
+      end
+
+      def validate_service_container_volume!(service)
+        validate_postgres_container_volume!(service)
+      end
+
+      def start_service_container(service, allow_unlabeled_existing_volume: false)
         started = false
         managed = Registry.managed_config(service)
         ensure_network
-        create_volume(managed.volume_name)
+        prepare_volume(service, allow_unlabeled_existing_volume:)
         event("system", "Starting #{managed.container_name}")
         result = docker.run_container(
           name: managed.container_name,
@@ -61,11 +72,6 @@ module Valpo
       rescue
         cleanup_started_container(managed.container_name) if started
         raise
-      end
-
-      def restart_service_container(service)
-        stop_container(Registry.managed_config(service).container_name, ignore_missing: true)
-        start_service_container(service)
       end
 
       def inspect_container(container_name)
@@ -180,11 +186,70 @@ module Valpo
         false
       end
 
-      def create_volume(volume_name)
+      def prepare_volume(service, allow_unlabeled_existing_volume: false)
+        managed = Registry.managed_config(service)
+        target = Registry.volume_path(service)
+        inspection = inspect_volume(managed.volume_name)
+        unless inspection
+          create_volume(managed.volume_name, target:)
+          return
+        end
+
+        return unless protected_postgres_layout?(service)
+        return if inspection.dig("Labels", VOLUME_PATH_LABEL) == target
+        return if allow_unlabeled_existing_volume
+
+        raise_unsafe_postgres_volume!(service, managed.volume_name)
+      end
+
+      def create_volume(volume_name, target:)
         execute_docker(
-          docker.volume_create_command(volume_name, labels: {OWNED_LABEL => "true"}),
+          docker.volume_create_command(
+            volume_name,
+            labels: {OWNED_LABEL => "true", VOLUME_PATH_LABEL => target}
+          ),
           failure_message: "Docker volume create failed"
         )
+      end
+
+      def inspect_volume(volume_name)
+        result = docker.execute(docker.volume_inspect_command(volume_name))
+        return nil if !result.fetch(:success) && missing_volume?(result)
+
+        emit_command_output(result) unless result.fetch(:success)
+        raise_command_error("Docker volume inspect failed", result) unless result.fetch(:success)
+
+        JSON.parse(result.fetch(:stdout)).first
+      rescue JSON::ParserError => e
+        raise Valpo::ValidationError, "Docker volume inspect returned invalid JSON for #{volume_name}: #{e.message}"
+      end
+
+      def validate_postgres_container_volume!(service)
+        return true unless protected_postgres_layout?(service)
+
+        managed = Registry.managed_config(service)
+        inspection = inspect_container(managed.container_name)
+        return false unless inspection
+
+        target = Registry.volume_path(service)
+        named_mount = Array(inspection["Mounts"]).find do
+          it["Type"] == "volume" && it["Name"] == managed.volume_name
+        end
+        return true if named_mount&.fetch("Destination", nil) == target
+
+        raise_unsafe_postgres_volume!(service, managed.volume_name)
+      end
+
+      def protected_postgres_layout?(service)
+        service.kind == "postgres" && %w[16 17].include?(Registry.managed_config(service).version)
+      end
+
+      def raise_unsafe_postgres_volume!(service, volume_name)
+        version = Registry.managed_config(service).version
+        raise Valpo::ValidationError,
+          "Refusing to recreate PostgreSQL #{version} service #{service.name}: volume #{volume_name} " \
+          "does not have a verified data-directory layout. Inspect and recover it using " \
+          "docs/valpo-managed-services.md before retrying."
       end
 
       def execute_docker(command, failure_message:)

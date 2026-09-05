@@ -12,7 +12,11 @@ class ValpoServicesManagedLifecycleTest < Minitest::Test
     managed = service.managed_config.refresh
 
     assert_equal "running", service.refresh.status
-    assert docker.executed?(:volume_create, managed.volume_name)
+    assert docker.executed?(
+      :volume_create,
+      managed.volume_name,
+      {"valpo.owned" => "true", "valpo.volume_path" => "/var/lib/postgresql"}
+    )
     request = docker.run_requests.first
     assert_equal "postgres:18-alpine", request.fetch(:image)
     assert_equal({}, request.fetch(:ports))
@@ -40,6 +44,99 @@ class ValpoServicesManagedLifecycleTest < Minitest::Test
     assert_equal "failed", service.refresh.status
     assert docker.executed?(:stop, container_name)
     assert docker.executed?(:rm, container_name, true)
+  end
+
+  def test_provision_postgres_17_mounts_and_labels_the_actual_data_directory
+    service = create_managed_service(version: "17", status: "provisioning", runtime: false)
+    docker = ValpoTestSupport::FakeDocker.new
+
+    run_job { |queue, job| lifecycle(docker:).provision_service(service_id: service.id, queue:, job_id: job.id) }
+
+    managed = service.managed_config.refresh
+    assert_equal({managed.volume_name => "/var/lib/postgresql/data"}, docker.run_requests.first.fetch(:volumes))
+    assert docker.executed?(
+      :volume_create,
+      managed.volume_name,
+      {"valpo.owned" => "true", "valpo.volume_path" => "/var/lib/postgresql/data"}
+    )
+  end
+
+  def test_restart_refuses_legacy_postgres_17_mount_before_removing_container
+    service = create_managed_service(version: "17")
+    managed = service.managed_config
+    docker = ValpoTestSupport::FakeDocker.new(
+      volumes: {managed.volume_name => {"valpo.owned" => "true"}},
+      container_mounts: {
+        managed.container_name => [
+          {"Type" => "volume", "Name" => managed.volume_name, "Destination" => "/var/lib/postgresql"},
+          {"Type" => "volume", "Name" => "anonymous-data", "Destination" => "/var/lib/postgresql/data"}
+        ]
+      }
+    )
+
+    error = assert_raises Valpo::ValidationError do
+      run_job do |queue, job|
+        lifecycle(docker:).restart_service(service_id: service.id, queue:, job_id: job.id)
+      end
+    end
+
+    assert_includes error.message, "does not have a verified data-directory layout"
+    assert_equal "running", service.refresh.status
+    refute docker.executed?(:stop, managed.container_name)
+    refute docker.executed?(:rm, managed.container_name, true)
+  end
+
+  def test_restart_reuses_an_unlabeled_postgres_16_volume_when_the_container_mount_is_safe
+    service = create_managed_service(version: "16")
+    managed = service.managed_config
+    docker = ValpoTestSupport::FakeDocker.new(
+      volumes: {managed.volume_name => {"valpo.owned" => "true"}},
+      container_mounts: {
+        managed.container_name => [
+          {"Type" => "volume", "Name" => managed.volume_name, "Destination" => "/var/lib/postgresql/data"}
+        ]
+      }
+    )
+
+    run_job do |queue, job|
+      lifecycle(docker:).restart_service(service_id: service.id, queue:, job_id: job.id)
+    end
+
+    assert docker.executed?(:stop, managed.container_name)
+    assert_equal({managed.volume_name => "/var/lib/postgresql/data"}, docker.run_requests.last.fetch(:volumes))
+  end
+
+  def test_repair_refuses_an_ambiguous_postgres_16_volume_after_the_container_is_missing
+    service = create_managed_service(version: "16")
+    managed = service.managed_config
+    docker = ValpoTestSupport::FakeDocker.new(
+      volumes: {managed.volume_name => {"valpo.owned" => "true"}},
+      container_states: {managed.container_name => :missing}
+    )
+
+    assert_raises Valpo::ValidationError do
+      run_job { |queue, job| lifecycle(docker:).repair_services(queue:, job_id: job.id) }
+    end
+
+    assert_empty docker.run_requests
+  end
+
+  def test_repair_recreates_postgres_17_with_a_verified_volume
+    service = create_managed_service(version: "17")
+    managed = service.managed_config
+    docker = ValpoTestSupport::FakeDocker.new(
+      volumes: {
+        managed.volume_name => {
+          "valpo.owned" => "true",
+          "valpo.volume_path" => "/var/lib/postgresql/data"
+        }
+      },
+      container_states: {managed.container_name => :missing}
+    )
+
+    run_job { |queue, job| lifecycle(docker:).repair_services(queue:, job_id: job.id) }
+
+    assert_equal({managed.volume_name => "/var/lib/postgresql/data"}, docker.run_requests.last.fetch(:volumes))
   end
 
   def test_provision_refuses_an_existing_network_without_the_ownership_label

@@ -76,6 +76,11 @@ namespace :test do
   task :pebble do
     sh({"VALPO_PEBBLE_TEST" => "1"}, "bundle exec ruby -Itest test/integration/caddy_pebble_test.rb")
   end
+
+  desc "Run PostgreSQL 16/17/18 persistence against real Docker"
+  task :postgres do
+    sh({"VALPO_POSTGRES_TEST" => "1"}, "bundle exec ruby -Itest test/integration/postgres_persistence_test.rb")
+  end
 end
 
 Rake::TestTask.new(:test) do

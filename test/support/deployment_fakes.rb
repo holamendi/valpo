@@ -6,12 +6,22 @@ module ValpoTestSupport
   class FakeDocker
     attr_reader :commands, :run_requests
 
-    def initialize(fail_on: nil, container_states: {}, exposed_ports: [], network_exists: false, network_owned: true)
+    def initialize(
+      fail_on: nil,
+      container_states: {},
+      container_mounts: {},
+      exposed_ports: [],
+      network_exists: false,
+      network_owned: true,
+      volumes: {}
+    )
       @fail_on = fail_on
       @container_states = container_states
+      @container_mounts = container_mounts
       @exposed_ports = exposed_ports
       @network_exists = network_exists
       @network_owned = network_owned
+      @volumes = volumes
       @commands = []
       @run_requests = []
     end
@@ -97,7 +107,11 @@ module ValpoTestSupport
     end
 
     def volume_create_command(name, labels: {})
-      [:volume_create, name]
+      [:volume_create, name, labels]
+    end
+
+    def volume_inspect_command(name)
+      [:volume_inspect, name]
     end
 
     def volume_rm_command(name, force:)
@@ -124,7 +138,18 @@ module ValpoTestSupport
         container_state = @container_states.fetch(command.fetch(1), true)
         return failure("No such object: #{command.fetch(1)}") if container_state == :missing
 
-        success(JSON.generate([{"State" => {"Running" => container_state == true}}]))
+        success(JSON.generate([{
+          "State" => {"Running" => container_state == true},
+          "Mounts" => @container_mounts.fetch(command.fetch(1), [])
+        }]))
+      when :volume_inspect
+        labels = @volumes[command.fetch(1)]
+        return failure("No such volume: #{command.fetch(1)}") unless labels
+
+        success(JSON.generate([{"Name" => command.fetch(1), "Labels" => labels}]))
+      when :volume_create
+        @volumes[command.fetch(1)] ||= command.fetch(2)
+        success("ok\n")
       when :network_inspect
         labels = @network_owned ? {"valpo.owned" => "true"} : {}
         success(JSON.generate([{"Labels" => labels}]))

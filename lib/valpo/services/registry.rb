@@ -116,7 +116,8 @@ module Valpo
         end
 
         def volume_path(service)
-          fetch_managed(service.kind).volume_path
+          config = managed_config(service)
+          fetch_managed(service.kind).volume_path(config.version)
         end
 
         def binding_environment(service)
