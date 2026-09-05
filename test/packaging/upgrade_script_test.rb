@@ -47,6 +47,9 @@ class ValpoPackagingUpgradeScriptTest < Minitest::Test
         raise Error, "migration failed" if failure == :migration
       end
       raise Error, "restart failed" if failure == :restart && args.first(2) == %w[systemctl start]
+      if failure == :worker_health && args == %w[systemctl is-active --quiet valpo-worker.service]
+        raise Error, "worker exited"
+      end
       ""
     end
 
@@ -145,6 +148,16 @@ class ValpoPackagingUpgradeScriptTest < Minitest::Test
     assert_equal "new user write", value
     assert_equal @host.release, File.readlink(@current)
     refute_path_exists @pending
+  end
+
+  def test_every_restarted_service_must_be_active_before_clearing_the_journal
+    @host.failure = :worker_health
+    assert_match(/worker exited/, assert_raises(ValpoHostUpgrade::Error) { apply }.message)
+    assert_equal "committed", JSON.parse(File.read(@pending)).fetch("phase")
+    @host.failure = nil
+    @host.recover
+    refute_path_exists @pending
+    assert_equal "migrated", value
   end
 
   def test_interrupted_mutation_can_be_recovered_by_a_new_updater_instance

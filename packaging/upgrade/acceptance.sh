@@ -35,7 +35,8 @@ fi
 cat "$work/failure.log"
 grep -q 'Injected migration failure' "$work/failure.log"
 [[ ! -e /var/lib/valpo-updater/pending.json ]]
-systemctl is-active --quiet valpo-api valpo-worker
+systemctl is-active --quiet valpo-api
+systemctl is-active --quiet valpo-worker
 [[ "$(readlink -f /opt/valpo/current)" != "$candidate" ]]
 # Only remove the deliberately faulty, inactive release on this disposable host.
 rm -rf "$candidate"
@@ -51,14 +52,16 @@ fi
 cat "$work/failure.log"
 grep -q 'Candidate API exited before readiness' "$work/failure.log"
 [[ ! -e /var/lib/valpo-updater/pending.json ]]
-systemctl is-active --quiet valpo-api valpo-worker
+systemctl is-active --quiet valpo-api
+systemctl is-active --quiet valpo-worker
 [[ "$(readlink -f /opt/valpo/current)" != "$candidate" ]]
 rm -rf "$candidate"
 rm "/var/lib/valpo-updater/artifacts/$version.json"
 
 "$updater" apply "$archive" --sha256 "$(sha256sum "$archive" | cut -d' ' -f1)" --channel development
 [[ "$(readlink -f /opt/valpo/current)" == "$candidate" ]]
-systemctl is-active --quiet valpo-api valpo-worker
+systemctl is-active --quiet valpo-api
+systemctl is-active --quiet valpo-worker
 containers_after="$(docker ps --filter label=valpo.owned=true --format '{{.ID}}' | sort)"
 [[ "$containers_before" == "$containers_after" ]]
 echo 'Upgrade acceptance passed: migration rollback, readiness rollback, activation, unchanged application containers'

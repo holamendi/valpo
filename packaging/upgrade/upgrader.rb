@@ -106,7 +106,6 @@ class ValpoHostUpgrade
       raise
     end
     resume(journal)
-    run("systemctl", "is-active", "--quiet", *SERVICES.first(2))
     @out.puts "Activated #{metadata.fetch("version")}; checkpoint: #{checkpoint}"
   end
 
@@ -458,6 +457,7 @@ class ValpoHostUpgrade
     sync_directory(@state)
     run("systemctl", "daemon-reload")
     journal.fetch("active").each { run("systemctl", "start", it) }
+    journal.fetch("active").each { run("systemctl", "is-active", "--quiet", it) }
     File.unlink(@pending)
     sync_directory(@state)
   end
