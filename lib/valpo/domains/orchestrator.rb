@@ -35,7 +35,7 @@ module Valpo
         )
         Valpo::Domains::Configuration.activate!(record)
         failures = []
-        Valpo::Domain.where(platform_domain_id: record.id).order(:hostname).each do
+        Valpo::Domain.where(platform_domain_id: record.id).order(:hostname).all.each do
           if it.verified?
             Valpo::Domains::Configuration.retire_stale_generated!(it.service, keep: it)
             activator.activate_ready(

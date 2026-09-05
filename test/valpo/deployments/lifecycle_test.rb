@@ -238,6 +238,27 @@ class ValpoDeploymentsLifecycleTest < Minitest::Test
     assert_equal 2, verifier.requests.length
   end
 
+  def test_platform_verification_allows_other_connections_to_write_during_network_checks
+    app = create_app_service
+    platform, = Valpo::Domains::Configuration.stage("example.com")
+    other = Sequel.sqlite(VALPO_TEST_CONFIG.database_path)
+    verifier = Object.new
+    verifier.define_singleton_method(:verify!) do |hostname:, token:|
+      other[:services].where(id: app.id).update(updated_at: Time.now.utc)
+      true
+    end
+    _, domains = deployment_components(docker: ValpoTestSupport::FakeDocker.new, domain_verifier: verifier)
+
+    run_job do |queue, job|
+      domains.configure_platform_domain(platform_domain_id: platform.id, queue:, job_id: job.id)
+    end
+
+    assert platform.refresh.verified?
+    assert app.domains.first.verified?
+  ensure
+    other&.disconnect
+  end
+
   def test_failed_generated_domain_replacement_keeps_previous_verified_hostname
     old_platform = create_platform_domain(hostname: "old.example.com")
     app = create_app_service(status: "running")
