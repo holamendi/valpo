@@ -10,89 +10,62 @@ SSH alias may select a different user.
 Internet client
   -> HTTPS at Cloudflare
   -> Cloudflare Tunnel in Incus container dev-ubuntu-01 (10.238.201.10)
-  -> Nginx with verified HTTPS to the origin
-  -> Caddy in Incus VM valpo (10.238.201.20)
+  -> HTTPS with request-host SNI to Caddy in Incus VM valpo (10.238.201.20)
   -> Valpo route target on 127.0.0.1:20000
   -> Valpo-managed application container
 ```
 
 The persistent public canary is:
 
-- URL: `https://valpo-e2e.siesta.cam/`
+- URLs:
+  - `https://valpo-e2e.siesta.cam/`
+  - `https://api-valpo-e2e.siesta.cam/`
+  - `https://web-valpo-e2e.siesta.cam/`
 - Incus VM: `valpo`
 - Valpo project: `public-e2e`
 - Valpo service: `web`
 - image: `nginx@sha256:db35bfc6b2951e7f8a72db5db120288c127ffaeeb4a6d4b95a26fead017d5913`
 
-The Cloudflare Tunnel runs in `dev-ubuntu-01` and publishes
-`*.siesta.cam` to Nginx on port 80. Nginx has an exact
-`valpo-e2e.siesta.cam` virtual host. It forwards ACME HTTP-01 paths to Caddy
-over HTTP and all application and Valpo-verification traffic to Caddy over
-HTTPS with SNI and certificate verification. Cloudflare terminates client TLS,
-while the second TLS hop verifies that Nginx is connected to the intended
-Valpo origin. See Cloudflare's [Tunnel configuration](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/configure-tunnels/)
+The Cloudflare Tunnel runs in `dev-ubuntu-01` and publishes `*.siesta.cam`
+directly to Caddy. It forwards ACME HTTP-01 paths to Caddy over port 80 and all
+other traffic over verified HTTPS. `matchSNItoHost` makes `cloudflared` use the
+request hostname for origin SNI, so Caddy can select and prove the independently
+managed certificate for every Valpo domain without per-domain Tunnel changes.
+Cloudflare terminates client TLS, while the second TLS hop validates Caddy's
+publicly trusted origin certificate. See Cloudflare's
+[origin parameters](https://developers.cloudflare.com/tunnel/advanced/origin-parameters/)
 and Caddy's [automatic HTTPS behavior](https://caddyserver.com/docs/automatic-https).
 
 ### Tunnel Origin Route
 
-The tunnel container stores the dedicated route at
-`/etc/nginx/conf.d/valpo-e2e.conf`:
+The tunnel container stores the route in `/etc/cloudflared/config.yml`:
 
-```nginx
-upstream valpo_e2e_origin_http {
-    server 10.238.201.20:80;
-    keepalive 8;
-}
-
-upstream valpo_e2e_origin_https {
-    server 10.238.201.20:443;
-    keepalive 8;
-}
-
-server {
-    listen 80;
-    listen [::]:80;
-    server_name valpo-e2e.siesta.cam;
-
-    location ^~ /.well-known/acme-challenge/ {
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto https;
-        proxy_pass http://valpo_e2e_origin_http;
-    }
-
-    location / {
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto https;
-        proxy_ssl_server_name on;
-        proxy_ssl_name $host;
-        proxy_ssl_verify on;
-        proxy_ssl_verify_depth 3;
-        proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
-        proxy_pass https://valpo_e2e_origin_https;
-    }
-}
+```yaml
+ingress:
+  - hostname: "*.siesta.cam"
+    path: "^/.well-known/acme-challenge/.*$"
+    service: http://10.238.201.20:80
+  - hostname: "*.siesta.cam"
+    service: https://10.238.201.20:443
+    originRequest:
+      matchSNItoHost: true
+  - service: http_status:404
 ```
 
-Validate before every reload:
+Validate before every restart:
 
 ```bash
-ssh pablo@starbook 'incus exec dev-ubuntu-01 -- nginx -t'
 ssh pablo@starbook \
-  'incus exec dev-ubuntu-01 -- systemctl reload nginx.service'
+  'incus exec dev-ubuntu-01 -- cloudflared tunnel ingress validate'
+ssh pablo@starbook \
+  'incus exec dev-ubuntu-01 -- systemctl restart cloudflared.service'
 ```
 
-Do not change the main tunnel ingress from HTTP to HTTPS: it terminates at
-Nginx. The Nginx-to-Caddy hop is HTTPS because Valpo's generated hostname sites
-use Caddy automatic HTTPS. Forwarding ordinary requests to Caddy over HTTP
-causes a `308` redirect and prevents Valpo's reachability verifier from seeing
-its challenge body. The dedicated HTTP ACME path lets Caddy issue and renew the
-origin certificate through the same public tunnel.
+Do not put an HTTP reverse proxy between the Tunnel and Caddy. Forwarding
+ordinary requests to Caddy over HTTP causes an automatic-HTTPS `308` redirect
+loop. The dedicated HTTP path exists only so Let's Encrypt can reach Caddy's
+HTTP-01 handler before the new certificate exists. Application traffic and
+Valpo's HTTPS domain-verification challenge go straight to Caddy over port 443.
 
 ## Safety Rules
 
@@ -148,6 +121,10 @@ Run focused control-plane scenarios before relying on the persistent canary:
    permanent bootstrap state survive.
 7. Deploy through Valpo, run normal public domain verification, and compare the
    public response with the active local route target.
+8. Attach at least two custom domains to the same service without changing
+   Cloudflare Tunnel or host proxy configuration. Confirm both become
+   `verified`, reach the same release, and have distinct certificates in
+   Caddy's storage.
 
 The production-like configuration-file path must be part of recovery testing;
 setting only `VALPO_DATABASE_PATH` does not reproduce the installed wrapper.
@@ -165,7 +142,7 @@ Check the infrastructure and Valpo state without exposing the token:
 ```bash
 ssh pablo@starbook 'incus list valpo dev-ubuntu-01'
 ssh pablo@starbook \
-  'incus exec dev-ubuntu-01 -- systemctl is-active cloudflared nginx'
+  'incus exec dev-ubuntu-01 -- systemctl is-active cloudflared'
 ssh pablo@starbook \
   'incus exec valpo -- systemctl is-active valpo-api valpo-worker caddy'
 ssh pablo@starbook \
@@ -184,6 +161,20 @@ ssh pablo@starbook \
 
 Both digests must match. Also confirm the domain is `verified`, the release is
 `active`, and the service is `running` through the Valpo CLI.
+
+Verify that all persistent canary domains reach that same workload:
+
+```bash
+for hostname in valpo-e2e api-valpo-e2e web-valpo-e2e; do
+  curl -fsS "https://${hostname}.siesta.cam/" | sha256sum
+done
+```
+
+The three digests must match. Caddy's logs must record successful certificate
+issuance for each newly attached hostname, and its certificate storage must
+contain a separate certificate directory for each hostname. The browser-facing
+certificate remains Cloudflare's edge certificate; origin certificate evidence
+comes from Caddy's logs and storage and from the Tunnel's verified HTTPS hop.
 
 ## Direct Public VPS Coverage
 
