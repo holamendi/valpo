@@ -66,7 +66,7 @@ The project manifest supports Postgres and Redis services plus app `depends_on` 
 
 ## Inspecting And Recovering Postgres 16/17 Volumes
 
-Installations that created Postgres 16 or 17 services before the version-specific mount fix must be inspected **before** restarting, repairing, or deleting those containers. A safe container has its `valpo-...-data` named volume mounted directly at `/var/lib/postgresql/data`. An affected container instead has that named volume at `/var/lib/postgresql` and a second, usually anonymous volume at `/var/lib/postgresql/data`.
+Installations that created Postgres 16 or 17 services before the version-specific mount fix must be inspected **before** stopping, restarting, repairing, or deleting those containers. A safe container has its `valpo-...-data` named volume mounted directly at `/var/lib/postgresql/data`. An affected container instead has that named volume at `/var/lib/postgresql` and a second, usually anonymous volume at `/var/lib/postgresql/data`.
 
 List the Postgres containers and inspect every mount on the selected container:
 
