@@ -125,7 +125,8 @@ returned the same body digest as the container.
 
 The private `holamendi/sinatra-todos` repository includes `valpo.toml` for a
 Sinatra web service with Postgres 18. Manifest application succeeded. The
-Postgres service is running; the web service has no successful release yet.
+Postgres and web services are running. The web app is available at
+`https://sinatra-todos-web.valpo.dev`.
 
 The worker builder setting in `/etc/valpo/valpo.yml` is now
 `heroku/builder@sha256:e0d2453e68106a8000da70780f631e888ca61a515ea9921a26a1f7391964908a`
@@ -135,6 +136,18 @@ The preceding configuration is saved as `/etc/valpo/valpo.before-heroku-builder.
 
 Build attempts subsequently failed fetching Docker Hub lifecycle metadata over
 unreachable IPv6 addresses; a GitHub fetch also timed out. Direct IPv4 GitHub
-access succeeded. Repair outbound networking before retrying the deployment.
+access succeeded. The VM interface now uses `dhcp6: false`, `accept-ra: false`, and
+`link-local: []` in `/etc/netplan/10-lxc.yaml`. Its original configuration is
+saved as `/etc/netplan/10-lxc.before-ipv4-only.yaml.backup`. The shared Incus
+bridge and other VMs were not changed.
+
+Docker Buildx (Ubuntu package `docker-buildx`) is installed. The Heroku run
+image needed its layers materialized through BuildKit to work around
+[moby/moby#52193](https://github.com/moby/moby/issues/52193). A one-line
+`FROM heroku/heroku:26` build tagged `valpo-heroku-runtime-check` allowed
+`docker save --platform linux/amd64 heroku/heroku:26` and the CNB exporter
+to succeed. This is runtime-image preparation; the application build still
+uses buildpacks. It may need repeating when the runtime image changes.
+
 The server also reported a separate storage-maintenance error,
 `comparison of String with Time failed`, during this trial; it remains unresolved.
