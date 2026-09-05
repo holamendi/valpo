@@ -160,15 +160,15 @@ Because callback URLs use the default app domain, change it by logging out of Gi
 
 ## Source Build Configuration
 
-Source services default to build strategy `auto`: Valpo uses a context-root Dockerfile when present and otherwise builds with Cloud Native Buildpacks. Packaged installs pin `pack` under `/var/lib/valpo/.local/bin` and pin the Paketo Jammy base builder. `/etc/valpo/valpo.yml` controls the build deadline and builder:
+Source services default to build strategy `auto`: Valpo uses a context-root Dockerfile when present and otherwise builds with Cloud Native Buildpacks. Packaged installs pin `pack` under `/var/lib/valpo/.local/bin` and pin the Heroku 26 builder. `/etc/valpo/valpo.yml` controls the build deadline and builder:
 
 ```yaml
 production:
   build_timeout: 1800
-  buildpack_builder: paketobuildpacks/builder-jammy-base@sha256:7510725172c8b2f1a7bce82b694e2af9599d5e2d97528c140eaeb81c569c21df
+  buildpack_builder: heroku/builder@sha256:e0d2453e68106a8000da70780f631e888ca61a515ea9921a26a1f7391964908a
 ```
 
-Build output is available through job events. Buildpack caches belong to a build target and expire after the configured retention period. Repositories may provide `project.toml`, but cannot override the builder. Runtime secrets are not passed into builds.
+Build output is available through job events. Buildpack caches belong to a build target and expire after the configured retention period. Build targets may override the server builder and provide an ordered buildpack list in the manifest or CLI/API. Omitted lists honor `project.toml` or builder detection. Runtime secrets are not passed into builds.
 
 ## Storage Maintenance
 
@@ -302,3 +302,14 @@ packaging/vps-source-smoke-test.sh root@HOST apps.example.com
 ```
 
 This verifies the default GitHub source-build path without changing the configured provider credential. Use `--repository OWNER/REPO` for another repository or `--skip-install` to test the installed version.
+
+
+## Build host verification
+
+The Ubuntu installer installs `docker-buildx` alongside `docker.io` and verifies the plugin. It checks HTTPS download connectivity and advertised IPv6 routing before downloading tools. A broken IPv6 route is an actionable installation error; Valpo never changes host or shared bridge networking automatically.
+
+Before each buildpack build, Valpo checks the Docker platform and tools, resolves builder/run-image digests, and verifies run-image export on the containerd image store. For Docker's `no suitable export target` failure, it materializes the declared run-image layers using Buildx and verifies export again. This is an automated compatibility workaround for [moby/moby#52193](https://github.com/moby/moby/issues/52193), not a switch of Docker storage backends. It applies to each newly resolved run image. Other export errors fail preflight without retrying the workaround.
+
+CI and release publication require `.github/workflows/buildpack-acceptance.yml`: install with full dependencies on a disposable Ubuntu host, apply the Ruby 4.0.6/Postgres 18 fixture manifest, build with multiple explicit buildpacks from an empty app cache, and verify an HTTP database write survives container restarts. The fixture substitutes local source checkout for GitHub authentication and uses the private loopback release URL. Public TLS and GitHub authentication are covered separately by live-server verification.
+
+On a disposable installed host, run `packaging/buildpack_acceptance.rb` with the installed Ruby bundle, `VALPO_ENV=production`, `VALPO_CONFIG=/etc/valpo/valpo.yml`, and `VALPO_ACCEPTANCE=1`. Run again with `verify` after reboot to check the same persisted item. The harness deliberately retains its project for that check; do not run it on a production host.

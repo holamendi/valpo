@@ -95,6 +95,10 @@ module Valpo
           valpo service update web --project acme --clear-command --clear-healthcheck --clear-port
           ```
 
+          Buildpack targets accept `--builder IMAGE` and `--buildpacks ID1,ID2` in execution order. An explicit list overrides repository `project.toml` buildpack selection; omitting it uses repository or builder detection. Use `--clear-builder` and `--clear-buildpacks` with `service update` to restore defaults. The server default is a pinned Heroku 26 builder. Valpo records resolved builder/run-image digests and buildpack versions in release metadata.
+
+          `valpo project apply valpo.toml` configures app services and provisions their managed dependencies. It does not build app releases; completion events show the `valpo service deploy NAME --project PROJECT` commands to run next.
+
           An omitted web port is resolved after the image is available: explicit configuration wins, then a sole TCP `EXPOSE`, then port `3000` for a source image with no exposed port. Ambiguous images and registry images without exactly one exposed TCP port require `--port`.
 
           ## Deployments

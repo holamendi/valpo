@@ -257,8 +257,8 @@ module Valpo
       end
 
       def missing_container?(result)
-        stderr = result.fetch(:stderr)
-        stderr.include?("No such container") || stderr.include?("No such object")
+        stderr = result.fetch(:stderr).to_s.downcase
+        stderr.include?("no such container") || stderr.include?("no such object")
       end
 
       def missing_volume?(result)

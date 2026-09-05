@@ -102,7 +102,7 @@ module Valpo
           service_status: service.status,
           app: app.values.slice(:build_target_id, :command_json, :internal_port, :healthcheck_path),
           source: source&.values&.slice(:id, :provider, :repository, :ref, :status),
-          build: build&.values&.slice(:id, :source_id, :strategy, :dockerfile, :context)
+          build: build&.values&.slice(:id, :source_id, :strategy, :dockerfile, :context, :builder, :buildpacks_json)
         }
       end
 

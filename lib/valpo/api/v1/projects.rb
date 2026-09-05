@@ -42,8 +42,8 @@ module Valpo
 
         def render_build_target(build_target)
           Fields.call(
-            build_target, :id, :project_id, :source_id, :name, :strategy, :dockerfile, :context, :created_at, :updated_at
-          )
+            build_target, :id, :project_id, :source_id, :name, :strategy, :dockerfile, :context, :builder, :created_at, :updated_at
+          ).merge(buildpacks: build_target.buildpacks)
         end
       end
     end

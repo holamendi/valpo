@@ -9,7 +9,7 @@ module Valpo
 
       def normalize_create(source:, build:)
         validate_keys!(source, %w[provider repository ref], "source")
-        validate_keys!(build || {}, %w[strategy dockerfile context], "build")
+        validate_keys!(build || {}, %w[strategy dockerfile context builder buildpacks], "build")
         {
           source: normalize_source(source, fallback: nil),
           build: normalize_build(build, fallback: nil)
@@ -18,7 +18,7 @@ module Valpo
 
       def desired_for(service:, source_changes:, build_changes:)
         validate_keys!(source_changes || {}, %w[provider repository ref], "source")
-        validate_keys!(build_changes || {}, %w[strategy dockerfile context], "build")
+        validate_keys!(build_changes || {}, %w[strategy dockerfile context builder buildpacks], "build")
         current_build = Valpo::AppServiceConfig[service.id]&.build_target
         current_source = current_build&.source
         {
@@ -54,6 +54,7 @@ module Valpo
             name: available_name(Valpo::BuildTarget, project.id, service.name),
             strategy: build.fetch("strategy"),
             dockerfile: build.fetch("dockerfile"),
+            builder: build["builder"], buildpacks: build["buildpacks"],
             context: build.fetch("context")
           )
           Valpo::AppServiceConfig[service.id].update(build_target_id: build_record.id)
@@ -90,6 +91,7 @@ module Valpo
               source_id: source_record.id,
               strategy: build.fetch("strategy"),
               dockerfile: build.fetch("dockerfile"),
+              builder: build["builder"], buildpacks: build["buildpacks"],
               context: build.fetch("context")
             )
           else
@@ -100,6 +102,7 @@ module Valpo
               name: available_name(Valpo::BuildTarget, service.project_id, service.name),
               strategy: build.fetch("strategy"),
               dockerfile: build.fetch("dockerfile"),
+              builder: build["builder"], buildpacks: build["buildpacks"],
               context: build.fetch("context")
             )
           end
@@ -159,7 +162,16 @@ module Valpo
         end
         dockerfile = Valpo::Sources::Validation.relative_path(dockerfile, key: "dockerfile") if dockerfile
 
+        builder = changes.key?("builder") ? changes["builder"] : fallback&.fetch("builder", nil)
+        buildpacks = changes.key?("buildpacks") ? changes["buildpacks"] : fallback&.fetch("buildpacks", nil)
+        if strategy == "dockerfile"
+          builder = nil unless changes.key?("builder")
+          buildpacks = nil unless changes.key?("buildpacks")
+        end
+        Valpo::Builds::BuildpackOptions.validate!(strategy:, builder:, buildpacks:)
         {
+          "builder" => builder,
+          "buildpacks" => buildpacks,
           "strategy" => strategy,
           "dockerfile" => dockerfile,
           "context" => context
@@ -171,7 +183,7 @@ module Valpo
       end
 
       def build_attributes(build)
-        {"strategy" => build.strategy, "dockerfile" => build.dockerfile, "context" => build.context}
+        {"strategy" => build.strategy, "dockerfile" => build.dockerfile, "context" => build.context, "builder" => build.builder, "buildpacks" => build.buildpacks}
       end
 
       def stringify_keys(value)

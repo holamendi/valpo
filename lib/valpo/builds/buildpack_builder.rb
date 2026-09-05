@@ -1,35 +1,52 @@
 # frozen_string_literal: true
 
 require "json"
+require "digest"
 
 module Valpo
   module Builds
     class BuildpackBuilder
-      def initialize(client:, runner:, cache_manager:, builder:, timeout:)
+      def initialize(client:, runner:, cache_manager:, builder:, timeout:, environment: nil)
         @client = client
         @runner = runner
         @cache_manager = cache_manager
         @builder = builder
         @timeout = timeout
+        @environment = environment || BuildpackEnvironment.new(runner:)
       end
 
       def build(checkout:, build_target:, image:, service:, queue:, job_id:)
+        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
         client.ensure_supported!
         if service.kind == "worker" && Valpo::AppServiceConfig[service.id].command.empty?
           raise Valpo::ValidationError, "Buildpack worker services require an explicit command"
         end
 
+        selected = environment.prepare(builder: build_target.builder || builder, timeout:, queue:, job_id:)
+        descriptor = File.join(checkout.context, "project.toml")
+        descriptor_content = File.file?(descriptor) ? File.read(descriptor) : nil
+        if build_target.buildpacks && descriptor_content
+          queue.event(job_id, "system", "Explicit buildpacks override buildpack selection in project.toml")
+        end
+        fingerprint = Digest::SHA256.hexdigest(JSON.generate([selected, build_target.buildpacks, descriptor_content]))
+        previous = Valpo::Release.where(build_target_id: build_target.id).order(Sequel.desc(:created_at)).first
+        clear_cache = previous&.build_metadata&.fetch("cache_fingerprint", nil) != fingerprint
         cache_manager.prepare(build_target_id: build_target.id, queue:, job_id:)
+        remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        raise Valpo::ValidationError, "Build timed out during preflight" unless remaining.positive?
         result = runner.run(
           client.build_command(
             image:,
             context: checkout.context,
-            builder:,
+            builder: selected.fetch("builder"),
+            run_image: selected.fetch("run_image"),
+            buildpacks: build_target.buildpacks,
+            clear_cache:,
             build_cache: cache_manager.build_cache(build_target.id),
             launch_cache: cache_manager.launch_cache(build_target.id),
             default_process: (service.web? ? "web" : nil)
           ),
-          timeout:,
+          timeout: remaining,
           queue:,
           job_id:
         )
@@ -38,17 +55,17 @@ module Valpo
         Result.new(
           image:,
           strategy: "buildpack",
-          metadata: inspect_metadata(image, queue:, job_id:)
+          metadata: inspect_metadata(image, queue:, job_id:).merge(selected).merge("cache_fingerprint" => fingerprint)
         )
       end
 
-      def initial_metadata(checkout: nil)
-        {"builder" => builder, "buildpacks" => [], "processes" => []}
+      def initial_metadata(checkout: nil, build_target: nil)
+        {"builder" => build_target&.builder || builder, "buildpacks" => [], "processes" => []}
       end
 
       private
 
-      attr_reader :client, :runner, :cache_manager, :builder, :timeout
+      attr_reader :client, :runner, :cache_manager, :builder, :timeout, :environment
 
       def inspect_metadata(image, queue:, job_id:)
         result = client.inspect(image)

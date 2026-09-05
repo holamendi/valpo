@@ -3,6 +3,15 @@
 require "test_helper"
 
 class ValpoProjectManifestTest < Minitest::Test
+  def test_buildpack_order_is_preserved_and_affects_manifest_digest
+    input = full_manifest.sub("[builds.backend]", '[builds.backend]\nbuilder = "heroku/builder:26"\nbuildpacks = ["heroku/ruby", "heroku/procfile"]'.gsub('\\n', "\n"))
+    manifest = Valpo::Manifests::ProjectManifest.parse(input)
+    assert_equal %w[heroku/ruby heroku/procfile], manifest.dig("builds", "backend", "buildpacks")
+    reversed = Valpo::Manifests::ProjectManifest.parse(input.sub('["heroku/ruby", "heroku/procfile"]', '["heroku/procfile", "heroku/ruby"]'))
+    refute_equal manifest.fetch("digest"), reversed.fetch("digest")
+    assert_raises(Valpo::ValidationError) { Valpo::Manifests::ProjectManifest.parse(input.sub('["heroku/ruby", "heroku/procfile"]', "[]")) }
+  end
+
   def test_normalizes_sources_builds_services_and_dependencies
     manifest = Valpo::Manifests::ProjectManifest.parse(full_manifest)
     assert_equal "acme/backend", manifest.dig("sources", "backend", "repository")

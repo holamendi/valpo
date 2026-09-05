@@ -1367,6 +1367,12 @@ components:
         strategy: {type: string, enum: [auto, dockerfile, buildpack]}
         dockerfile: {$ref: '#/components/schemas/NonEmptyString'}
         context: {$ref: '#/components/schemas/NonEmptyString'}
+        builder: {type: [string, 'null']}
+        buildpacks:
+          type: [array, 'null']
+          minItems: 1
+          uniqueItems: true
+          items: {type: string}
     BuildChanges:
       type: object
       minProperties: 1
@@ -1375,6 +1381,12 @@ components:
         strategy: {type: string, enum: [auto, dockerfile, buildpack]}
         dockerfile: {$ref: '#/components/schemas/NonEmptyString'}
         context: {$ref: '#/components/schemas/NonEmptyString'}
+        builder: {type: [string, 'null']}
+        buildpacks:
+          type: [array, 'null']
+          minItems: 1
+          uniqueItems: true
+          items: {type: string}
     Command:
       type: array
       items: {$ref: '#/components/schemas/NonEmptyString'}
@@ -1483,7 +1495,7 @@ components:
     BuildTarget:
       type: object
       additionalProperties: false
-      required: [id, project_id, source_id, name, strategy, dockerfile, context, created_at, updated_at]
+      required: [id, project_id, source_id, name, strategy, dockerfile, context, builder, buildpacks, created_at, updated_at]
       properties:
         id: {type: string}
         project_id: {type: string}
@@ -1492,6 +1504,10 @@ components:
         strategy: {type: string, enum: [auto, dockerfile, buildpack]}
         dockerfile: {type: [string, 'null']}
         context: {type: string}
+        builder: {type: [string, 'null']}
+        buildpacks:
+          type: [array, 'null']
+          items: {type: string}
         created_at: {$ref: '#/components/schemas/Timestamp'}
         updated_at: {$ref: '#/components/schemas/Timestamp'}
     ServiceDependency:
@@ -1583,6 +1599,8 @@ components:
         strategy: {type: string, enum: [dockerfile, buildpack]}
         dockerfile: {type: string}
         builder: {type: string}
+        run_image: {type: string}
+        platform: {type: string}
         buildpacks:
           type: array
           items:

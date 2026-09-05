@@ -5,7 +5,7 @@ module Valpo
     module Commands
       module Project
         class Apply < BaseCommand
-          desc "Reconcile a project from a valpo.toml manifest"
+          desc "Configure services and provision dependencies from valpo.toml; deploy apps separately"
           argument :file, required: true, desc: "Path to valpo.toml"
           option :dry_run, type: :boolean, default: false, desc: "Preview changes without applying them"
           wait_options

@@ -9,10 +9,12 @@ module Valpo
           ref: nil,
           build_strategy: nil,
           dockerfile: nil,
+          builder: nil, buildpacks: nil,
           context: nil,
           command: nil,
           port: nil,
           healthcheck_path: nil,
+          clear_builder: false, clear_buildpacks: false,
           clear_command: false,
           clear_healthcheck: false,
           clear_port: false,
@@ -30,11 +32,15 @@ module Valpo
             raise UsageError, "--dockerfile requires --build-strategy dockerfile"
           end
 
+          raise UsageError, "--builder and --clear-builder cannot be used together" if builder && clear_builder
+          raise UsageError, "--buildpacks and --clear-buildpacks cannot be used together" if buildpacks && clear_buildpacks
           payload = {}
           source_changes = source ? source_spec(source) : {}
           source_changes["ref"] = ref if ref
           payload["source"] = source_changes unless source_changes.empty?
-          build_changes = {"strategy" => build_strategy, "dockerfile" => dockerfile, "context" => context}.compact
+          build_changes = {"strategy" => build_strategy, "dockerfile" => dockerfile, "context" => context, "builder" => builder, "buildpacks" => buildpacks}.compact
+          build_changes["builder"] = nil if clear_builder
+          build_changes["buildpacks"] = nil if clear_buildpacks
           payload["build"] = build_changes unless build_changes.empty?
           payload["command"] = clear_command ? [] : command if command || clear_command
           payload["internal_port"] = clear_port ? nil : positive_integer(port) if port || clear_port

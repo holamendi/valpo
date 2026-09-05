@@ -29,6 +29,11 @@ module Valpo
         reconcile_dependencies(manifest.fetch("services"), services, queue:, job_id:)
         verify_convergence(manifest.fetch("services"), services, builds)
         project.update(manifest_digest: manifest.fetch("digest"), last_applied_at: Time.now.utc)
+        manifest.fetch("services").each do |name, config|
+          next unless config["build"]
+
+          event(queue, job_id, "To deploy #{name}, run: valpo service deploy #{name} --project #{project.name}")
+        end
         project.refresh
       rescue
         restore_pending_apps
@@ -103,7 +108,8 @@ module Valpo
           attributes = {
             source_id: sources.fetch(config.fetch("source")).id,
             strategy: config.fetch("strategy"), dockerfile: config.fetch("dockerfile"),
-            context: config.fetch("context"), owner_service_id: nil
+            context: config.fetch("context"), builder: config["builder"],
+            buildpacks: config["buildpacks"], owner_service_id: nil
           }
           if build
             build.update(attributes)

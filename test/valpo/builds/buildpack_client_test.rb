@@ -55,6 +55,13 @@ class ValpoBuildsBuildpackClientTest < Minitest::Test
     Valpo::Builds::BuildpackClient.new(platform: "x86_64-linux", host_cpu: "x86_64").ensure_supported!
   end
 
+  def test_explicit_buildpacks_keep_order_and_can_clear_incompatible_cache
+    command = client.build_command(image: "test/app", context: "/tmp/source", builder: "test/builder", run_image: "test/run", buildpacks: %w[test/node test/ruby], clear_cache: true, build_cache: "build", launch_cache: "launch", default_process: nil)
+    assert_equal %w[test/node test/ruby], command.each_cons(2).filter_map { |flag, value| value if flag == "--buildpack" }
+    assert_includes command, "--clear-cache"
+    assert_equal "test/run", command[command.index("--run-image") + 1]
+  end
+
   private
 
   def client

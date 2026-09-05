@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "json"
 require "sequel/model"
 require "time"
 
@@ -48,6 +49,19 @@ module Valpo
       end
       errors.add(:dockerfile, "must be relative") if dockerfile && invalid_relative_path?(dockerfile)
       errors.add(:context, "must be relative") if invalid_relative_path?(context)
+      begin
+        Valpo::Builds::BuildpackOptions.validate!(strategy:, builder:, buildpacks:)
+      rescue Valpo::ValidationError, JSON::ParserError => e
+        errors.add(:buildpacks, e.message)
+      end
+    end
+
+    def buildpacks
+      JSON.parse(buildpacks_json) if buildpacks_json
+    end
+
+    def buildpacks=(value)
+      self.buildpacks_json = value.nil? ? nil : JSON.generate(value)
     end
 
     private

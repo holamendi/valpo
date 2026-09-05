@@ -3,6 +3,7 @@ ca-certificates
 caddy
 curl
 docker.io
+docker-buildx
 file
 git
 zstd

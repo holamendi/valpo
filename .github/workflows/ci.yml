@@ -9,6 +9,9 @@ permissions:
   contents: read
 
 jobs:
+  buildpack-acceptance:
+    uses: ./.github/workflows/buildpack-acceptance.yml
+
   checks:
     runs-on: ubuntu-26.04
     timeout-minutes: 20

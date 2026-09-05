@@ -47,7 +47,10 @@ Preview and apply changes with:
 ```bash
 valpo project apply valpo.toml --dry-run
 valpo project apply valpo.toml
+valpo service deploy web --project acme
 ```
+
+Applying configures app services, provisions managed services, and binds dependencies. It does not build a new app release; completion events show the deployment commands.
 
 Applying a manifest is idempotent and adds or updates declared resources. Omitted resources and dependencies are retained; deletion always requires a separate CLI command. A service's type and managed-service version cannot be changed.
 
@@ -73,7 +76,21 @@ Build strategies are:
 - `dockerfile`: require `dockerfile`, which defaults to `Dockerfile` and must remain inside the checkout.
 - `buildpack`: use the configured builder and reject a `dockerfile` field.
 
-Buildpacks honor `project.toml`, but Valpo selects the builder. Web services default to the `web` process unless `command` is set; buildpack workers require a command.
+Build targets accept an optional `builder` OCI reference and an optional ordered `buildpacks` array. Omit `builder` to use the server default (the pinned Heroku 26 builder). Omit `buildpacks` to use repository `project.toml` selection or the builder's automatic detection. An explicit list replaces that selection; Valpo emits a precedence notice when `project.toml` exists. Empty lists and duplicates are rejected. To reset either setting in a manifest, remove it and apply again.
+
+```toml
+[builds.backend]
+source = "backend"
+strategy = "buildpack"
+builder = "heroku/builder:26"
+buildpacks = ["heroku/ruby", "heroku/procfile"]
+```
+
+Use a digest reference for reproducible builder selection. Valpo resolves builder and run-image digests before building and records them with the detected buildpack versions and platform. Builder, ordered list, run image, or descriptor changes invalidate the build cache. Custom buildpacks must be compatible with the selected builder; supported references are builder-contained IDs and OCI images, not host paths or classic Heroku Git buildpacks.
+
+These settings belong to the shared build target, so web and worker services can use the same build configuration. CLI updates support `--builder`, `--buildpacks` (comma-separated), `--clear-builder`, and `--clear-buildpacks`.
+
+Buildpacks honor the other settings in `project.toml`. Web services default to the `web` process unless `command` is set; buildpack workers require a command.
 
 Valpo validates the repository, ref, context, and build inputs before changing configuration. A deployment records the exact commit, resolved strategy, image, and available buildpack metadata. GitHub.com shallow single-ref checkouts are supported; Git submodules and Git LFS are not configured.
 

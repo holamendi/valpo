@@ -57,7 +57,7 @@ module Valpo
         builder = builders.fetch(checkout.strategy) do
           raise Valpo::ValidationError, "Unsupported resolved build strategy: #{checkout.strategy}"
         end
-        build_metadata = builder.initial_metadata(checkout:)
+        build_metadata = builder.initial_metadata(checkout:, build_target:)
         result = target_lock.synchronize(build_target.id) do
           builder.build(
             checkout:,

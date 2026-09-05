@@ -273,7 +273,7 @@ class ValpoAPIOpenAPITest < Minitest::Test
       build_strategy: "buildpack",
       build_metadata_json: JSON.generate(
         "dockerfile" => "Dockerfile",
-        "builder" => "example/builder@sha256:abc",
+        "run_image" => "example/run@sha256:abc", "platform" => "linux/amd64", "builder" => "example/builder@sha256:abc",
         "buildpacks" => [],
         "processes" => []
       )

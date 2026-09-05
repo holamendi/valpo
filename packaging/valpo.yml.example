@@ -18,7 +18,7 @@ production:
   deploy_drain_delay: 2
   build_timeout: 1800
   build_log_limit: 16777216
-  buildpack_builder: paketobuildpacks/builder-jammy-base@sha256:7510725172c8b2f1a7bce82b694e2af9599d5e2d97528c140eaeb81c569c21df
+  buildpack_builder: heroku/builder@sha256:e0d2453e68106a8000da70780f631e888ca61a515ea9921a26a1f7391964908a
   image_retention_count: 3
   storage_cleanup_grace_period: 86400
   build_cache_retention: 2592000

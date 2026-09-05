@@ -37,7 +37,8 @@ module Valpo
           matches = record && source_name == config.fetch("source") &&
             record.strategy == config.fetch("strategy") &&
             record.dockerfile == config.fetch("dockerfile") &&
-            record.context == config.fetch("context")
+            record.context == config.fetch("context") &&
+            record.builder == config["builder"] && record.buildpacks == config["buildpacks"]
           actions << action(preview_operation(record, matches), "build", name)
         end
         retained_actions(actions, existing, declarations, "build")

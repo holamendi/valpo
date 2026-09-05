@@ -30,6 +30,9 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  acceptance:
+    uses: ./.github/workflows/buildpack-acceptance.yml
+
   prepare:
     runs-on: ubuntu-26.04
     outputs:
@@ -179,7 +182,7 @@ jobs:
 
   finalize:
     if: github.event_name != 'pull_request'
-    needs: [prepare, build]
+    needs: [prepare, build, acceptance]
     runs-on: ubuntu-26.04
     permissions:
       actions: write

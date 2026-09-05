@@ -26,10 +26,25 @@ class ValpoBuildTargetTest < Minitest::Test
     end
   end
 
+  def test_persists_ordered_buildpacks_and_allows_reset
+    target = create_target(strategy: "buildpack", builder: "heroku/builder:26", buildpacks: %w[heroku/nodejs heroku/ruby])
+    assert_equal %w[heroku/nodejs heroku/ruby], target.refresh.buildpacks
+    target.update(builder: nil, buildpacks: nil)
+    assert_nil target.refresh.buildpacks
+    assert_nil target.builder
+  end
+
+  def test_rejects_invalid_buildpack_configuration
+    [[], ["heroku/ruby", "heroku/ruby"], ["/etc/passwd"], ["ruby\nRUN evil"], "ruby"].each do |value|
+      assert_raises(Sequel::ValidationFailed) { create_target(strategy: "buildpack", buildpacks: value) }
+    end
+    assert_raises(Sequel::ValidationFailed) { create_target(strategy: "dockerfile", builder: "heroku/builder:26") }
+  end
+
   private
 
   def create_target(**attributes)
-    project = create_project
+    project = create_project(name: "hello-#{Valpo::Project.count}")
     source = Valpo::Source.create(
       project_id: project.id,
       name: "backend",

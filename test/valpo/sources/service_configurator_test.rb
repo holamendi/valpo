@@ -24,7 +24,7 @@ class ValpoSourcesServiceConfiguratorTest < Minitest::Test
     )
 
     assert_equal(
-      {"strategy" => "dockerfile", "dockerfile" => "ops/Dockerfile", "context" => "."},
+      {"strategy" => "dockerfile", "dockerfile" => "ops/Dockerfile", "context" => ".", "builder" => nil, "buildpacks" => nil},
       normalized.fetch(:build)
     )
   end
@@ -55,6 +55,19 @@ class ValpoSourcesServiceConfiguratorTest < Minitest::Test
     assert_equal 0, Valpo::Service.where(project_id: project.id).count
     assert_equal 0, Valpo::Source.where(project_id: project.id).count
     assert_equal 0, Valpo::BuildTarget.where(project_id: project.id).count
+  end
+
+  def test_owned_build_configuration_round_trips_preserves_and_resets_options
+    project = create_project
+    normalized = configurator.normalize_create(source: {provider: "github", repository: "acme/backend"}, build: {strategy: "buildpack", builder: "heroku/builder:26", buildpacks: %w[heroku/ruby heroku/procfile]})
+    service = configurator.create_service!(project:, service_attributes: {"name" => "web", "type" => "web"}, **normalized)
+    desired = configurator.desired_for(service:, source_changes: {ref: "next"}, build_changes: nil)
+    assert_equal "heroku/builder:26", desired.dig(:build, "builder")
+    assert_equal %w[heroku/ruby heroku/procfile], desired.dig(:build, "buildpacks")
+    desired = configurator.desired_for(service:, source_changes: nil, build_changes: {builder: nil, buildpacks: nil})
+    configurator.apply_owned_configuration!(service:, **desired)
+    assert_nil Valpo::AppServiceConfig[service.id].build_target.builder
+    assert_nil Valpo::AppServiceConfig[service.id].build_target.buildpacks
   end
 
   private

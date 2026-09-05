@@ -27,6 +27,8 @@ module Valpo
               optional(:strategy).filled(:string, included_in?: Valpo::Builds::STRATEGIES)
               optional(:dockerfile).filled(:string, format?: NONEMPTY)
               optional(:context).filled(:string, format?: NONEMPTY)
+              optional(:builder).maybe(:string, format?: NONEMPTY)
+              optional(:buildpacks).maybe { array(:string) }
             end
             optional(:deploy).filled(:bool)
           end
@@ -93,6 +95,8 @@ module Valpo
               optional(:strategy).filled(:string, included_in?: Valpo::Builds::STRATEGIES)
               optional(:dockerfile).filled(:string, format?: NONEMPTY)
               optional(:context).filled(:string, format?: NONEMPTY)
+              optional(:builder).maybe(:string, format?: NONEMPTY)
+              optional(:buildpacks).maybe { array(:string) }
             end
             optional(:command).array(:string)
             optional(:internal_port).maybe(:integer, gt?: 0, lteq?: 65_535)
@@ -185,7 +189,7 @@ module Valpo
         def render_release_build(release)
           metadata = release.build_metadata || {}
           {strategy: release.build_strategy}.tap do |output|
-            %w[dockerfile builder buildpacks processes].each do
+            %w[dockerfile builder run_image platform buildpacks processes].each do
               output[it.to_sym] = metadata[it] if metadata.key?(it)
             end
           end

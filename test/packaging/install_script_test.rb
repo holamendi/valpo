@@ -27,6 +27,33 @@ class ValpoPackagingInstallScriptTest < Minitest::Test
     *Dir[File.expand_path("../../packaging/**/*.sh", __dir__)]
   ].sort.freeze
 
+  def test_network_preflight_rejects_broken_advertised_ipv6
+    script = <<~BASH
+      install_script="$1"
+      set --
+      source "$install_script"
+      ip() { printf 'default via fe80::1\\n'; }
+      curl() { [[ " $* " != *" -6 "* ]]; }
+      check_download_connectivity
+    BASH
+    _stdout, stderr, status = Open3.capture3("bash", "-c", script, "test", INSTALL_SCRIPT)
+    refute status.success?
+    assert_includes stderr, "IPv6 has a default route"
+  end
+
+  def test_network_preflight_accepts_ipv4_only_hosts
+    script = <<~BASH
+      install_script="$1"
+      set --
+      source "$install_script"
+      ip() { :; }
+      curl() { return 0; }
+      check_download_connectivity
+    BASH
+    _stdout, stderr, status = Open3.capture3("bash", "-c", script, "test", INSTALL_SCRIPT)
+    assert status.success?, stderr
+  end
+
   def test_all_tracked_shell_scripts_have_valid_bash_syntax
     SHELL_SCRIPTS.each do
       stdout, stderr, status = Open3.capture3("bash", "-n", it)

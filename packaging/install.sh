@@ -107,6 +107,7 @@ install_packages() {
     caddy \
     curl \
     docker.io \
+    docker-buildx \
     git \
     gnupg \
     lsb-release \
@@ -115,6 +116,18 @@ install_packages() {
     tar \
     unzip \
     xz-utils
+}
+
+check_download_connectivity() {
+  local endpoint
+  for endpoint in https://github.com https://registry-1.docker.io/v2/; do
+    curl --silent --show-error --location --output /dev/null --connect-timeout 10 --max-time 30 "$endpoint" ||
+      fail "Cannot reach ${endpoint}; check DNS, firewall, and IPv4/IPv6 routing before installing"
+  done
+  if ip -6 route show default | grep -q .; then
+    curl -6 --silent --show-error --output /dev/null --connect-timeout 5 --max-time 10 https://registry-1.docker.io/v2/ 2>/dev/null ||
+      fail "IPv6 has a default route but cannot reach Docker Hub. Repair upstream IPv6 or disable IPv6 advertisements on this host, then retry. Valpo will not change shared network configuration."
+  fi
 }
 
 configure_redis_host() {
@@ -469,11 +482,13 @@ main() {
   require_ubuntu
   preflight_bootstrap_schema
   install_packages
+  check_download_connectivity
   configure_redis_host
   ensure_user_and_dirs
   install_mise
   install_ruby
   install_pack
+  docker buildx version >/dev/null || fail "Docker Buildx is required; install docker-buildx"
   copy_source
   write_valpo_config
   ensure_generated_caddy_file

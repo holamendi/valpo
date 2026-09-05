@@ -15,6 +15,7 @@ module Valpo
           ref: nil,
           build_strategy: nil,
           dockerfile: nil,
+          builder: nil, buildpacks: nil,
           context: nil,
           deploy: false
         )
@@ -23,9 +24,9 @@ module Valpo
             options: {version:, command:, port:, healthcheck_path:}.compact
           )
           validate_build_options!(build_strategy:, dockerfile:)
-          source_options = {ref:, build_strategy:, dockerfile:, context:}.compact
+          source_options = {ref:, build_strategy:, dockerfile:, builder:, buildpacks:, context:}.compact
           if source.nil? && (!source_options.empty? || deploy)
-            raise UsageError, "--ref, --build-strategy, --dockerfile, --context, and --deploy require --source"
+            raise UsageError, "--ref, --build-strategy, --dockerfile, --builder, --buildpacks, --context, and --deploy require --source"
           end
           if source && !Valpo::Services::Registry.app_type?(type)
             raise UsageError, "--source is only valid for web and worker services"
@@ -44,7 +45,8 @@ module Valpo
             payload["build"] = {
               "strategy" => build_strategy,
               "dockerfile" => dockerfile,
-              "context" => context
+              "context" => context,
+              "builder" => builder, "buildpacks" => buildpacks
             }.compact
             payload["deploy"] = deploy
           end

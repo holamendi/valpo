@@ -1,0 +1,40 @@
+name: Buildpack installation acceptance
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  acceptance:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Prepare disposable runner for the supported Ubuntu package profile
+        shell: bash
+        run: |
+          # The hosted runner is disposable. Remove conflicting vendor packages
+          # here only; the Valpo installer never replaces an operator's backend.
+          mapfile -t packages < <(dpkg-query -W -f='${binary:Package} ${db:Status-Status}\n' \
+            | awk '$2 == "installed" && $1 ~ /^(docker-ce|docker-ce-cli|containerd.io|docker-buildx-plugin|docker-compose-plugin)$/ {print $1}')
+          if ((${#packages[@]})); then
+            sudo apt-get remove -y "${packages[@]}"
+          fi
+          sudo mkdir /tmp/valpo-acceptance-source
+          sudo cp -a . /tmp/valpo-acceptance-source/
+      - name: Install Valpo with all dependencies
+        run: sudo bash /tmp/valpo-acceptance-source/packaging/install.sh
+      - name: Exercise manifest, Ruby buildpacks, Postgres, and restart persistence
+        shell: bash
+        run: |
+          cd /opt/valpo
+          sudo -u valpo env HOME=/var/lib/valpo USER=valpo \
+            VALPO_ENV=production VALPO_CONFIG=/etc/valpo/valpo.yml VALPO_ACCEPTANCE=1 \
+            PATH=/var/lib/valpo/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+            /var/lib/valpo/.local/bin/mise x ruby@4.0.5 -- \
+            ruby -Ilib packaging/buildpack_acceptance.rb

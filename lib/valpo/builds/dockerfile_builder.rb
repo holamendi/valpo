@@ -25,7 +25,7 @@ module Valpo
         )
       end
 
-      def initial_metadata(checkout:)
+      def initial_metadata(checkout:, build_target: nil)
         {"dockerfile" => relative_dockerfile(checkout)}
       end
 

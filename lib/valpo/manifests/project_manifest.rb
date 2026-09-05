@@ -10,7 +10,7 @@ module Valpo
       ROOT_KEYS = %w[schema project sources builds services].freeze
       PROJECT_KEYS = %w[name].freeze
       SOURCE_KEYS = %w[provider repository ref auto_deploy].freeze
-      BUILD_KEYS = %w[source strategy dockerfile context].freeze
+      BUILD_KEYS = %w[source strategy dockerfile context builder buildpacks].freeze
       APP_KEYS = %w[type build command port healthcheck depends_on].freeze
       MANAGED_KEYS = %w[type version].freeze
 
@@ -85,7 +85,12 @@ module Valpo
           if strategy != "dockerfile" && config.key?("dockerfile")
             raise Valpo::ValidationError, "builds.#{name}.dockerfile is only valid for dockerfile builds"
           end
+          builder = optional_string(config, "builder")
+          buildpacks = config["buildpacks"]
+          Valpo::Builds::BuildpackOptions.validate!(strategy:, builder:, buildpacks:)
           [name, {
+            "builder" => builder,
+            "buildpacks" => buildpacks,
             "source" => required_string(config, "source"),
             "strategy" => strategy,
             "dockerfile" => (optional_relative_path(config, "dockerfile") || "Dockerfile" if strategy == "dockerfile"),

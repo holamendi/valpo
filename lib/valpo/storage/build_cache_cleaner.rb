@@ -48,7 +48,7 @@ module Valpo
       def stale_targets
         cutoff = clock.call - retention
         Valpo::BuildTarget.all.select do
-          last_release = Valpo::Release.where(build_target_id: it.id).max(:created_at)
+          last_release = Valpo::Release.where(build_target_id: it.id).order(Sequel.desc(:created_at)).first&.created_at
           (last_release || it.created_at) < cutoff
         end
       end

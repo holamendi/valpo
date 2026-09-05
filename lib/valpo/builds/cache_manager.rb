@@ -44,8 +44,8 @@ module Valpo
       attr_reader :docker
 
       def missing_volume?(result)
-        stderr = result.fetch(:stderr).to_s
-        stderr.include?("No such volume") || stderr.include?("No such object")
+        stderr = result.fetch(:stderr).to_s.downcase
+        stderr.include?("no such volume") || stderr.include?("no such object")
       end
 
       def emit(result, queue:, job_id:)

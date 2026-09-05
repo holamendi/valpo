@@ -30,8 +30,8 @@ class ValpoMigratorTest < Minitest::Test
     bootstrap = File.join(Valpo::SchemaInfo::MIGRATIONS_PATH, Valpo::SchemaInfo::BOOTSTRAP_FILENAME)
 
     assert Valpo::SchemaInfo.validate_migrations!
-    assert_equal [1, 2, 3, 4, 5], Valpo::SchemaInfo.versions
-    assert_equal 5, Valpo::SchemaInfo.latest
+    assert_equal [1, 2, 3, 4, 5, 6], Valpo::SchemaInfo.versions
+    assert_equal 6, Valpo::SchemaInfo.latest
     assert_equal Valpo::SchemaInfo::BOOTSTRAP_SHA256, Digest::SHA256.file(bootstrap).hexdigest
     assert_includes db.schema(:sources).to_h, :owner_service_id
     assert_includes db.schema(:build_targets).to_h, :owner_service_id
@@ -153,7 +153,7 @@ class ValpoMigratorTest < Minitest::Test
       assert_match "repaired active platform domains", warning
       assert_equal ["rel_01900000000070008000000000000001"], database[:releases].where(status: "active").select_map(:id)
       assert_equal 1, database[:platform_domains].where(active: true).count
-      assert_equal 5, database[:schema_info].get(:version)
+      assert_equal 6, database[:schema_info].get(:version)
     ensure
       database&.disconnect
     end
@@ -183,7 +183,7 @@ class ValpoMigratorTest < Minitest::Test
       assert_equal [service_id, service_id], jobs.map { it.fetch(:service_id) }
       assert_equal [1, 2], jobs.map { it.fetch(:operation_generation) }
       assert_equal ["compensating", "compensating"], jobs.map { it.fetch(:recovery_strategy) }
-      assert_equal 5, database[:schema_info].get(:version)
+      assert_equal 6, database[:schema_info].get(:version)
     ensure
       database&.disconnect
     end

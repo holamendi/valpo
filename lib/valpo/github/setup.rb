@@ -31,7 +31,7 @@ module Valpo
 
         domain = Valpo::Domains::Configuration.active
         unless domain
-          raise Valpo::ValidationError, "Configure and verify the default app domain before connecting GitHub"
+          raise Valpo::ValidationError, "Configure and verify the default app domain before connecting GitHub: point wildcard DNS at your ingress, run `valpo domain set-default DOMAIN`, then retry `valpo auth login github`"
         end
         organization = normalized_organization(organization)
 

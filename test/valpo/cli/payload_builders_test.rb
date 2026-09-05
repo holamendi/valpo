@@ -3,6 +3,15 @@
 require "test_helper"
 
 class ValpoCLIPayloadBuildersTest < Minitest::Test
+  def test_buildpack_configuration_and_explicit_resets
+    payload = Valpo::CLI::PayloadBuilders::ServiceCreate.call(name: "web", type: "web", source: "github:acme/backend", build_strategy: "buildpack", builder: "heroku/builder:26", buildpacks: %w[heroku/ruby heroku/procfile])
+    assert_equal %w[heroku/ruby heroku/procfile], payload.dig("build", "buildpacks")
+    reset = Valpo::CLI::PayloadBuilders::ServiceUpdate.call(clear_builder: true, clear_buildpacks: true)
+    assert_equal({"build" => {"builder" => nil, "buildpacks" => nil}}, reset)
+    assert_raises(Valpo::CLI::UsageError) { Valpo::CLI::PayloadBuilders::ServiceUpdate.call(builder: "test/builder", clear_builder: true) }
+    assert_raises(Valpo::CLI::UsageError) { Valpo::CLI::PayloadBuilders::ServiceCreate.call(name: "web", type: "web", builder: "test/builder") }
+  end
+
   def test_service_create_builds_source_and_runtime_payload
     payload = Valpo::CLI::PayloadBuilders::ServiceCreate.call(
       name: "web",

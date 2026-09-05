@@ -101,9 +101,28 @@ class ValpoBuildsBuildpackBuilderTest < Minitest::Test
 
     assert_equal(
       {"builder" => "example/builder@sha256:abc", "buildpacks" => [], "processes" => []},
-      result.metadata
+      result.metadata.slice("builder", "buildpacks", "processes")
     )
     assert queue.events.any? { it.last.include?("could not inspect buildpack metadata") }
+  end
+
+  def test_target_builder_and_order_override_server_default_and_cache_tracks_changes
+    service = create_app_service
+    target = build_target(service.project)
+    target.update(builder: "custom/builder:26", buildpacks: %w[custom/node custom/ruby])
+    client = FakeClient.new
+    implementation = builder(client:)
+    arguments = {checkout:, build_target: target, image: "test/app", service:, queue: FakeQueue.new, job_id: "test"}
+    first = implementation.build(**arguments)
+    assert_equal "custom/builder:26", client.command.last.fetch(:builder)
+    assert_equal %w[custom/node custom/ruby], client.command.last.fetch(:buildpacks)
+    assert client.command.last.fetch(:clear_cache)
+    Valpo::Release.create(service_id: service.id, build_target_id: target.id, source_type: "git", source_ref: "a" * 40, artifact_ref: "test/app", status: "failed", build_metadata_json: JSON.generate(first.metadata))
+    implementation.build(**arguments)
+    refute client.command.last.fetch(:clear_cache)
+    target.update(buildpacks: %w[custom/ruby custom/node])
+    implementation.build(**arguments)
+    assert client.command.last.fetch(:clear_cache)
   end
 
   private
@@ -114,6 +133,7 @@ class ValpoBuildsBuildpackBuilderTest < Minitest::Test
       runner:,
       cache_manager: Valpo::Builds::CacheManager.new(docker: ValpoTestSupport::FakeDocker.new),
       builder: "example/builder@sha256:abc",
+      environment: FakeEnvironment.new,
       timeout: 60
     )
   end
@@ -142,6 +162,12 @@ class ValpoBuildsBuildpackBuilderTest < Minitest::Test
       name: "build-#{Valpo::BuildTarget.count}",
       strategy: "buildpack"
     )
+  end
+
+  class FakeEnvironment
+    def prepare(builder:, **)
+      {"builder" => builder, "run_image" => "example/run@sha256:abc", "platform" => "linux/amd64"}
+    end
   end
 
   class FakeClient

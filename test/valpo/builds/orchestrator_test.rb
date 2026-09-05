@@ -183,7 +183,7 @@ class ValpoBuildsOrchestratorTest < Minitest::Test
       @error = error
     end
 
-    def initial_metadata(checkout:)
+    def initial_metadata(checkout:, build_target: nil)
       if @strategy == "dockerfile"
         {"dockerfile" => File.basename(checkout.dockerfile)}
       else

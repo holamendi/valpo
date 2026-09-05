@@ -92,6 +92,18 @@ class ValpoStorageMaintenanceTest < Minitest::Test
     refute docker.commands.any? { it.include?("valpo-data") }
   end
 
+  def test_cache_retention_uses_typed_latest_release_timestamp
+    service, target = source_service(created_at: OLD)
+    release = git_release(service:, target:, commit: "5" * 40, image_id: image_id("5"), status: "inactive", version: 1)
+    names = ["valpo-cnb-build-#{target.id}", "valpo-cnb-launch-#{target.id}"]
+    docker = FakeDocker.new(volumes: names)
+    cleaner = Valpo::Storage::BuildCacheCleaner.new(docker:, cache_manager: Valpo::Builds::CacheManager.new(docker:), retention: 86_400, clock: -> { NOW })
+    release.update(created_at: NOW)
+    assert_equal 0, cleaner.call(dry_run: false, queue:, job_id: maintenance_job.id).fetch(:build_cache_volumes)
+    release.update(created_at: OLD)
+    assert_equal 2, cleaner.call(dry_run: false, queue:, job_id: maintenance_job.id).fetch(:build_cache_volumes)
+  end
+
   def test_container_cleanup_removes_only_unreferenced_owned_containers
     service = create_app_service
     create_release(service:, status: "active", container_name: "valpo-active", route_target: "127.0.0.1:20000")

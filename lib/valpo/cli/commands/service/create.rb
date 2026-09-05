@@ -17,6 +17,8 @@ module Valpo
           option :ref, desc: "Configured branch, tag, commit, or remote HEAD"
           option :build_strategy, values: Valpo::Builds::STRATEGIES, desc: "Build strategy: auto, dockerfile, or buildpack"
           option :dockerfile, desc: "Dockerfile path within the repository"
+          option :builder, desc: "Buildpack builder OCI image reference"
+          option :buildpacks, type: :array, desc: "Ordered buildpack IDs or OCI images, comma-separated"
           option :context, desc: "Build context within the repository"
           option :deploy, type: :boolean, default: false, desc: "Deploy after validating and creating the service"
           wait_options
@@ -28,7 +30,7 @@ module Valpo
             "cache --project acme --type redis --version 8"
           ]
 
-          def call(name:, wait:, timeout:, api_url:, project: nil, type: nil, version: nil, command: nil, port: nil, healthcheck_path: nil, source: nil, ref: nil, build_strategy: nil, dockerfile: nil, context: nil, deploy: false, json: false, args: nil, **)
+          def call(name:, wait:, timeout:, api_url:, project: nil, type: nil, version: nil, command: nil, port: nil, healthcheck_path: nil, source: nil, ref: nil, build_strategy: nil, dockerfile: nil, builder: nil, buildpacks: nil, context: nil, deploy: false, json: false, args: nil, **)
             reject_extra_arguments!(args)
             project = required_option!(project, "--project")
             name = service_name(name)
@@ -44,6 +46,7 @@ module Valpo
               ref:,
               build_strategy:,
               dockerfile:,
+              builder:, buildpacks:,
               context:,
               deploy:
             )

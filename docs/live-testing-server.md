@@ -151,3 +151,10 @@ uses buildpacks. It may need repeating when the runtime image changes.
 
 The server also reported a separate storage-maintenance error,
 `comparison of String with Time failed`, during this trial; it remains unresolved.
+
+
+## Buildpack hardening verification (2026-09-05)
+
+An isolated Ubuntu 26.04 VM, `valpo-buildpack-qa`, exercised the full source installer with dependencies. It installed Docker Buildx automatically. The new buildpack preflight reproduced and repaired the containerd run-image export failure before invoking the lifecycle. The packaged acceptance fixture uses Ruby 4.0.6, Sinatra, Postgres 18, an applied manifest, and the ordered `heroku/ruby`, `heroku/procfile` buildpacks. A stored HTTP-created item remained readable after container restarts and a complete QA VM reboot.
+
+The acceptance fixture uses local source checkout and a private loopback URL so it needs no GitHub credentials or public domain. During development the harness needed corrections for bundle loading, fixture installation, and transient connection resets during startup; these are included in the checked-in harness. Docker export must redirect stdout to `/dev/null`; its `--output` option rejects character devices.

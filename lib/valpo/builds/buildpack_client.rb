@@ -24,7 +24,7 @@ module Valpo
         raise Valpo::ValidationError, "Buildpack builds require Linux on amd64 or arm64; use a Dockerfile on this host"
       end
 
-      def build_command(image:, context:, builder:, build_cache:, launch_cache:, default_process:)
+      def build_command(image:, context:, builder:, build_cache:, launch_cache:, default_process:, buildpacks: nil, run_image: nil, clear_cache: false)
         arguments = [
           "--no-color",
           "build",
@@ -36,6 +36,9 @@ module Valpo
           "--pull-policy",
           "if-not-present"
         ]
+        arguments += ["--run-image", run_image] if run_image
+        arguments << "--clear-cache" if clear_cache
+        buildpacks&.each { arguments += ["--buildpack", it] }
         arguments += ["--default-process", default_process] if default_process
         arguments += [
           "--cache",

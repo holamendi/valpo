@@ -27,7 +27,8 @@ module Valpo
       end
 
       def inspect_image_metadata(image)
-        result = execute_docker(docker.image_inspect_command(image), failure_message: "Docker command failed")
+        result = docker.execute(docker.image_inspect_command(image))
+        raise_command_error("Docker image inspect failed", result) unless result.fetch(:success)
         parsed = JSON.parse(result.fetch(:stdout))
         first = parsed.first || {}
         repo_digest = Array(first["RepoDigests"]).first
@@ -170,8 +171,8 @@ module Valpo
       end
 
       def missing_container?(result)
-        stderr = result.fetch(:stderr)
-        stderr.include?("No such container") || stderr.include?("No such object")
+        stderr = result.fetch(:stderr).to_s.downcase
+        stderr.include?("no such container") || stderr.include?("no such object")
       end
 
       def command_failed?(result, ignore_missing:)
