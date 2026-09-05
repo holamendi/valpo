@@ -17,18 +17,19 @@ scripts against it or install Valpo on Starbook itself.
 - Initial stopped-VM recovery snapshot: `initial-20260905`.
 - Pre-fix recovery snapshot: `before-domain-fix-20260905`.
 
-As verified on 2026-09-05, the live control plane runs **Valpo 0.1.1**, schema 6,
-from `/opt/valpo/releases/0.1.1`, selected by `/opt/valpo/current`. It was built
-from commit `362ab1ac7459d1b1a2fc7e7f5db7ec709b4ceef2` and installed through the
-Ruby upgrade transaction with channel `development`. Its artifact digest is
-`sha256:6713a620c79ec0bde92538f281869c1ecb22e1f04ade73faccdd4062adbdd49a`.
-This was a locally built, checksum-verified artifact, not a GitHub-attested release.
+As verified on 2026-09-05, the live control plane runs **Valpo 0.1.2-rc.1**,
+schema 6, from `/opt/valpo/releases/0.1.2-rc.1`, selected by
+`/opt/valpo/current`. It was built from release tag `v0.1.2-rc.1` at commit
+`dd5ec0e` and installed through automatic online discovery on channel `preview`.
+The immutable GitHub release and exact-tag build attestation were verified before
+candidate execution. The previous installation was locally built `0.1.1` on
+channel `development`.
 
 Use authenticated `system status` and `/var/lib/valpo-updater/installation.json`
 for the active release identity. `/etc/valpo/source-revision` describes the
 retained source installation and is no longer the active artifact identity.
-The upgrade checkpoint is
-`/var/lib/valpo-updater/checkpoints/20260905T163330.840348Z`.
+Upgrade checkpoints remain root-only on the host; inspect the updater state
+locally for the latest checkpoint.
 
 On the operator's Mac, the `live` CLI profile selects `https://api-live.valpo.dev`
 with a dedicated `pablo-mac` admin credential. Login stores credentials in
@@ -80,19 +81,22 @@ The VM snapshot does not include Cloudflare DNS changes.
 
 ## Updating Valpo
 
-Updates are manual artifact transactions. Build or obtain a newer native amd64
-artifact from a reviewed revision and trusted checksum. Copy it into the guest
-with `incus file push`, then run as root inside `valpo-live`:
+Updates use verified online discovery on the saved `preview` channel:
 
 ```bash
-valpo-upgrade apply /root/valpo-VERSION-linux-amd64.tar.zst \
-  --sha256 VERIFIED_SHA256 --channel development
+valpo-upgrade
 valpo-operator system status
 ```
 
-Use the incoming reviewed checkout's `packaging/upgrade.sh` to refresh updater
-tooling when needed. `preview` and `stable` additionally require tagged GitHub
-release-workflow provenance. Tag-only download/update is still planned.
+Run as root with GitHub CLI authentication available (for example, a temporary
+`GH_TOKEN` passed securely over SSH). No GitHub token was persisted during the
+live upgrade. GitHub CLI 2.100.0 is installed from its official checksum-verified
+Debian package; Ubuntu's 2.46.0 package lacks attestation verification.
+The first online upgrade installed reviewed tooling from tag `v0.1.2-rc.1` into
+the updater's independent root-owned tooling directory. Use the incoming reviewed
+checkout's `packaging/upgrade.sh` to refresh that tooling when needed.
+`--channel stable` excludes previews. The explicit `apply` interface remains
+available for trusted local artifacts; see [host upgrade commands](../packaging/README.md#host-upgrades).
 Do not run `packaging/install.sh` over this packaged installation.
 
 The transaction refuses queued/running jobs, pauses the API and idle worker,
@@ -187,3 +191,14 @@ The live upgrade preserved all application container IDs. During the change,
 completed secret verification (`job_01a0726c29e676f99fe304539575fe03`) and a
 maintenance dry run (`job_01a0726c9c7077a8b6b8b4fe7e2c2cfc`). The QA VM
 `valpo-buildpack-qa` was stopped after verification.
+
+## Verified online live upgrade (2026-09-05)
+
+The persistent `valpo-live` VM upgraded from `0.1.1` to `0.1.2-rc.1` through
+no-tag release discovery. A second invocation reported
+`Already up to date (0.1.2-rc.1, preview)`. Authenticated system status reported
+healthy, compatible schema 6; API, worker, Caddy, Docker, and cloudflared were
+active. All four application container IDs were unchanged. The three public
+canary/Sinatra URLs returned HTTP 200, and the unauthenticated API returned 401.
+There was no pending recovery journal after activation. This was the persistent
+live server upgrade, separate from the earlier disposable CI acceptance run.
