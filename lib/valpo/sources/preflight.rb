@@ -7,6 +7,7 @@ module Valpo
     class Preflight
       COMMIT_PATTERN = /\A[0-9a-f]{40,64}\z/i
       Candidate = Data.define(:provider, :repository, :ref)
+      SourceResult = Data.define(:checkout, :commit, :ref)
       Result = Data.define(:checkout, :strategy, :dockerfile, :context, :commit, :ref)
 
       def initialize(fetcher:)
@@ -14,6 +15,17 @@ module Valpo
       end
 
       def with_checkout(provider:, repository:, ref: "HEAD", strategy: "auto", dockerfile: nil, context: ".")
+        with_source_checkout(provider:, repository:, ref:) do
+          yield validate_checkout(
+            source: it,
+            strategy:,
+            dockerfile:,
+            context:
+          )
+        end
+      end
+
+      def with_source_checkout(provider:, repository:, ref: "HEAD")
         selected_ref = blank_to_default(ref, "HEAD")
         source = Candidate.new(provider:, repository:, ref: selected_ref)
 
@@ -24,24 +36,27 @@ module Valpo
             raise Valpo::ValidationError, "Git revision lookup returned an invalid commit SHA"
           end
 
-          context_value = blank_to_default(context, ".")
-          checked_context = checked_path(checkout, context_value, type: :directory)
-          resolved_strategy, checked_dockerfile = resolve_strategy(
-            checkout:,
-            strategy:,
-            dockerfile:,
-            context: context_value
-          )
-          result = Result.new(
-            checkout:,
-            strategy: resolved_strategy,
-            dockerfile: checked_dockerfile,
-            context: checked_context,
-            commit: commit.downcase,
-            ref: selected_ref
-          )
-          yield result
+          yield SourceResult.new(checkout:, commit: commit.downcase, ref: selected_ref)
         end
+      end
+
+      def validate_checkout(source:, strategy: "auto", dockerfile: nil, context: ".")
+        context_value = blank_to_default(context, ".")
+        checked_context = checked_path(source.checkout, context_value, type: :directory)
+        resolved_strategy, checked_dockerfile = resolve_strategy(
+          checkout: source.checkout,
+          strategy:,
+          dockerfile:,
+          context: context_value
+        )
+        Result.new(
+          checkout: source.checkout,
+          strategy: resolved_strategy,
+          dockerfile: checked_dockerfile,
+          context: checked_context,
+          commit: source.commit,
+          ref: source.ref
+        )
       end
 
       private

@@ -20,6 +20,65 @@ class ValpoManifestReconcilerTest < Minitest::Test
     assert_equal 1, Valpo::ServiceDependency.count
   end
 
+  def test_preflight_happens_before_any_manifest_mutation_and_reports_resources
+    preflight = RecordingPreflight.new(error: Valpo::ValidationError.new("repository/ref/context/Dockerfile invalid"))
+    reconciler = build_reconciler(preflight:)
+
+    error = assert_raises(Valpo::ValidationError) { apply(reconciler, parsed_manifest) }
+
+    assert_includes error.message, "source backend"
+    assert_includes error.message, "repository/ref/context/Dockerfile invalid"
+    assert_empty Valpo::Project.all
+    assert_empty Valpo::Source.all
+    assert_empty Valpo::BuildTarget.all
+    assert_empty Valpo::Service.all
+    assert_empty Valpo::ServiceDependency.all
+    assert_equal 1, Valpo::JobEvent.count # only the test job's queue event exists
+    assert_equal 1, preflight.calls
+  end
+
+  def test_real_preflight_fetch_failure_happens_before_manifest_mutation
+    fetcher = Class.new do
+      def checkout(**)
+        raise Valpo::ValidationError, "repository/ref could not be fetched"
+      end
+    end.new
+    reconciler = build_reconciler(preflight: Valpo::Sources::Preflight.new(fetcher:))
+
+    error = assert_raises(Valpo::ValidationError) { apply(reconciler, parsed_manifest) }
+
+    assert_includes error.message, "source backend"
+    assert_includes error.message, "repository/ref could not be fetched"
+    assert_empty Valpo::Project.all
+    assert_empty Valpo::Source.all
+    assert_empty Valpo::BuildTarget.all
+    assert_empty Valpo::Service.all
+    assert_empty Valpo::ServiceDependency.all
+  end
+
+  def test_successful_real_preflight_applies_with_one_shared_source_checkout
+    fetcher = Class.new do
+      attr_reader :calls
+
+      def initialize
+        @calls = 0
+      end
+
+      def checkout(destination:, **)
+        @calls += 1
+        File.write(File.join(destination, "Dockerfile"), "FROM scratch\n")
+        "a" * 40
+      end
+    end.new
+    reconciler = build_reconciler(preflight: Valpo::Sources::Preflight.new(fetcher:))
+
+    apply(reconciler, parsed_manifest)
+
+    assert_equal 1, fetcher.calls
+    assert_equal "acme", Valpo::Project.first.name
+    assert_equal 1, Valpo::Source.count
+  end
+
   def test_omitted_services_are_retained
     reconciler = build_reconciler
     manifest = parsed_manifest
@@ -190,7 +249,7 @@ class ValpoManifestReconcilerTest < Minitest::Test
     TOML
   end
 
-  def build_reconciler(deployment: FakeDeployment.new, managed: nil, dependencies: nil)
+  def build_reconciler(deployment: FakeDeployment.new, managed: nil, dependencies: nil, preflight: nil)
     dependencies ||= Valpo::Services::DependencyManager.new(
       config: VALPO_TEST_CONFIG,
       docker: ValpoTestSupport::FakeDocker.new,
@@ -207,7 +266,8 @@ class ValpoManifestReconcilerTest < Minitest::Test
     Valpo::Manifests::Reconciler.new(
       managed_lifecycle: managed,
       dependency_manager: dependencies,
-      deployment_lifecycle: deployment
+      deployment_lifecycle: deployment,
+      preflight:
     )
   end
 
@@ -240,6 +300,26 @@ class ValpoManifestReconcilerTest < Minitest::Test
 
     def restart_service(service_id:, **)
       reconfigure_service(service_id:, **)
+    end
+  end
+
+  class RecordingPreflight
+    attr_reader :calls
+
+    def initialize(error: nil)
+      @error = error
+      @calls = 0
+    end
+
+    def with_source_checkout(**)
+      @calls += 1
+      raise @error if @error
+
+      yield nil
+    end
+
+    def validate_checkout(**)
+      raise @error if @error
     end
   end
 

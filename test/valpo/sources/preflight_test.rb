@@ -73,6 +73,39 @@ class ValpoSourcesPreflightTest < Minitest::Test
     assert_match "stay within", error.message
   end
 
+  def test_reuses_one_source_checkout_for_multiple_build_validations
+    fetcher = FakeFetcher.new
+    preflight = Valpo::Sources::Preflight.new(fetcher:)
+    result = nil
+
+    preflight.with_source_checkout(provider: "github", repository: "acme/backend") do
+      source = it
+      preflight.validate_checkout(source:, strategy: "dockerfile")
+      result = preflight.validate_checkout(source:, strategy: "auto", context: ".")
+    end
+
+    assert_equal 1, fetcher.calls
+    assert_equal COMMIT, result.commit
+  end
+
+  def test_source_checkout_reports_context_and_dockerfile_errors_without_paths
+    preflight = Valpo::Sources::Preflight.new(fetcher: FakeFetcher.new)
+    preflight.with_source_checkout(provider: "github", repository: "acme/backend") do
+      source = it
+      error = assert_raises(Valpo::ValidationError) do
+        preflight.validate_checkout(source:, strategy: "dockerfile", context: "missing")
+      end
+      assert_match "Build directory does not exist: missing", error.message
+      refute_match %r{/private/tmp|/var/folders}, error.message
+
+      error = assert_raises(Valpo::ValidationError) do
+        preflight.validate_checkout(source:, strategy: "dockerfile", dockerfile: "missing")
+      end
+      assert_match "Build file does not exist: missing", error.message
+      refute_match %r{/private/tmp|/var/folders}, error.message
+    end
+  end
+
   def test_rejects_an_invalid_commit_from_the_fetcher
     error = assert_raises Valpo::ValidationError do
       Valpo::Sources::Preflight.new(fetcher: FakeFetcher.new(commit: "wat")).with_checkout(
@@ -89,9 +122,13 @@ class ValpoSourcesPreflightTest < Minitest::Test
     def initialize(commit: COMMIT, dockerfile: true)
       @commit = commit
       @dockerfile = dockerfile
+      @calls = 0
     end
 
+    attr_reader :calls
+
     def checkout(destination:, ref:, **)
+      @calls += 1
       @ref = ref
       File.write(File.join(destination, "Dockerfile"), "FROM scratch\n") if @dockerfile
       @commit
