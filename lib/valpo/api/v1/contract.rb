@@ -15,6 +15,11 @@ module Valpo
           params do
           end
         end
+
+        class EmptyBody < Contract
+          params do
+          end
+        end
       end
     end
   end

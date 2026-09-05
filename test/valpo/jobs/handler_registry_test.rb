@@ -10,6 +10,7 @@ class ValpoJobsHandlerRegistryTest < Minitest::Test
 
     assert_equal Valpo::Jobs::Queue::SUPPORTED_TYPES.sort, handlers.keys.sort
     handlers.each_value { assert_respond_to it, :call }
+    assert_equal Valpo::Jobs::Queue::SUPPORTED_TYPES.sort, Valpo::Jobs::RecoveryPolicy::STRATEGIES.keys.sort
   end
 
   def test_registry_uses_the_extracted_handler_classes

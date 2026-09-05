@@ -108,7 +108,7 @@ Use dependency skipping only because this VM is already prepared. A new Ubuntu
 
 Run focused control-plane scenarios before relying on the persistent canary:
 
-1. Upgrade a schema-1 database and confirm schema target 2.
+1. Upgrade a schema-1 database and confirm it reaches the release's declared schema target.
 2. Confirm every unauthenticated route is rejected except the exact local
    first-admin `POST /v1/api-credentials` request.
 3. Bootstrap once and confirm bootstrap never reopens.
@@ -125,6 +125,19 @@ Run focused control-plane scenarios before relying on the persistent canary:
    Cloudflare Tunnel or host proxy configuration. Confirm both become
    `verified`, reach the same release, and have distinct certificates in
    Caddy's storage.
+9. Send the same mutating request twice with one `Idempotency-Key`; confirm both
+   responses name the same job, including when the second request follows job
+   completion.
+10. Terminate the worker after `handler_started` during a source build, restart
+    it, and confirm the same job is requeued with an incremented attempt and
+    retained checkpoint. During a normal `SIGTERM`, confirm the build drains and
+    no second job is acquired.
+11. Terminate the worker after `handler_completed` but before terminal status;
+    restart it and confirm startup marks that job succeeded without repeating
+    its Docker or Caddy effects.
+12. Terminate a delete or rollback after `handler_started`; confirm restart
+    marks it failed with `recovery_action=reconcile`, `retry` is rejected, and
+    two reconciliation requests return the same `repair_system` job.
 
 The production-like configuration-file path must be part of recovery testing;
 setting only `VALPO_DATABASE_PATH` does not reproduce the installed wrapper.

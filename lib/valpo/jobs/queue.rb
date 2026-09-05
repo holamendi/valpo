@@ -6,8 +6,8 @@ require "time"
 module Valpo
   module Jobs
     class Queue
-      ABANDONED_ERROR = "Interrupted; manual retry required"
-      ABANDONED_EVENT = "Job was interrupted by worker termination; manual retry required"
+      INTERRUPTED_ERROR = "Interrupted; reconciliation required before retry"
+      LEASE_SECONDS = 30
       ACTIVE_PROJECT_JOB_STATUSES = %w[queued running].freeze
       DEFAULT_EVENT_LIMIT = 200
       DEFAULT_JOB_LIMIT = 100
@@ -38,25 +38,40 @@ module Valpo
         SERVICE_OPERATION_TYPES
       ).uniq.freeze
 
-      def enqueue(type, payload = {})
+      def initialize(idempotency_key: nil)
+        @idempotency_key = idempotency_key
+      end
+
+      def enqueue(type, payload = {}, idempotency_key: nil, **attributes)
         type = validate_type(type)
+        payload = payload.merge(attributes)
+        idempotency_key ||= @idempotency_key
         Valpo::Database.connection.transaction(mode: :immediate) do
-          create_job(type, payload)
+          find_idempotent(type, idempotency_key) || create_job(type, payload, idempotency_key:)
         end
       end
 
-      def enqueue_unique(type, payload = {})
+      def enqueue_unique(type, payload = {}, idempotency_key: nil, **attributes)
         type = validate_type(type)
+        payload = payload.merge(attributes)
+        idempotency_key ||= @idempotency_key
         Valpo::Database.connection.transaction(mode: :immediate) do
+          idempotent = find_idempotent(type, idempotency_key)
+          return idempotent if idempotent
+
           existing = Valpo::Job.where(type:, status: ACTIVE_PROJECT_JOB_STATUSES).order(:created_at).first
-          existing || create_job(type, payload)
+          existing || create_job(type, payload, idempotency_key:)
         end
       end
 
-      def enqueue_project_operation(type, project_id:, payload: {})
+      def enqueue_project_operation(type, project_id:, payload: {}, idempotency_key: nil)
         type = validate_type(type)
+        idempotency_key ||= @idempotency_key
         project_id = project_id.to_s
         Valpo::Database.connection.transaction(mode: :immediate) do
+          existing = find_idempotent(type, idempotency_key)
+          return existing if existing
+
           active_job = active_project_job(project_id)
           if active_job
             raise Valpo::ConflictError, "Project already has an active #{active_job.type} job: #{active_job.id}"
@@ -64,38 +79,47 @@ module Valpo
 
           yield if block_given?
 
-          create_job(type, payload.merge(project_id:))
+          create_job(type, payload.merge(project_id:), project_id:, idempotency_key:)
         end
       end
 
-      def enqueue_manifest_operation(project_name:, manifest:)
+      def enqueue_manifest_operation(project_name:, manifest:, idempotency_key: nil)
+        idempotency_key ||= @idempotency_key
         Valpo::Database.connection.transaction(mode: :immediate) do
+          existing = find_idempotent("apply_project_manifest", idempotency_key)
+          return existing if existing
+
           project = Valpo::Project.where(name: project_name).first
           active_job = project && active_project_job(project.id)
           active_job ||= Valpo::Job.where(status: ACTIVE_PROJECT_JOB_STATUSES, type: "apply_project_manifest")
+            .where(project_name:)
             .order(:created_at)
-            .all
-            .find { it.payload.dig("manifest", "project", "name") == project_name }
+            .first
           if active_job
             raise Valpo::ConflictError, "Project already has an active #{active_job.type} job: #{active_job.id}"
           end
 
           create_job(
             "apply_project_manifest",
-            manifest:,
+            {manifest:, project_name:, project_id: project&.id},
             project_name:,
-            project_id: project&.id
+            project_id: project&.id,
+            idempotency_key:
           )
         end
       end
 
-      def enqueue_service_operation(type, service_id:, payload: {})
+      def enqueue_service_operation(type, service_id:, payload: {}, idempotency_key: nil)
         type = validate_type(type)
+        idempotency_key ||= @idempotency_key
         service_id = service_id.to_s
         project_id = payload[:project_id] || payload["project_id"]
         project_id = project_id.to_s unless project_id.nil?
 
         Valpo::Database.connection.transaction(mode: :immediate) do
+          existing = find_idempotent(type, idempotency_key)
+          return existing if existing
+
           active_service_job = active_service_job(service_id)
           if active_service_job
             raise Valpo::ConflictError, "Service already has an active #{active_service_job.type} job: #{active_service_job.id}"
@@ -112,32 +136,33 @@ module Valpo
 
           yield if block_given?
 
-          create_job(type, payload.merge(service_id:))
+          create_job(
+            type,
+            payload.merge(service_id:),
+            project_id:,
+            service_id:,
+            related_service_id:,
+            idempotency_key:
+          )
         end
       end
 
       def active_project_job(project_id, types: PROJECT_OPERATION_TYPES + SERVICE_OPERATION_TYPES)
         project_id = project_id.to_s
         project_name = Valpo::Project[project_id]&.name
+        scope = project_name ? Sequel.|({project_id:}, {project_name:}) : {project_id:}
         Valpo::Job.where(status: ACTIVE_PROJECT_JOB_STATUSES, type: types)
+          .where(scope)
           .order(:created_at)
-          .all
-          .find do
-            payload = it.payload
-            payload["project_id"].to_s == project_id ||
-              (project_name && (payload["project_name"] == project_name || payload.dig("manifest", "project", "name") == project_name))
-          end
+          .first
       end
 
       def active_service_job(service_id, types: SERVICE_OPERATION_TYPES)
         service_id = service_id.to_s
         Valpo::Job.where(status: ACTIVE_PROJECT_JOB_STATUSES, type: types)
+          .where(Sequel.|({service_id:}, {related_service_id: service_id}))
           .order(:created_at)
-          .all
-          .find do
-            payload = it.payload
-            payload["service_id"].to_s == service_id || payload["dependency_service_id"].to_s == service_id
-          end
+          .first
       end
 
       def list(limit: DEFAULT_JOB_LIMIT)
@@ -177,26 +202,80 @@ module Valpo
           updated = Valpo::Job.transition_dataset!(Valpo::Job.where(id: job.id), from: "queued", to: "running",
             locked_by: worker_id,
             locked_at: timestamp,
+            lease_expires_at: timestamp + LEASE_SECONDS,
+            attempt: Sequel[:attempt] + 1,
             started_at: timestamp)
           (updated == 1) ? find(job.id) : nil
         end
       end
 
-      def abandon_running_jobs
+      def recover_running_jobs
         Valpo::Database.connection.transaction(mode: :immediate) do
-          abandoned = 0
+          recovered = 0
           Valpo::Job.where(status: "running").order(:created_at, :id).each do
-            updated = Valpo::Job.transition_dataset!(Valpo::Job.where(id: it.id), from: "running", to: "failed",
-              error: ABANDONED_ERROR,
-              locked_by: nil,
-              locked_at: nil,
-              finished_at: now)
+            if it.checkpoint == "handler_completed"
+              updated = Valpo::Job.transition_dataset!(Valpo::Job.where(id: it.id), from: "running", to: "succeeded",
+                progress: 100, error: nil, recovery_action: nil, locked_by: nil, locked_at: nil,
+                lease_expires_at: nil, finished_at: now)
+              message = "Recovered completed handler after worker termination"
+            elsif it.recovery_strategy == "compensating"
+              updated = Valpo::Job.transition_dataset!(Valpo::Job.where(id: it.id), from: "running", to: "failed",
+                error: INTERRUPTED_ERROR, recovery_action: "reconcile", locked_by: nil, locked_at: nil,
+                lease_expires_at: nil, finished_at: now)
+              message = "Worker terminated during a compensating operation; enqueue reconciliation before retrying"
+            else
+              checkpoint = (it.recovery_strategy == "retryable") ? nil : it.checkpoint
+              updated = Valpo::Job.transition_dataset!(Valpo::Job.where(id: it.id), from: "running", to: "queued",
+                error: nil, recovery_action: "retry", checkpoint:, locked_by: nil, locked_at: nil,
+                lease_expires_at: nil, started_at: nil, finished_at: nil)
+              message = "Worker terminated; job queued for recovery attempt #{it.attempt.to_i + 1}"
+            end
             next unless updated == 1
 
-            event(it.id, "stderr", ABANDONED_EVENT)
-            abandoned += 1
+            event(it.id, "system", message)
+            recovered += 1
           end
-          abandoned
+          recovered
+        end
+      end
+
+      alias_method :abandon_running_jobs, :recover_running_jobs
+
+      def checkpoint(job_id, name)
+        updated = Valpo::Job.where(id: job_id, status: "running").update(
+          checkpoint: name.to_s,
+          lease_expires_at: now + LEASE_SECONDS
+        )
+        event(job_id, "system", "Checkpoint: #{name}") if updated == 1
+        updated == 1
+      end
+
+      def retry(job_id)
+        Valpo::Database.connection.transaction(mode: :immediate) do
+          job = find(job_id) || raise(Valpo::ValidationError, "Job not found")
+          raise Valpo::ConflictError, "Job is not failed" unless job.status == "failed"
+          raise Valpo::ConflictError, "Job requires reconciliation" if job.recovery_strategy == "compensating"
+
+          assert_scope_available!(job)
+          Valpo::Job.transition_dataset!(Valpo::Job.where(id: job.id), from: "failed", to: "queued",
+            error: nil, recovery_action: "retry", locked_by: nil, locked_at: nil,
+            lease_expires_at: nil, started_at: nil, finished_at: nil)
+          event(job.id, "system", "Job manually queued for retry attempt #{job.attempt.to_i + 1}")
+          find(job.id)
+        end
+      end
+
+      def reconcile(job_id)
+        Valpo::Database.connection.transaction(mode: :immediate) do
+          job = find(job_id) || raise(Valpo::ValidationError, "Job not found")
+          unless job.status == "failed" && job.recovery_action == "reconcile"
+            raise Valpo::ConflictError, "Job does not require reconciliation"
+          end
+
+          reconciliation = find_idempotent("repair_system", "reconcile:#{job.id}") ||
+            create_job("repair_system", {interrupted_job_id: job.id}, idempotency_key: "reconcile:#{job.id}")
+          event(job.id, "system", "Reconciliation job queued: #{reconciliation.id}")
+          reconciliation
         end
       end
 
@@ -206,6 +285,8 @@ module Valpo
           error: nil,
           locked_by: nil,
           locked_at: nil,
+          lease_expires_at: nil,
+          recovery_action: nil,
           finished_at: now)
         return nil unless updated == 1
 
@@ -217,6 +298,8 @@ module Valpo
           error:,
           locked_by: nil,
           locked_at: nil,
+          lease_expires_at: nil,
+          recovery_action: (find(job_id).recovery_strategy == "compensating") ? "reconcile" : "retry",
           finished_at: now)
         return nil unless updated == 1
 
@@ -233,14 +316,55 @@ module Valpo
 
       private
 
-      def create_job(type, payload)
+      def create_job(type, payload, project_id: nil, project_name: nil, service_id: nil, related_service_id: nil, idempotency_key: nil)
         type = validate_type(type)
+        project_id ||= payload[:project_id] || payload["project_id"]
+        project_name ||= payload[:project_name] || payload["project_name"]
+        service_id ||= payload[:service_id] || payload["service_id"]
+        related_service_id ||= payload[:dependency_service_id] || payload["dependency_service_id"]
         job = Valpo::Job.create(
           type:,
-          payload_json: JSON.generate(payload)
+          payload_json: JSON.generate(payload),
+          project_id:,
+          project_name:,
+          service_id:,
+          related_service_id:,
+          idempotency_key:,
+          operation_generation: next_generation(type, project_id:, service_id:),
+          recovery_strategy: RecoveryPolicy.fetch(type)
         )
         event(job.id, "system", "Job queued")
         find(job.id)
+      end
+
+      def find_idempotent(type, key)
+        return nil if key.nil? || key.to_s.empty?
+
+        job = Valpo::Job.where(idempotency_key: key.to_s).first
+        if job && job.type != type
+          raise Valpo::ConflictError, "Idempotency key already belongs to #{job.type} job: #{job.id}"
+        end
+        job
+      end
+
+      def next_generation(type, project_id:, service_id:)
+        dataset = if service_id
+          Valpo::Job.where(service_id: service_id.to_s)
+        elsif project_id
+          Valpo::Job.where(project_id: project_id.to_s, service_id: nil)
+        else
+          Valpo::Job.where(type:, project_id: nil, service_id: nil)
+        end
+        dataset.max(:operation_generation).to_i + 1
+      end
+
+      def assert_scope_available!(job)
+        conflict = if job.service_id
+          active_service_job(job.service_id)
+        elsif job.project_id
+          active_project_job(job.project_id)
+        end
+        raise Valpo::ConflictError, "Scope already has an active #{conflict.type} job: #{conflict.id}" if conflict
       end
 
       def now

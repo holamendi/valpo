@@ -961,6 +961,44 @@ paths:
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '500': {$ref: '#/components/responses/InternalError'}
+  /v1/jobs/{job}/retry:
+    parameters:
+      - {$ref: '#/components/parameters/JobReference'}
+    post:
+      operationId: retryJob
+      summary: Retry a failed retryable or resumable job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: object, additionalProperties: false}
+      responses:
+        '202': {$ref: '#/components/responses/Job'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /v1/jobs/{job}/reconcile:
+    parameters:
+      - {$ref: '#/components/parameters/JobReference'}
+    post:
+      operationId: reconcileJob
+      summary: Reconcile an interrupted compensating job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: object, additionalProperties: false}
+      responses:
+        '202': {$ref: '#/components/responses/Job'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '500': {$ref: '#/components/responses/InternalError'}
 components:
   securitySchemes:
     bearerAuth:
@@ -997,6 +1035,12 @@ components:
       in: path
       required: true
       schema: {$ref: '#/components/schemas/NonEmptyString'}
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Globally unique key for a mutating request that enqueues work.
+      schema: {type: string, minLength: 1, maxLength: 255}
     EnvironmentVariableName:
       name: name
       in: path
@@ -1529,15 +1573,26 @@ components:
     Job:
       type: object
       additionalProperties: false
-      required: [id, type, status, progress, error, locked_by, locked_at, started_at, finished_at, created_at, payload]
+      required: [id, type, status, progress, error, project_id, project_name, service_id, related_service_id, idempotency_key, attempt, operation_generation, recovery_strategy, checkpoint, recovery_action, locked_by, locked_at, lease_expires_at, started_at, finished_at, created_at, payload]
       properties:
         id: {type: string}
         type: {type: string}
         status: {type: string, enum: [queued, running, succeeded, failed]}
         progress: {type: integer, minimum: 0, maximum: 100}
         error: {type: [string, 'null']}
+        project_id: {type: [string, 'null']}
+        project_name: {type: [string, 'null']}
+        service_id: {type: [string, 'null']}
+        related_service_id: {type: [string, 'null']}
+        idempotency_key: {type: [string, 'null']}
+        attempt: {type: integer, minimum: 0}
+        operation_generation: {type: integer, minimum: 1}
+        recovery_strategy: {type: string, enum: [retryable, resumable, compensating]}
+        checkpoint: {type: [string, 'null']}
+        recovery_action: {type: [string, 'null'], enum: [retry, reconcile, null]}
         locked_by: {type: [string, 'null']}
         locked_at: {$ref: '#/components/schemas/Timestamp'}
+        lease_expires_at: {$ref: '#/components/schemas/Timestamp'}
         started_at: {$ref: '#/components/schemas/Timestamp'}
         finished_at: {$ref: '#/components/schemas/Timestamp'}
         created_at: {$ref: '#/components/schemas/Timestamp'}

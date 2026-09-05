@@ -11,9 +11,9 @@ module Valpo
     STATUSES = %w[queued running succeeded failed].freeze
     TRANSITIONS = {
       "queued" => %w[running],
-      "running" => %w[succeeded failed],
+      "running" => %w[queued succeeded failed],
       "succeeded" => [],
-      "failed" => []
+      "failed" => %w[queued]
     }.freeze
 
     def payload

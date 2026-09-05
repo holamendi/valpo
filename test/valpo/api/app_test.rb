@@ -677,6 +677,35 @@ class ValpoAPIAppTest < Minitest::Test
     assert_equal "Job queued", json.first.fetch("message")
   end
 
+  def test_idempotency_header_and_job_recovery_endpoints
+    header "Idempotency-Key", "repair-request-1"
+    post "/v1/system/repair"
+    first_id = json.fetch("id")
+    post "/v1/system/repair"
+    assert_equal first_id, json.fetch("id")
+
+    header "Idempotency-Key", nil
+    queue = Valpo::Jobs::Queue.new
+    queue.lock_next("worker")
+    queue.succeed(first_id, worker_id: "worker")
+    retryable = queue.enqueue("system_check")
+    queue.lock_next("worker")
+    queue.fail(retryable.id, "temporary", worker_id: "worker")
+    post_json "/v1/jobs/#{retryable.id}/retry", {}
+    assert_equal 202, last_response.status
+    assert_equal "queued", json.fetch("status")
+    queue.lock_next("worker")
+    queue.succeed(retryable.id, worker_id: "worker")
+
+    project = create_project
+    compensating = queue.enqueue_project_operation("delete_project", project_id: project.id)
+    queue.lock_next("worker")
+    queue.fail(compensating.id, "partial delete", worker_id: "worker")
+    post_json "/v1/jobs/#{compensating.id}/reconcile", {}
+    assert_equal 202, last_response.status
+    assert_equal "repair_system", json.fetch("type")
+  end
+
   def test_job_and_event_lists_are_bounded_and_cursor_paginated
     queue = Valpo::Jobs::Queue.new
     105.times { queue.enqueue("system_check") }
