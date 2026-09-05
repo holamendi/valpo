@@ -17,11 +17,12 @@ scripts against it or install Valpo on Starbook itself.
 - Initial stopped-VM recovery snapshot: `initial-20260905`.
 - Pre-fix recovery snapshot: `before-domain-fix-20260905`.
 
-The installed source revision is `84e521e1668341c141d0cc6f678e992dc479e7b0`,
+The installed source revision is `3ae45b29b4c3bb7c9f75a106b04a776b2ce629ce`,
 recorded in `/etc/valpo/source-revision`. It includes stable single-label service
 slugs (schema 5) and releases database read cursors before domain network
-verification. The recovery snapshot for this update is
-`before-domain-slugs-20260905`.
+verification. It also recognizes lowercase Docker missing-volume errors for
+Postgres provisioning. The recovery snapshot for this update is
+`before-postgres-buildpack-20260905`.
 
 On the operator's Mac, the `live` CLI profile selects `https://api-live.valpo.dev`
 with a dedicated `pablo-mac` admin credential. Login stores credentials in
@@ -67,7 +68,7 @@ challenges to Caddy port 80 and other traffic to verified HTTPS on port 443.
 First-level generated names fit Cloudflare Universal SSL coverage. Domains
 outside `*.valpo.dev` still need their own DNS and tunnel routing.
 
-If restoring the pre-update snapshot, also restore the wildcard DNS record:
+If restoring the older `before-domain-slugs-20260905` snapshot, also restore the wildcard DNS record:
 `*.valpo.dev` previously targeted `pixie.porkbun.com`, DNS-only, TTL 600.
 The VM snapshot does not include Cloudflare DNS changes.
 
@@ -119,3 +120,21 @@ unauthenticated API rejection, and recovery after a full guest stop/start.
 After installing the domain-creation fix, a single `domain add` created and
 verified `verify-live.valpo.dev` successfully. Both public canary hostnames
 returned the same body digest as the container.
+
+## Ruby 4 buildpack trial
+
+The private `holamendi/sinatra-todos` repository includes `valpo.toml` for a
+Sinatra web service with Postgres 18. Manifest application succeeded. The
+Postgres service is running; the web service has no successful release yet.
+
+The worker builder setting in `/etc/valpo/valpo.yml` is now
+`heroku/builder@sha256:e0d2453e68106a8000da70780f631e888ca61a515ea9921a26a1f7391964908a`
+(Heroku 26), because the pinned Paketo builder does not support Ruby 4.0.6.
+This changes the builder for subsequent buildpack builds on this test server.
+The preceding configuration is saved as `/etc/valpo/valpo.before-heroku-builder.yml`.
+
+Build attempts subsequently failed fetching Docker Hub lifecycle metadata over
+unreachable IPv6 addresses; a GitHub fetch also timed out. Direct IPv4 GitHub
+access succeeded. Repair outbound networking before retrying the deployment.
+The server also reported a separate storage-maintenance error,
+`comparison of String with Time failed`, during this trial; it remains unresolved.
