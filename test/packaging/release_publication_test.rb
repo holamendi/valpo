@@ -48,9 +48,9 @@ class ValpoPackagingReleasePublicationTest < Minitest::Test
   end
 
   def test_existing_release_and_failed_upload_never_publish
-    ["release create", "release upload"].each do |failure|
+    ["release create", "release upload"].each do
       FileUtils.rm_f(@log)
-      _stdout, _stderr, status = publish(failure:)
+      _stdout, _stderr, status = publish(failure: it)
       refute status.success?
       refute_includes File.read(@log), "release edit"
     end
