@@ -30,8 +30,8 @@ class ValpoMigratorTest < Minitest::Test
     bootstrap = File.join(Valpo::SchemaInfo::MIGRATIONS_PATH, Valpo::SchemaInfo::BOOTSTRAP_FILENAME)
 
     assert Valpo::SchemaInfo.validate_migrations!
-    assert_equal [1, 2, 3], Valpo::SchemaInfo.versions
-    assert_equal 3, Valpo::SchemaInfo.latest
+    assert_equal [1, 2, 3, 4], Valpo::SchemaInfo.versions
+    assert_equal 4, Valpo::SchemaInfo.latest
     assert_equal Valpo::SchemaInfo::BOOTSTRAP_SHA256, Digest::SHA256.file(bootstrap).hexdigest
     assert_includes db.schema(:sources).to_h, :owner_service_id
     assert_includes db.schema(:build_targets).to_h, :owner_service_id
@@ -141,7 +141,68 @@ class ValpoMigratorTest < Minitest::Test
       assert_match "repaired active platform domains", warning
       assert_equal ["rel_01900000000070008000000000000001"], database[:releases].where(status: "active").select_map(:id)
       assert_equal 1, database[:platform_domains].where(active: true).count
+      assert_equal 4, database[:schema_info].get(:version)
+    ensure
+      database&.disconnect
+    end
+  end
+
+  def test_job_recovery_migration_backfills_indexed_scope_and_generation
+    Dir.mktmpdir("valpo-job-recovery") do
+      database = Sequel.sqlite(File.join(it, "valpo.sqlite3"))
+      Valpo::Migrator.run(db: database, target: 3)
+      project_id, service_id = insert_upgrade_service(database)
+      timestamp = Time.now.utc
+      2.times do
+        database[:jobs].insert(
+          id: "job_0190000000007000800000000000000#{it}",
+          type: "deploy_source",
+          status: "queued",
+          payload_json: JSON.generate(project_id:, service_id:, ref: "main"),
+          progress: 0,
+          created_at: timestamp + it
+        )
+      end
+
+      Valpo::Migrator.run(db: database)
+
+      jobs = database[:jobs].order(:created_at).all
+      assert_equal [project_id, project_id], jobs.map { it.fetch(:project_id) }
+      assert_equal [service_id, service_id], jobs.map { it.fetch(:service_id) }
+      assert_equal [1, 2], jobs.map { it.fetch(:operation_generation) }
+      assert_equal ["compensating", "compensating"], jobs.map { it.fetch(:recovery_strategy) }
+      assert_equal 4, database[:schema_info].get(:version)
+    ensure
+      database&.disconnect
+    end
+  end
+
+  def test_job_recovery_migration_rolls_back_from_four_to_three
+    Dir.mktmpdir("valpo-job-recovery-down") do
+      database = Sequel.sqlite(File.join(it, "valpo.sqlite3"))
+      Valpo::Migrator.run(db: database)
+      database[:jobs].insert(
+        id: "job_01900000000070008000000000000000",
+        type: "system_check",
+        status: "queued",
+        payload_json: "{}",
+        progress: 0,
+        attempt: 0,
+        operation_generation: 1,
+        recovery_strategy: "retryable",
+        created_at: Time.now.utc
+      )
+
+      Valpo::Migrator.run(db: database, target: 3)
+
       assert_equal 3, database[:schema_info].get(:version)
+      columns = database.schema(:jobs).to_h
+      refute_includes columns, :project_id
+      refute_includes columns, :request_fingerprint
+      refute_includes columns, :heartbeat_at
+      assert_raises(Sequel::CheckConstraintViolation) do
+        database[:jobs].where(id: "job_01900000000070008000000000000000").update(status: "impossible")
+      end
     ensure
       database&.disconnect
     end

@@ -34,7 +34,7 @@ module Valpo
 
       def run(once: false)
         worker_lock.synchronize do
-          queue.abandon_running_jobs
+          queue.recover_running_jobs
           loop do
             return nil if stopping?
 
@@ -65,11 +65,17 @@ module Valpo
 
       def perform(job)
         queue.event(job[:id], "system", "Starting #{job[:type]}")
+        queue.checkpoint(job[:id], "handler_started")
         handler = handlers[job[:type]]
         raise Valpo::ValidationError, "Unknown job type: #{job[:type]}" unless handler
 
         handler.call(job, queue:)
-        queue.event(job[:id], "system", "Job succeeded") if queue.succeed(job[:id], worker_id:)
+        queue.checkpoint(job[:id], "handler_completed")
+        if (completed = queue.succeed(job[:id], worker_id:))
+          queue.event(job[:id], "system", "Job succeeded")
+          interrupted_job_id = completed.payload["interrupted_job_id"]
+          queue.resolve_reconciliation(interrupted_job_id, reconciliation_job_id: completed.id) if interrupted_job_id
+        end
       rescue => e
         queue.event(job[:id], "stderr", "#{e.class}: #{e.message}")
         queue.fail(job[:id], e.message, worker_id:)

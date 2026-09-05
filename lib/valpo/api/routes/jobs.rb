@@ -11,6 +11,28 @@ module Valpo
         end
 
         r.on String do |id|
+          r.on "retry" do
+            # POST /v1/jobs/{job}/retry — retry a failed retryable or resumable job.
+            r.post true do
+              validate_body(V1::Contract::EmptyBody)
+              next not_found("Job not found") unless jobs.find(id)
+
+              response.status = 202
+              V1::Jobs.render(jobs.retry(id))
+            end
+          end
+
+          r.on "reconcile" do
+            # POST /v1/jobs/{job}/reconcile — reconcile an interrupted compensating job.
+            r.post true do
+              validate_body(V1::Contract::EmptyBody)
+              next not_found("Job not found") unless jobs.find(id)
+
+              response.status = 202
+              V1::Jobs.render(jobs.reconcile(id))
+            end
+          end
+
           r.on "events" do
             # GET /v1/jobs/{job}/events — list a job's events.
             r.get true do

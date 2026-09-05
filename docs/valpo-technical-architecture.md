@@ -67,7 +67,23 @@ succeeded
 failed
 ```
 
-There is no canceled state, cancellation operation, lease, or automatic replay. At startup, the worker marks jobs left in `running` as failed with a manual-retry event. A non-blocking file lock beside the SQLite database enforces exactly one worker for that database; multi-worker execution is not implemented.
+Jobs carry indexed `project_id`, `project_name`, `service_id`, and `related_service_id` scope columns. Conflict checks use those indexes inside an immediate SQLite transaction; payload JSON is operation input, not concurrency metadata. A nullable, globally unique idempotency key prevents duplicate work across both active and terminal jobs. Its stored SHA-256 request fingerprint binds the key to the original HTTP method, path, query, and body (or to canonical queue input for internal callers), so a materially different request receives a conflict instead of an unrelated job. Each project/service/system scope also has a monotonically increasing operation generation. Attempts increment when a worker acquires a job.
+
+The single worker retains a non-blocking file lock beside SQLite. A running job records `locked_by`, `locked_at`, and `heartbeat_at`; the heartbeat is observational and never presented as a lease or used to steal work. The file lock remains the ownership authority, including during a long blocking build. The worker records `handler_started` before dispatch and `handler_completed` after all handler effects but before marking success. On restart, `handler_completed` is finalized as success without replay. Other interrupted jobs follow their declared recovery strategy: retryable jobs restart from the beginning, while compensating jobs fail with `recovery_action=reconcile`. No current mutating handler claims resumability merely because a future implementation could become convergent.
+
+Operators use `POST /v1/jobs/{id}/retry` for failed retryable jobs or `POST /v1/jobs/{id}/reconcile` for compensating jobs. Reconciliation creates one idempotent `repair_system` job and stores its ID on the interrupted job. Successful repair clears the recovery action and records `resolved_at`; it does not replay the original destructive operation. Failed repair remains linked, and another reconcile request requeues that same repair job rather than creating duplicate work.
+
+`SIGTERM` and `SIGINT` request a drain: the worker stops polling, lets the current handler (including a long build and its child process) finish, records its terminal status, and exits without locking another job. Service managers must allow the configured build timeout plus shutdown margin before sending an uncatchable signal. If that margin is exceeded, startup recovery applies the checkpoint and strategy rules above.
+
+Handler recovery classification is explicit and must cover every supported queue type:
+
+| Strategy | Handlers | Crash/retry behavior |
+| --- | --- | --- |
+| Retryable | `system_check`, `repair_system`, `maintain_storage`, `verify_secrets`, `apply_caddy_config`, `stop_service` | Existing implementations are inspections or repeatable convergence/cleanup operations and are rerun from the start. |
+| Resumable | None currently | A handler belongs here only after it persists and consumes handler-specific checkpoints with boundary tests. |
+| Compensating | `rotate_secrets`, `verify_platform_domain`, `verify_domain`, `deploy_registry_image`, `deploy_source`, `create_source_service`, `update_app_service`, `provision_service`, `bind_service`, `unbind_service`, `restart_service`, `reconcile_service_environment`, `apply_project_manifest`, `rollback_release`, `delete_project`, `delete_service` | These handlers can commit SQLite, keyring, Docker, volume, or Caddy effects before returning. They are never automatically replayed; system repair resolves the interrupted operation explicitly. |
+
+Handler internals remain responsible for transactional SQLite updates and convergent Docker/Caddy operations. Adding a job type requires adding both a registry handler and a recovery classification; tests enforce exact coverage.
 
 ### Deployments, Domains, Routing, And Repair
 

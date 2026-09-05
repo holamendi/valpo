@@ -93,7 +93,20 @@ module Valpo
       private
 
       def jobs
-        Valpo::Jobs::Queue.new
+        key = request.get? ? "" : request.env["HTTP_IDEMPOTENCY_KEY"].to_s
+        raise BadRequest, "Idempotency-Key must be at most 255 characters" if key.bytesize > 255
+
+        fingerprint = if key.empty?
+          nil
+        else
+          Valpo::Jobs::Queue.fingerprint(
+            method: request.request_method,
+            path: request.path_info,
+            query: request.GET,
+            body: request.POST
+          )
+        end
+        Valpo::Jobs::Queue.new(idempotency_key: key.empty? ? nil : key, request_fingerprint: fingerprint)
       end
 
       def github_setup

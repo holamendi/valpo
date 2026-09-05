@@ -23,7 +23,11 @@ module Valpo
 
         def render(job)
           Fields.call(
-            job, :id, :type, :status, :progress, :error, :locked_by, :locked_at, :started_at, :finished_at, :created_at
+            job, :id, :type, :status, :progress, :error, :project_id, :project_name,
+            :service_id, :related_service_id, :idempotency_key, :request_fingerprint,
+            :attempt, :operation_generation, :recovery_strategy, :checkpoint, :recovery_action,
+            :reconciliation_job_id, :resolved_at, :locked_by, :locked_at, :heartbeat_at,
+            :started_at, :finished_at, :created_at
           ).merge(payload: JSON.parse(job[:payload_json] || "{}"))
         end
 
