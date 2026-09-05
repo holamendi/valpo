@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "ipaddr"
+
 module Valpo
   module API
     module RequestHelpers
@@ -40,9 +42,19 @@ module Valpo
       def require_admin_credential!(bootstrap_scopes: nil)
         credential = request.env["valpo.api_credential"]
         return if credential&.admin?
-        return if Valpo::APICredential.active.empty? && Array(bootstrap_scopes).include?("admin")
+        if !Valpo::ControlPlaneState.api_bootstrapped? && Array(bootstrap_scopes).include?("admin")
+          raise Valpo::ForbiddenError, "API bootstrap is restricted to a local request" unless local_request?
+
+          return
+        end
 
         raise Valpo::ForbiddenError, "An admin API credential is required"
+      end
+
+      def local_request?
+        IPAddr.new(request.env["REMOTE_ADDR"].to_s).loopback?
+      rescue IPAddr::InvalidAddressError
+        false
       end
     end
   end

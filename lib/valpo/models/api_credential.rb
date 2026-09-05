@@ -13,6 +13,41 @@ module Valpo
     TOKEN_PREFIX = "valpo_"
 
     def self.issue(name:, scopes: ["admin"], expires_at: nil)
+      Valpo::Database.connection.transaction(mode: :immediate) do
+        credential, token = create_credential(name:, scopes:, expires_at:)
+        Valpo::ControlPlaneState.current.mark_api_bootstrapped!
+        [credential, token]
+      end
+    end
+
+    def self.bootstrap(name:, scopes: ["admin"])
+      unless Array(scopes).map(&:to_s).include?("admin")
+        raise Valpo::ValidationError, "Bootstrap credential must include the admin scope"
+      end
+
+      Valpo::Database.connection.transaction(mode: :immediate) do
+        state = Valpo::ControlPlaneState.current
+        raise Valpo::ConflictError, "API bootstrap has already completed" if state.api_bootstrapped_at
+
+        credential, token = create_credential(name:, scopes:)
+        state.mark_api_bootstrapped!
+        [credential, token]
+      end
+    end
+
+    def self.recover(name:)
+      Valpo::Database.connection.transaction(mode: :immediate) do
+        if active.all.any?(&:admin?)
+          raise Valpo::ConflictError, "An active admin API credential already exists"
+        end
+
+        credential, token = create_credential(name:, scopes: ["admin"])
+        Valpo::ControlPlaneState.current.mark_api_bootstrapped!
+        [credential, token]
+      end
+    end
+
+    def self.create_credential(name:, scopes:, expires_at: nil)
       token = "#{TOKEN_PREFIX}#{SecureRandom.urlsafe_base64(32, padding: false)}"
       credential = create(
         name:,
@@ -23,6 +58,7 @@ module Valpo
       )
       [credential, token]
     end
+    private_class_method :create_credential
 
     def self.authenticate(token, at: Time.now.utc)
       value = token.to_s
@@ -62,7 +98,18 @@ module Valpo
     end
 
     def revoke!
-      update(revoked_at: Time.now.utc)
+      self.class.db.transaction(mode: :immediate) do
+        refresh
+        if active? && admin? && self.class.active.all.count(&:admin?) == 1
+          raise Valpo::ConflictError, "Cannot revoke the final active admin API credential"
+        end
+
+        update(revoked_at: Time.now.utc)
+      end
+    end
+
+    def active?(at: Time.now.utc)
+      revoked_at.nil? && (expires_at.nil? || expires_at > at)
     end
 
     def before_create

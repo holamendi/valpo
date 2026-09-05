@@ -22,6 +22,7 @@ module Valpo
         ["auth token list", Commands::Auth::Token::List, false],
         ["auth token create", Commands::Auth::Token::Create, false],
         ["auth token revoke", Commands::Auth::Token::Revoke, false],
+        ["auth token recover", Commands::Auth::Token::Recover, false],
         ["project list", Commands::Project::List, false],
         ["project create", Commands::Project::Create, false],
         ["project show", Commands::Project::Show, false],

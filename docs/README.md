@@ -10,6 +10,7 @@ Start with the root [README](../README.md). Use this index for reference and pro
 - [Managed services](./valpo-managed-services.md)
 - [Installation and host operations](../packaging/README.md)
 - [Release and host lifecycle](./valpo-release-lifecycle.md)
+- [End-to-end testing](./end-to-end-testing.md)
 
 ## Product And Engineering Notes
 

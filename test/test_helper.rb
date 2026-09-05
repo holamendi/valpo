@@ -110,6 +110,12 @@ module ValpoTestDatabase
   def clean_database
     db.transaction do
       TABLE_DELETE_ORDER.each { db[it].delete }
+      if db.table_exists?(:control_plane_states)
+        db[:control_plane_states].where(id: Valpo::ControlPlaneState::SINGLETON_ID).update(
+          api_bootstrapped_at: nil,
+          updated_at: Time.now.utc
+        )
+      end
     end
   end
 end

@@ -8,13 +8,15 @@ The complete machine-readable contract is [openapi.yaml](./openapi.yaml). Runtim
 
 ## Authentication
 
-API credentials are scoped and revocable. The raw bearer value is returned only at creation; Valpo stores its SHA-256 digest. Once any credential is active, control-plane endpoints require:
+API credentials are scoped and revocable. The raw bearer value is returned only at creation; Valpo stores its SHA-256 digest. After one-time bootstrap, control-plane endpoints always require:
 
 ```http
 Authorization: Bearer TOKEN
 ```
 
-Create the first credential from the local host with `valpo auth token create NAME`. The bootstrap credential must have `admin` scope. Credentials may have `admin`, `read`, or `write` scopes; only an admin credential can issue, list, or revoke them through `/v1/api-credentials`, so `write` cannot be escalated into `admin`. A fresh installation with no credentials accepts requests only so it can be bootstrapped locally. The API binds to localhost by default and refuses a non-local binding until an active credential exists. Supply a token to the CLI through `VALPO_API_TOKEN`.
+Create the first credential from the local host with `valpo auth token create NAME`. The bootstrap credential must have `admin` scope. Before that succeeds, the only unauthenticated control-plane operation is an exact local `POST /v1/api-credentials`; all other paths fail closed. Bootstrap is persisted as complete and never reopens when credentials are revoked or expire.
+
+Credentials may have `admin`, `read`, or `write` scopes; only an admin credential can issue, list, or revoke them through `/v1/api-credentials`, so `write` cannot be escalated into `admin`. Valpo refuses to revoke the final active admin. If all admin tokens are lost or expire, stop or network-isolate the API and run `valpo auth token recover NAME --confirm-offline-recovery` on the host. The command directly opens the configured SQLite database, refuses recovery while an active admin exists, and does not reopen HTTP bootstrap. The API binds to localhost by default and refuses a non-local binding until an active credential exists. Supply a token to the CLI through `VALPO_API_TOKEN`.
 
 GitHub integration endpoints are the only public exception. Caddy exposes `github.<app-domain>/integrations/github`; setup uses one-time state, installation redirects are verified against the App, and webhooks require GitHub's `X-Hub-Signature-256` HMAC. Other API paths remain private.
 

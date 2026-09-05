@@ -38,6 +38,11 @@ mise exec -- bundle exec rake standard:fix
 
 These tasks run Standard plus `.rubocop-project.yml`.
 
+Use the Starbook/Incus environment for installed-host, authentication,
+deployment, restart, and Cloudflare Tunnel testing. Follow the safety and
+verification workflow in [End-to-end testing](./end-to-end-testing.md); do not
+run the destructive clean-install wrapper on Starbook itself.
+
 After changing CLI registration, arguments, or service definitions, regenerate the canonical CLI guide:
 
 ```bash

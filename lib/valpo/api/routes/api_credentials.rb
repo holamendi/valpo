@@ -17,10 +17,8 @@ module Valpo
           payload = validate_body(V1::APICredentials::CreateContract)
           scopes = payload.fetch(:scopes, ["admin"])
           require_admin_credential!(bootstrap_scopes: scopes)
-          credential, token = Valpo::APICredential.issue(
-            name: payload.fetch(:name),
-            scopes:
-          )
+          issuer = Valpo::ControlPlaneState.api_bootstrapped? ? :issue : :bootstrap
+          credential, token = Valpo::APICredential.public_send(issuer, name: payload.fetch(:name), scopes:)
           response.status = 201
           V1::APICredentials.render(credential).merge(token:)
         end

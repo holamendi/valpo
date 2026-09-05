@@ -137,6 +137,7 @@ platform_domains
 domains
 provider_credentials
 api_credentials
+control_plane_states
 github_app_setups
 github_webhook_deliveries
 jobs
@@ -159,6 +160,7 @@ Important ownership and field conventions:
 - `GitHubAppSetup` stores expiring one-time setup state; `GitHubWebhookDelivery` stores delivery IDs and payload digests for replay protection.
 - `ProviderCredential` stores encrypted provider payloads plus non-secret public metadata.
 - `APICredential` stores a token prefix, one-way digest, scopes, revocation/expiry state, and usage timestamps.
+- `ControlPlaneState` persists one-way security boundaries such as completion of local API bootstrap; bootstrap never reopens merely because credentials are unavailable.
 - `Job` stores type, payload, progress, error, lock, start, finish, and creation state; `JobEvent` stores stdout/stderr/system messages.
 
 Typed IDs (`prj_`, `svc_`, and related prefixes) are immutable identities. The CLI accepts service names scoped by project for people and IDs for unambiguous automation.

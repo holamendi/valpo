@@ -261,9 +261,23 @@ packaging/uninstall.sh
 
 It disables Valpo services, removes containers, volumes, and networks carrying `valpo.owned=true`, removes the Caddy import, and deletes Valpo host files/state/account. It deliberately retains Docker images and every unlabeled Docker resource rather than guessing ownership from a `valpo-*` name. Shared packages such as Docker and Caddy are also retained.
 
-## VPS Smoke Test
+## End-to-End Test Environment
 
-Run the repeatable smoke test against a dedicated test host and app domain:
+The canonical development E2E environment is the `valpo` Incus VM on Starbook,
+with the persistent public canary at `https://valpo-e2e.siesta.cam/` routed
+through the existing Cloudflare Tunnel. This environment covers installed-host
+updates, schema migration, API bootstrap and recovery, deployment, normal Valpo
+domain verification, service/VM restart recovery, and public reachability.
+
+Follow [End-to-end testing](../docs/end-to-end-testing.md) for the topology,
+safety rules, worktree installation procedure, tunnel-origin requirements, and
+verification commands. Connect as `pablo@starbook`; never aim the destructive
+clean-install wrapper at Starbook itself.
+
+## Direct Public VPS Smoke Test
+
+Keep the direct-host smoke test for cases that specifically require a publicly
+addressed origin, direct Caddy TLS termination, or a clean host-package install:
 
 ```bash
 packaging/vps-smoke-test.sh root@HOST apps.example.com --reboot

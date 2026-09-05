@@ -11,6 +11,7 @@ class ValpoLoaderTest < Minitest::Test
     assert defined?(Valpo::API::App)
     assert defined?(Valpo::CLI)
     assert defined?(Valpo::Project)
+    assert defined?(Valpo::ControlPlaneState)
     assert defined?(Valpo::Builds::Orchestrator)
     assert defined?(Valpo::Caddy::Reconciler)
     assert defined?(Valpo::Deployments::Lifecycle)

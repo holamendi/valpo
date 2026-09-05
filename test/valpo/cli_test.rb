@@ -488,6 +488,50 @@ class ValpoCLITest < Minitest::Test
     )
   end
 
+  def test_api_token_recovery_requires_explicit_confirmation
+    recovery = FakeAPICredentialRecovery.new
+
+    status, stdout, stderr = run_cli(
+      FakeAPIClient.new([]),
+      %w[auth token recover rescue-admin],
+      api_credential_recovery_factory: ->(config_path:) { recovery }
+    )
+
+    assert_equal 2, status
+    assert_empty stdout
+    assert_includes stderr, "--confirm-offline-recovery"
+    assert_empty recovery.names
+  end
+
+  def test_api_token_recovery_uses_the_local_database_and_prints_the_token_once
+    recovery = FakeAPICredentialRecovery.new
+    config_paths = []
+    factory = lambda do |config_path:|
+      config_paths << config_path
+      recovery
+    end
+
+    status, stdout, stderr = run_cli(
+      FakeAPIClient.new([]),
+      %w[auth token recover rescue-admin --config=/etc/valpo/recovery.yml --confirm-offline-recovery --json],
+      api_credential_recovery_factory: factory
+    )
+
+    assert_equal 0, status
+    assert_empty stderr
+    assert_equal ["/etc/valpo/recovery.yml"], config_paths
+    assert_equal ["rescue-admin"], recovery.names
+    assert_equal(
+      {
+        "id" => "acr_recovery",
+        "name" => "rescue-admin",
+        "scopes" => ["admin"],
+        "token" => "valpo_recovery_secret"
+      },
+      JSON.parse(stdout)
+    )
+  end
+
   def test_wait_timeout_exits_one
     client = FakeAPIClient.new([
       [],
@@ -621,7 +665,14 @@ class ValpoCLITest < Minitest::Test
     "evt_01900000000070008000000000000000"
   end
 
-  def run_cli(client, arguments, clock: -> { 0 }, input: StringIO.new, github_validator: FakeGitHubValidator.new)
+  def run_cli(
+    client,
+    arguments,
+    clock: -> { 0 },
+    input: StringIO.new,
+    github_validator: FakeGitHubValidator.new,
+    api_credential_recovery_factory: nil
+  )
     stdout = StringIO.new
     stderr = StringIO.new
     factory = lambda do |api_url:, json:, out:, err:|
@@ -635,7 +686,8 @@ class ValpoCLITest < Minitest::Test
       err: stderr,
       input:,
       context_factory: factory,
-      github_validator:
+      github_validator:,
+      api_credential_recovery_factory:
     )
     [status, stdout.string, stderr.string]
   end
@@ -670,6 +722,21 @@ class ValpoCLITest < Minitest::Test
       raise @error if @error
 
       "octocat"
+    end
+  end
+
+  class FakeAPICredentialRecovery
+    Credential = Data.define(:id, :name, :scopes)
+
+    attr_reader :names
+
+    def initialize
+      @names = []
+    end
+
+    def call(name:)
+      names << name
+      [Credential.new(id: "acr_recovery", name:, scopes: ["admin"]), "valpo_recovery_secret"]
     end
   end
 end
