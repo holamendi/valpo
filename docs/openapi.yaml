@@ -1609,7 +1609,7 @@ components:
         id: {type: string}
         service_id: {type: string}
         platform_domain_id: {type: [string, 'null']}
-        hostname: {type: string}
+        hostname: {type: string, description: "Generated service domains use a stable unique service slug followed by the default domain; custom hostnames are unchanged."}
         kind: {type: string}
         status: {type: string, enum: [pending, verified, failed]}
         verification_error: {type: [string, 'null']}

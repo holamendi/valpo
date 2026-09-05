@@ -29,6 +29,7 @@ module Valpo
 
         current = active
         if current&.hostname == normalized
+          Valpo::Service.where(kind: "web").order(:created_at).each { reconcile_service(it, platform_domain: current) }
           unverified = Valpo::Domain.where(platform_domain_id: current.id).exclude(status: "verified").count.positive?
           return [current, unverified]
         end
@@ -68,22 +69,37 @@ module Valpo
       def reconcile_service(service, platform_domain: active)
         return nil unless service&.web? && platform_domain&.verified?
 
-        hostname = Valpo::Domain.default_hostname(
-          project_name: service.project.name,
-          service_name: service.name,
-          app_domain: platform_domain.hostname
-        )
-        domain = Valpo::Domain.where(service_id: service.id, hostname:).first
-        if domain && domain.kind != "generated"
-          raise Valpo::ConflictError, "Custom domain #{hostname} conflicts with the generated app domain"
+        Valpo::Database.connection.transaction do
+          service.refresh
+          slug = service.domain_slug || allocate_slug(service, app_domain: platform_domain.hostname)
+          hostname = Valpo::Domain.default_hostname(slug:, app_domain: platform_domain.hostname)
+          domain = Valpo::Domain.where(hostname:).first
+          if domain && (domain.service_id != service.id || domain.kind != "generated")
+            raise Valpo::ConflictError, "Custom domain #{hostname} conflicts with the generated app domain"
+          end
+          domain || Valpo::Domain.create(
+            service_id: service.id,
+            platform_domain_id: platform_domain.id,
+            hostname:,
+            kind: "generated"
+          )
         end
-        domain || Valpo::Domain.create(
-          service_id: service.id,
-          platform_domain_id: platform_domain.id,
-          hostname:,
-          kind: "generated"
-        )
       end
+
+      def allocate_slug(service, app_domain:)
+        base = "#{service.project.name}-#{service.name}"[0, 63].sub(/-+\z/, "")
+        candidate = base
+        20.times do
+          hostname = Valpo::Domain.default_hostname(slug: candidate, app_domain:)
+          unless Valpo::Service.where(domain_slug: candidate).any? || Valpo::Domain.where(hostname:).any? || candidate == "github"
+            service.update(domain_slug: candidate)
+            return candidate
+          end
+          candidate = "#{base[0, 54].sub(/-+\z/, "")}-#{SecureRandom.hex(4)}"
+        end
+        raise Valpo::ConflictError, "Could not allocate a unique service domain slug"
+      end
+      private_class_method :allocate_slug
 
       def retire_stale_generated!(service, keep:)
         Valpo::Domain.where(service_id: service.id, kind: "generated").exclude(id: keep.id).destroy

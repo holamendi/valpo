@@ -64,7 +64,7 @@ module Valpo
           valpo domain show-default
           ```
 
-          A web service named `web` in project `acme` receives `web.acme.apps.example.com`. Setting or changing the default reconciles existing web services but never removes custom domains.
+          A web service named `web` in project `acme` receives `acme-web.apps.example.com`. Each service receives a stable, unique slug; collisions get a random suffix. Slugs are limited to 63 characters and survive renames and default-domain changes. Setting or changing the default reconciles existing web services but never removes custom domains. For Cloudflare Universal SSL, use a zone root such as `example.com` as the default so generated names remain first-level subdomains.
 
           A custom domain can be used instead:
 

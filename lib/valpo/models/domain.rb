@@ -19,8 +19,8 @@ module Valpo
     many_to_one :service
     many_to_one :platform_domain
 
-    def self.default_hostname(project_name:, service_name:, app_domain:)
-      "#{service_name}.#{project_name}.#{app_domain}"
+    def self.default_hostname(slug:, app_domain:)
+      "#{slug}.#{app_domain}"
     end
 
     def before_validation

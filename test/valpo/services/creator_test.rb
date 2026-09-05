@@ -22,7 +22,7 @@ class ValpoServicesCreatorTest < Minitest::Test
     service = Valpo::Services::Creator.call(project_id: project.id, name: "web", type: "web")
 
     domain = Valpo::Domain.where(service_id: service.id).first
-    assert_equal "web.hello.apps.example.com", domain.hostname
+    assert_equal "hello-web.apps.example.com", domain.hostname
     assert_equal "generated", domain.kind
     assert_equal "pending", domain.status
     assert_equal platform_domain.id, domain.platform_domain_id

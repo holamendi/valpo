@@ -30,8 +30,8 @@ class ValpoMigratorTest < Minitest::Test
     bootstrap = File.join(Valpo::SchemaInfo::MIGRATIONS_PATH, Valpo::SchemaInfo::BOOTSTRAP_FILENAME)
 
     assert Valpo::SchemaInfo.validate_migrations!
-    assert_equal [1, 2, 3, 4], Valpo::SchemaInfo.versions
-    assert_equal 4, Valpo::SchemaInfo.latest
+    assert_equal [1, 2, 3, 4, 5], Valpo::SchemaInfo.versions
+    assert_equal 5, Valpo::SchemaInfo.latest
     assert_equal Valpo::SchemaInfo::BOOTSTRAP_SHA256, Digest::SHA256.file(bootstrap).hexdigest
     assert_includes db.schema(:sources).to_h, :owner_service_id
     assert_includes db.schema(:build_targets).to_h, :owner_service_id
@@ -60,6 +60,18 @@ class ValpoMigratorTest < Minitest::Test
       assert Valpo::SchemaInfo.validate_migrations!(path: it)
       assert_equal [1, 2], Valpo::SchemaInfo.versions(path: it)
       assert_equal 2, Valpo::SchemaInfo.latest(path: it)
+    end
+  end
+
+  def test_service_domain_slugs_are_unique_and_optional_until_allocated
+    first = create_app_service
+    second = create_app_service(project: first.project, name: "other")
+
+    assert_nil first.domain_slug
+    assert_nil second.domain_slug
+    db[:services].where(id: first.id).update(domain_slug: "hello-web")
+    assert_raises(Sequel::UniqueConstraintViolation) do
+      db[:services].where(id: second.id).update(domain_slug: "hello-web")
     end
   end
 
@@ -141,7 +153,7 @@ class ValpoMigratorTest < Minitest::Test
       assert_match "repaired active platform domains", warning
       assert_equal ["rel_01900000000070008000000000000001"], database[:releases].where(status: "active").select_map(:id)
       assert_equal 1, database[:platform_domains].where(active: true).count
-      assert_equal 4, database[:schema_info].get(:version)
+      assert_equal 5, database[:schema_info].get(:version)
     ensure
       database&.disconnect
     end
@@ -171,7 +183,7 @@ class ValpoMigratorTest < Minitest::Test
       assert_equal [service_id, service_id], jobs.map { it.fetch(:service_id) }
       assert_equal [1, 2], jobs.map { it.fetch(:operation_generation) }
       assert_equal ["compensating", "compensating"], jobs.map { it.fetch(:recovery_strategy) }
-      assert_equal 4, database[:schema_info].get(:version)
+      assert_equal 5, database[:schema_info].get(:version)
     ensure
       database&.disconnect
     end

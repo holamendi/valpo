@@ -231,7 +231,7 @@ class ValpoDeploymentsLifecycleTest < Minitest::Test
     domain = Valpo::Domain.where(service_id: app.id, kind: "generated").first
     assert_equal "verified", platform_domain.refresh.status
     assert platform_domain.active
-    assert_equal "web.hello.apps.example.com", domain.hostname
+    assert_equal "hello-web.apps.example.com", domain.hostname
     assert_equal "verified", domain.status
     assert_equal "active", release.refresh.status
     assert_equal "running", app.refresh.status
@@ -247,7 +247,7 @@ class ValpoDeploymentsLifecycleTest < Minitest::Test
     replacement, = Valpo::Domains::Configuration.stage("new.example.com")
     verifier = ValpoTestSupport::FakeDomainVerifier.new(
       error: Valpo::ValidationError.new("exact hostname is not reachable"),
-      fail_for: -> { it == "web.hello.new.example.com" }
+      fail_for: -> { it == "hello-web.new.example.com" }
     )
     _, domains = deployment_components(
       docker: ValpoTestSupport::FakeDocker.new,

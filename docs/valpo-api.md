@@ -103,3 +103,7 @@ Unsupported methods, unversioned resource paths, unknown paths, and extra traili
 `DELETE /v1/session` revokes only the presented credential. Every valid scope can revoke itself, but revoking the final active administrator returns `409`. Unknown, expired, and revoked tokens return `401`; these routes never participate in initial bootstrap. The scope exception applies only to these exact method/path pairs.
 
 The source installer performs initial credential issuance locally before API startup and stores the raw token root-only in `/etc/valpo/bootstrap-token`. Existing installations keep their credentials. HTTP bootstrap remains available for manual development setups until the first credential has been issued.
+
+Generated service hostnames use a persisted, unique service slug followed by the default domain, such as `acme-web.example.com`. Allocation adds a random suffix on collision and limits the slug to one DNS label. Custom domains remain independent. Existing generated domains are retired only after their replacement verifies.
+
+Schema migration 005 adds the nullable, unique service slug. Slugs are allocated when a verified default domain is reconciled. After upgrading, set the existing default domain again to generate and verify replacements for legacy dotted hostnames; migration alone does not change live routes.
