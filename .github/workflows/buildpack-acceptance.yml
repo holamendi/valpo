@@ -10,7 +10,7 @@ permissions:
 jobs:
   acceptance:
     runs-on: ubuntu-26.04
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -40,3 +40,43 @@ jobs:
             PATH=/var/lib/valpo/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
             /var/lib/valpo/.local/bin/mise x ruby@4.0.5 -- \
             ruby -Ilib packaging/buildpack_acceptance.rb
+      - name: Build a next-version artifact for upgrade acceptance
+        shell: bash
+        run: |
+          sudo cp -a . /tmp/valpo-upgrade-candidate
+          # Only the disposable candidate copy gets a synthetic next version.
+          sudo /var/lib/valpo/.local/share/mise/installs/ruby/4.0.5/bin/ruby -rjson - /tmp/valpo-upgrade-candidate <<'RUBY'
+          root = ARGV.fetch(0)
+          metadata_path = File.join(root, "release.json")
+          metadata = JSON.parse(File.read(metadata_path))
+          previous = metadata.fetch("version")
+          parts = previous.split("-").first.split(".").map(&:to_i)
+          parts[2] += 1
+          version = parts.join(".")
+          metadata["version"] = version
+          File.write(metadata_path, JSON.pretty_generate(metadata) + "\n")
+          path = File.join(root, "lib/valpo/version.rb")
+          File.write(path, File.read(path).sub("VERSION = \"#{previous}\"", "VERSION = \"#{version}\""))
+          path = File.join(root, "Gemfile.lock")
+          File.write(path, File.read(path).gsub("valpo (#{previous})", "valpo (#{version})"))
+          RUBY
+          sudo env PATH=/var/lib/valpo/.local/share/mise/installs/ruby/4.0.5/bin:/usr/local/bin:/usr/bin:/bin \
+            SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)" \
+            bash /tmp/valpo-upgrade-candidate/packaging/release/build.sh \
+            --architecture amd64 --output-dir /tmp/valpo-upgrade-artifacts
+      - name: Exercise upgrade failure recovery and activation
+        shell: bash
+        run: |
+          sudo env VALPO_UPGRADE_ACCEPTANCE=1 \
+            bash /tmp/valpo-upgrade-candidate/packaging/upgrade/acceptance.sh \
+            /tmp/valpo-upgrade-artifacts/valpo-*-linux-amd64.tar.zst
+      - name: Verify the existing app and Postgres data after upgrading
+        shell: bash
+        run: |
+          cd /opt/valpo/current
+          sudo -u valpo env -i HOME=/var/lib/valpo USER=valpo \
+            VALPO_ENV=production VALPO_CONFIG=/etc/valpo/valpo.yml VALPO_ACCEPTANCE=1 \
+            BUNDLE_GEMFILE=/opt/valpo/current/Gemfile RUBYLIB=/opt/valpo/current/bundle \
+            PATH=/opt/valpo/current/tools:/usr/local/bin:/usr/bin:/bin \
+            /opt/valpo/current/runtime/ruby/bin/ruby -Ilib \
+            /tmp/valpo-upgrade-candidate/packaging/buildpack_acceptance.rb verify

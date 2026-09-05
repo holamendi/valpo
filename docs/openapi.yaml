@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Valpo API
-  version: 0.1.0
+  version: 0.1.1
   description: >-
     HTTP API for the pre-release Valpo server. Ruby dry-validation contracts are
     the runtime authority; this document is the maintained public mirror.

@@ -6,4 +6,6 @@ docker.io
 docker-buildx
 file
 git
+iproute2
+util-linux
 zstd

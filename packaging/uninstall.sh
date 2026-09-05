@@ -88,8 +88,13 @@ rm -f \
   /etc/systemd/system/valpo-migrate.service \
   /etc/systemd/system/valpo-maintenance.service \
   /etc/systemd/system/valpo-maintenance.timer \
-  /usr/local/bin/valpo
-rm -rf /etc/valpo /opt/valpo /var/lib/valpo /var/log/valpo
+  /usr/local/bin/valpo \
+  /usr/local/bin/valpo-upgrade
+rm -rf /etc/valpo /opt/valpo /var/lib/valpo /var/log/valpo /var/lib/valpo-updater
+for unit in valpo-api valpo-worker valpo-migrate valpo-maintenance; do
+  rm -f "/etc/systemd/system/${unit}.service.d/10-upgrade-guard.conf"
+  rmdir "/etc/systemd/system/${unit}.service.d" 2>/dev/null || true
+done
 
 if command -v systemctl >/dev/null 2>&1; then
   systemctl daemon-reload

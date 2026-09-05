@@ -19,11 +19,11 @@ Build and smoke-test an artifact on a native matching Linux or Docker host:
 packaging/release/build.sh --architecture amd64 --output-dir dist
 packaging/release/smoke.sh \
   --architecture amd64 \
-  --archive dist/valpo-0.1.0-linux-amd64.tar.zst
+  --archive dist/valpo-0.1.1-linux-amd64.tar.zst
 packaging/release/sbom.sh \
   --architecture amd64 \
-  --archive dist/valpo-0.1.0-linux-amd64.tar.zst \
-  --output dist/valpo-0.1.0-linux-amd64.spdx.json
+  --archive dist/valpo-0.1.1-linux-amd64.tar.zst \
+  --output dist/valpo-0.1.1-linux-amd64.spdx.json
 ```
 
 The builder refuses emulation, unpinned Ruby, unsafe archive paths, and artifacts
@@ -31,12 +31,57 @@ above the configured size limits. GitHub Actions uploads archives, SPDX SBOMs,
 checksums, and attestations as workflow artifacts; it does not publish a GitHub
 Release.
 
-These artifacts establish the release payload and verification contract, not an
-installation path. Only extraction at `/opt/valpo/releases/VERSION` is
-supported by the payload. Activation, the `/opt/valpo/current` symlink, systemd
-installation, installation metadata, upgrades, and rollback are deliberately
-unchanged and remain future lifecycle work. The source installer below remains
-development-only.
+Artifacts can upgrade an existing installation using the host transaction below.
+The source installer remains the development bootstrap for a fresh host.
+
+## Host Upgrades
+
+Use a reviewed checkout outside `/opt/valpo` for the first upgrade:
+
+```bash
+sudo packaging/upgrade.sh apply \
+  /path/to/valpo-0.1.1-linux-amd64.tar.zst \
+  --sha256 <verified-sha256> --channel development
+```
+
+Subsequent upgrades use `packaging/upgrade.sh` from the reviewed incoming release
+to refresh the host tooling, or the installed root-owned `valpo-upgrade apply`
+command with the same arguments. The installed `valpo-upgrade recover` command
+always remains available during an interrupted transaction. The host needs zstd, iproute2, util-linux, and the normal Valpo runtime packages.
+The first invocation preserves a root-owned copy of the installed Ruby runtime
+under `/var/lib/valpo-updater/runtime/ruby`. Recovery uses that runtime and Ruby
+standard libraries, without loading Valpo or its application gems. `development` explicitly identifies a
+locally built, checksum-verified artifact. `preview` and `stable` additionally
+require GitHub CLI and a valid attestation from the repository's release workflow,
+on `refs/tags/vVERSION`, using a GitHub-hosted runner. Obtain the expected digest
+from a trusted build; calculating a digest from an untrusted download does not
+authenticate it.
+
+The upgrader verifies and stages an immutable release, serializes host changes,
+closes the API, and refuses queued/running work without interrupting the worker.
+It then stops the idle worker and checkpoints SQLite, configuration, encryption
+keys, host units, and installation metadata together. Migration and an actual
+authenticated API health check run before activation; the health check uses a
+private network namespace, with no external clients or job execution. Successful
+verification atomically switches `/opt/valpo/current`, records activation, and
+starts the services. App containers and Caddy remain running throughout.
+
+A failure before activation restores the checkpoint and previous services.
+After activation, automatic recovery only restarts the new release: it must not
+discard subsequent user writes. Interrupted pre-activation transactions block
+systemd starts, including after a reboot. Recover them with:
+
+```bash
+sudo valpo-upgrade recover
+```
+
+Checkpoints remain root-only under `/var/lib/valpo-updater/checkpoints` and include
+encryption keys. They are local upgrade recovery material, not off-host backups;
+they do not contain managed Postgres/Redis volumes. No retention pruning or late
+rollback command is provided yet. Uninstallation removes these checkpoints.
+Coordinate host administration so no direct local database writers run during an
+upgrade. Custom systemd drop-ins require review and are rejected. Source installs
+cannot overwrite an activated packaged installation.
 
 ## Supported Source Installation
 
@@ -310,6 +355,6 @@ The Ubuntu installer installs `docker-buildx` alongside `docker.io` and verifies
 
 Before each buildpack build, Valpo checks the Docker platform and tools, resolves builder/run-image digests, and verifies run-image export on the containerd image store. For Docker's `no suitable export target` failure, it materializes the declared run-image layers using Buildx and verifies export again. This is an automated compatibility workaround for [moby/moby#52193](https://github.com/moby/moby/issues/52193), not a switch of Docker storage backends. It applies to each newly resolved run image. Other export errors fail preflight without retrying the workaround.
 
-CI and release publication require `.github/workflows/buildpack-acceptance.yml`: install with full dependencies on a disposable Ubuntu host, apply the Ruby 4.0.6/Postgres 18 fixture manifest, build with multiple explicit buildpacks from an empty app cache, and verify an HTTP database write survives container restarts. The fixture substitutes local source checkout for GitHub authentication and uses the private loopback release URL. Public TLS and GitHub authentication are covered separately by live-server verification.
+CI and release publication require `.github/workflows/buildpack-acceptance.yml`: install with full dependencies on a disposable Ubuntu host, apply the Ruby 4.0.6/Postgres 18 fixture manifest, build with multiple explicit buildpacks from an empty app cache, and verify an HTTP database write survives container restarts. The same workflow builds a next-version artifact, injects migration and API readiness failures, verifies checkpoint recovery, activates the valid artifact, and checks the existing app's persisted data. The fixture substitutes local source checkout for GitHub authentication and uses the private loopback release URL. Public TLS and GitHub authentication are covered separately by live-server verification.
 
 On a disposable installed host, run `packaging/buildpack_acceptance.rb` with the installed Ruby bundle, `VALPO_ENV=production`, `VALPO_CONFIG=/etc/valpo/valpo.yml`, and `VALPO_ACCEPTANCE=1`. Run again with `verify` after reboot to check the same persisted item. The harness deliberately retains its project for that check; do not run it on a production host.

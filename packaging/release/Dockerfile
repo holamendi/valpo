@@ -141,6 +141,8 @@ COPY exe ./exe
 COPY db ./db
 COPY packaging/valpo.yml.example ./packaging/valpo.yml.example
 COPY packaging/release/launcher.sh ./packaging/release/launcher.sh
+COPY packaging/upgrade.sh ./packaging/upgrade.sh
+COPY packaging/upgrade/upgrader.rb packaging/upgrade/probe.rb ./packaging/upgrade/
 COPY --from=gems /opt/valpo/releases/${VALPO_VERSION}/bundle /opt/valpo/releases/${VALPO_VERSION}/bundle
 
 RUN <<'SCRIPT'

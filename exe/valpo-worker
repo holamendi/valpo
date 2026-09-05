@@ -17,7 +17,7 @@ OptionParser.new do
   it.on("--migrate", "Run migrations before starting") { options[:migrate] = true }
 end.parse!(ARGV)
 
-config = Valpo::Config.load(path: options[:config])
+config = Valpo::Config.load(path: options[:config] || ENV["VALPO_CONFIG"])
 Valpo::Boot.run(config:, migrate: options[:migrate])
 
 worker = Valpo::Jobs::Worker.new(config:, poll_interval: config.worker_poll_interval)

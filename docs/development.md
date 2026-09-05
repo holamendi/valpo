@@ -92,7 +92,7 @@ refuse QEMU or another architecture mismatch:
 packaging/release/build.sh --architecture amd64 --output-dir dist
 packaging/release/smoke.sh \
   --architecture amd64 \
-  --archive dist/valpo-0.1.0-linux-amd64.tar.zst
+  --archive dist/valpo-0.1.1-linux-amd64.tar.zst
 ```
 
 Set `SOURCE_DATE_EPOCH` to a Unix timestamp for reproducible builds; otherwise

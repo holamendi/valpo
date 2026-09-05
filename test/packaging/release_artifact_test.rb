@@ -160,6 +160,21 @@ class ValpoPackagingReleaseArtifactTest < Minitest::Test
     end
   end
 
+  def test_migration_executable_honors_the_config_environment_variable
+    Dir.mktmpdir("valpo-config-migrate") do
+      database_path = File.join(it, "configured.sqlite3")
+      config_path = File.join(it, "valpo.yml")
+      File.write(config_path, "production:\n  database_path: #{database_path}\n")
+      stdout, stderr, status = Open3.capture3(
+        {"BUNDLE_GEMFILE" => nil, "VALPO_ENV" => "production", "VALPO_CONFIG" => config_path, "VALPO_DATABASE_PATH" => nil},
+        RbConfig.ruby, MIGRATE
+      )
+
+      assert status.success?, "#{stdout}\n#{stderr}"
+      assert_path_exists database_path
+    end
+  end
+
   def test_smoke_test_checks_archive_safety_runtime_contents_and_offline_health
     dockerfile = File.read(SMOKE_DOCKERFILE)
     smoke = File.read(SMOKE_CONTAINER_SCRIPT)

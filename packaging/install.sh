@@ -73,6 +73,8 @@ bootstrap_schema_sha256() {
 }
 
 preflight_bootstrap_schema() {
+  [[ ! -e "${PREFIX}/current" && ! -L "${PREFIX}/current" && ! -e /var/lib/valpo-updater/pending.json ]] || \
+    fail "Packaged or interrupted installation detected; use valpo-upgrade apply or valpo-upgrade recover"
   local incoming_schema="${SOURCE_DIR}/db/migrations/001_bootstrap.rb"
   local installed_schema="${PREFIX}/db/migrations/001_bootstrap.rb"
 
@@ -110,12 +112,15 @@ install_packages() {
     docker-buildx \
     git \
     gnupg \
+    iproute2 \
     lsb-release \
     procps \
     rsync \
     tar \
     unzip \
-    xz-utils
+    util-linux \
+    xz-utils \
+    zstd
 }
 
 check_download_connectivity() {

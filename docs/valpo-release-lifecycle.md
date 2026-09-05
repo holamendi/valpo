@@ -1,6 +1,6 @@
 # Valpo Release And Host Lifecycle
 
-Valpo can build deterministic native amd64/arm64 archives, but artifact activation, transactional upgrades, first-class backup/restore, and unattended updates are not implemented. The source installer remains a development path because it replaces `/opt/valpo` in place and cannot atomically restore code and database state after a failed transition.
+Valpo builds native amd64/arm64 archives and supports transactional upgrades of an existing Ubuntu 26.04 installation. First-class off-host backup/restore, fresh-host artifact installation, and unattended updates remain future work. The source installer is a development bootstrap and refuses to overwrite an activated packaged installation.
 
 ## Artifact Contract
 
@@ -18,7 +18,7 @@ Production preflight should reject conflicts. SSH hardening must also verify a n
 
 Each release carries `release.json` with its code version, API compatibility version, supported and target database schemas, configuration schema, and host-profile version. Separate root-owned installation metadata records the selected channel, verified artifact digest, and installation time.
 
-The current release boots only when the database matches its target schema. A future updater will use the supported schema range during preflight and migrate before activation.
+The current release boots only when the database matches its target schema. The host updater checks the supported schema range during preflight and migrates before activation.
 
 `001_bootstrap.rb` is permanent; every schema change adds one contiguous migration. Migrations are self-contained and use expand/contract changes where practical. Database down-migrations are not the primary rollback mechanism.
 
@@ -26,15 +26,18 @@ SQLite check constraints enforce the finite service, release, dependency, domain
 
 ## Upgrade Transaction
 
-Production installation will use immutable version directories and an atomic `current` symlink. An update will:
+The host updater uses immutable version directories and an atomic `current` symlink:
 
-1. Acquire a root-owned lock, verify the candidate, and refuse active work.
-2. Stop the API and worker while applications continue running.
-3. Checkpoint SQLite, the keyring, and configuration together.
-4. Migrate with the candidate and atomically switch the active release.
-5. Restart, verify, reconcile runtime state, and record the result.
+1. Acquire a root-owned lock and verify the candidate checksum and, for preview/stable channels, its tagged release-workflow attestation.
+2. Stage the native artifact and validate configuration, schema compatibility, and host layout.
+3. Close the API and maintenance scheduler; reject queued/running jobs before stopping the idle worker. App containers and Caddy keep running.
+4. Checkpoint SQLite using its backup API, with the keyring, configuration, units, and installation metadata. Persist a recovery journal before mutation.
+5. Migrate with the candidate and check authenticated API readiness in an isolated network namespace. Construct worker handlers without consuming jobs.
+6. Install release-based units, atomically switch `current`, durably mark activation committed, then reopen the API and worker.
 
-A pre-activation failure restores the checkpoint and prior release. Later code-only rollback is safe only when the prior release supports the current schema; restoring an older database after new mutations is a separate, potentially destructive recovery operation.
+A pre-activation failure restores the checkpoint and prior release. A systemd guard prevents starting against an interrupted migration after a crash or reboot; `sudo valpo-upgrade recover` restores the old state before reopening. After commitment, recovery only restarts the new release, preserving subsequent writes. Late rollback and schema downgrades are not provided.
+
+See [host upgrade commands](../packaging/README.md#host-upgrades). Upgrade checkpoints are retained under `/var/lib/valpo-updater/checkpoints`; they are root-only and contain encryption keys. They are not automatically pruned and do not back up managed service volumes. Normal application reconciliation remains an explicit operator action; the readiness probe does not change running applications.
 
 ## Recovery
 

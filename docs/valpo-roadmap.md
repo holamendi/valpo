@@ -13,14 +13,14 @@ The current pre-release provides:
 - a validated `valpo.toml` manifest with dry-run, add/update reconciliation;
 - scoped API credentials, encrypted service/provider secrets, key verification and rotation;
 - storage maintenance, runtime repair, and repeatable VPS smoke tests;
-- frozen incremental migrations, release compatibility metadata, and verified native amd64/arm64 artifacts.
+- frozen incremental migrations, release compatibility metadata, and verified native amd64/arm64 artifacts;
+- immutable release activation with a serialized upgrade transaction, local checkpoints, and interrupted-upgrade recovery.
 
 ## 1. Production Installation And Recovery
 
 The current source installer is for development. Before expanding the product, Valpo needs:
 
-- immutable version directories and atomic activation;
-- a serialized upgrade transaction with preflight, checkpoint, migration, verification, and rollback;
+- fresh-host installation directly from verified artifacts;
 - control-plane backup and restore for SQLite, the keyring, configuration, and release metadata;
 - service-aware Postgres and Redis backup and restore tested on a clean host;
 - separate API and Docker-capable worker privileges;
@@ -33,7 +33,7 @@ The release must survive an injected upgrade failure without interrupting runnin
 
 Add GitLab after the GitHub path is stable. Provider support must preserve the same source, build, release, webhook, and failure behavior instead of introducing provider-specific deployment models.
 
-Custom builders, build secrets, Railpack, static-output detection, and image rebase remain outside the current build scope.
+Build secrets, Railpack, static-output detection, and image rebase remain outside the current build scope. Build targets already support custom builders and ordered buildpacks.
 
 ## 3. Static Sites
 

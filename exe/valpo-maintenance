@@ -15,7 +15,7 @@ OptionParser.new do
   it.on("--config PATH", "Path to valpo.yml") { options[:config] = it }
 end.parse!(ARGV)
 
-config = Valpo::Config.load(path: options[:config])
+config = Valpo::Config.load(path: options[:config] || ENV["VALPO_CONFIG"])
 Valpo::Boot.run(config:)
 job = Valpo::Jobs::Queue.new.enqueue_unique("maintain_storage")
 puts job.id
