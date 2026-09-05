@@ -36,4 +36,18 @@ class ValpoServicesRegistryTest < Minitest::Test
     refute_includes Valpo::Services::Registry.command(redis).join(" "), password
     refute_includes Valpo::Services::Registry.readiness_command(redis).join(" "), password
   end
+
+  def test_postgres_volume_path_targets_the_version_specific_data_directory
+    project = create_project
+    expected = {
+      "16" => "/var/lib/postgresql/data",
+      "17" => "/var/lib/postgresql/data",
+      "18" => "/var/lib/postgresql"
+    }
+
+    expected.each do |version, path|
+      service = create_managed_service(project:, name: "database-#{version}", version:)
+      assert_equal path, Valpo::Services::Registry.volume_path(service)
+    end
+  end
 end

@@ -27,6 +27,7 @@ class ValpoDockerClientTest < Minitest::Test
       ["docker", "volume", "create", "--label", "valpo.owned=true", "valpo-data"],
       client.volume_create_command("valpo-data", labels: {"valpo.owned" => "true"})
     )
+    assert_equal ["docker", "volume", "inspect", "valpo-data"], client.volume_inspect_command("valpo-data")
     assert_equal ["docker", "volume", "rm", "--force", "valpo-data"], client.volume_rm_command("valpo-data", force: true)
     assert_equal(
       ["docker", "volume", "ls", "--filter", "label=valpo.owned=true", "--format", "{{.Name}}"],

@@ -37,21 +37,24 @@ module Valpo
       def restart_service(service_id:, queue:, job_id:)
         service = find_managed_service(service_id)
         runtime = runtime_for(queue:, job_id:)
+        validate_host_start!(service)
+        runtime.validate_service_container_volume!(service)
         service.transition_to!("restarting")
         event(queue, job_id, "system", "Restarting #{service.name}")
-        validate_host_start!(service)
         runtime.restart_service_container(service)
         service.transition_to!("running")
         service.refresh
       rescue
-        service&.transition_to!("failed") unless service&.status == "deleting"
+        service&.transition_to!("failed") if service&.status == "restarting"
         raise
       end
 
       def stop_service(service_id:, queue:, job_id:)
         service = find_managed_service(service_id)
         managed = Registry.managed_config(service)
-        runtime_for(queue:, job_id:).stop_container(managed.container_name, ignore_missing: true)
+        runtime = runtime_for(queue:, job_id:)
+        runtime.validate_service_container_volume!(service)
+        runtime.stop_container(managed.container_name, ignore_missing: true)
         service.transition_to!("stopped")
       end
 

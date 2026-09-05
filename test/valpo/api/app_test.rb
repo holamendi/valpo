@@ -383,6 +383,57 @@ class ValpoAPIAppTest < Minitest::Test
     assert_nil Valpo::ServiceEnvironmentVariable[variable.id]
   end
 
+  def test_service_environment_reveal_requires_admin_for_custom_and_managed_secrets
+    project = create_project
+    service = create_app_service(project:)
+    postgres = create_managed_service(project:)
+    redis = create_managed_service(project:, name: "cache", kind: "redis")
+    Valpo::Services::EnvironmentManager.new.set(
+      service_id: service.id,
+      name: "API_KEY",
+      value: "custom-secret"
+    )
+    [postgres, redis].each do
+      Valpo::ServiceDependency.create(
+        service_id: service.id,
+        dependency_service_id: it.id,
+        status: "active"
+      )
+    end
+    expected_managed_secrets = [postgres, redis].each_with_object({}) do |managed, values|
+      Valpo::Services::Registry.binding_environment(managed).each do |name, value|
+        values[name] = value if Valpo::Services::Registry.secret_env_key?(name)
+      end
+    end
+    assert_equal Valpo::Services::Registry::SECRET_ENV_KEYS.sort, expected_managed_secrets.keys.sort
+
+    _reader, reader_token = Valpo::APICredential.issue(name: "reader", scopes: ["read"])
+    header "Authorization", "Bearer #{reader_token}"
+    get "/v1/services/#{service.id}/env"
+    assert_equal 200, last_response.status
+    sensitive = json.fetch("env").select { it.fetch("sensitive") }
+    assert sensitive.all? { it.fetch("redacted") && it.fetch("value") == "********" }
+    refute_includes last_response.body, "custom-secret"
+    expected_managed_secrets.each_value { refute_includes last_response.body, it }
+
+    get "/v1/services/#{service.id}/env?reveal=true"
+    assert_equal 403, last_response.status
+    assert_equal({"error" => "forbidden", "message" => "An admin API credential is required"}, json)
+    refute_includes last_response.body, "custom-secret"
+    expected_managed_secrets.each_value { refute_includes last_response.body, it }
+
+    header "Authorization", "Bearer #{@admin_token}"
+    get "/v1/services/#{service.id}/env?reveal=true"
+    assert_equal 200, last_response.status
+    revealed = json.fetch("env").to_h { [it.fetch("name"), it] }
+    assert_equal "custom-secret", revealed.fetch("API_KEY").fetch("value")
+    refute revealed.fetch("API_KEY").fetch("redacted")
+    expected_managed_secrets.each do |name, value|
+      assert_equal value, revealed.fetch(name).fetch("value")
+      refute revealed.fetch(name).fetch("redacted")
+    end
+  end
+
   def test_source_deploy_uses_configured_build_target_and_accepts_ref_override
     project = create_project
     source = Valpo::Source.create(

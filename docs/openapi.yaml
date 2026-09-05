@@ -676,6 +676,7 @@ paths:
         - name: reveal
           in: query
           required: false
+          description: Reveal plaintext sensitive values. Requires an API credential with admin scope; other authenticated credentials receive 403 forbidden.
           schema: {type: boolean}
       responses:
         '200':
