@@ -64,4 +64,10 @@ systemctl is-active --quiet valpo-api
 systemctl is-active --quiet valpo-worker
 containers_after="$(docker ps --filter label=valpo.owned=true --format '{{.ID}}' | sort)"
 [[ "$containers_before" == "$containers_after" ]]
+env VALPO_ENV=production VALPO_CONFIG=/etc/valpo/valpo.yml \
+  BUNDLE_GEMFILE=/opt/valpo/current/Gemfile RUBYLIB=/opt/valpo/current/bundle \
+  /opt/valpo/current/runtime/ruby/bin/ruby -I/opt/valpo/current/lib -rbundler/setup -rvalpo -rsqlite3 -e '
+    db = SQLite3::Database.new(Valpo::Config.load.database_path)
+    abort "Candidate migration did not persist" unless db.get_first_value("SELECT value FROM upgrade_acceptance") == "migration verified"
+  '
 echo 'Upgrade acceptance passed: migration rollback, readiness rollback, activation, unchanged application containers'

@@ -2,6 +2,11 @@ name: Buildpack installation acceptance
 
 on:
   workflow_call:
+    inputs:
+      online-release:
+        description: Test the published release through automatic discovery
+        type: boolean
+        default: false
   workflow_dispatch:
 
 permissions:
@@ -15,8 +20,11 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Prepare disposable runner for the supported Ubuntu package profile
         shell: bash
+        env:
+          ONLINE_RELEASE: ${{ inputs.online-release }}
         run: |
           # The hosted runner is disposable. Remove conflicting vendor packages
           # here only; the Valpo installer never replaces an operator's backend.
@@ -26,7 +34,23 @@ jobs:
             sudo apt-get remove -y "${packages[@]}"
           fi
           sudo mkdir /tmp/valpo-acceptance-source
-          sudo cp -a . /tmp/valpo-acceptance-source/
+          if [[ "$ONLINE_RELEASE" == true ]]; then
+            version="$(jq -r .version release.json)"
+            baseline=''
+            while read -r revision; do
+              previous="$(git show "$revision:release.json" | jq -r .version)"
+              if [[ "$previous" != "$version" ]]; then
+                baseline="$revision"
+                break
+              fi
+            done < <(git rev-list --first-parent HEAD)
+            [[ -n "$baseline" ]] || { echo 'No previous version found for online acceptance' >&2; exit 1; }
+            git archive "$baseline" | sudo tar -xf - -C /tmp/valpo-acceptance-source
+          else
+            sudo cp -a . /tmp/valpo-acceptance-source/
+          fi
+          sudo mkdir /tmp/valpo-online-tooling
+          sudo cp -a packaging /tmp/valpo-online-tooling/
       - name: Install Valpo with all dependencies
         run: sudo bash /tmp/valpo-acceptance-source/packaging/install.sh
       - name: Exercise manifest, Ruby buildpacks, Postgres, and restart persistence
@@ -41,6 +65,7 @@ jobs:
             /var/lib/valpo/.local/bin/mise x ruby@4.0.5 -- \
             ruby -Ilib packaging/buildpack_acceptance.rb
       - name: Build a next-version artifact for upgrade acceptance
+        if: ${{ !inputs.online-release }}
         shell: bash
         run: |
           sudo cp -a . /tmp/valpo-upgrade-candidate
@@ -54,22 +79,40 @@ jobs:
           parts[2] += 1
           version = parts.join(".")
           metadata["version"] = version
+          schema = metadata.fetch("schema_target") + 1
+          metadata["schema_target"] = metadata["schema_max"] = schema
+          migration = File.join(root, "db/migrations", "%03d_upgrade_acceptance.rb" % schema)
+          File.write(migration, "Sequel.migration do\n  up do\n    create_table(:upgrade_acceptance) { String :value }\n    self[:upgrade_acceptance].insert(value: 'migration verified')\n  end\nend\n")
           File.write(metadata_path, JSON.pretty_generate(metadata) + "\n")
           path = File.join(root, "lib/valpo/version.rb")
           File.write(path, File.read(path).sub("VERSION = \"#{previous}\"", "VERSION = \"#{version}\""))
           path = File.join(root, "Gemfile.lock")
-          File.write(path, File.read(path).gsub("valpo (#{previous})", "valpo (#{version})"))
+          File.write(path, File.read(path).gsub("valpo (#{Gem::Version.new(previous)})", "valpo (#{version})"))
           RUBY
           sudo env PATH=/var/lib/valpo/.local/share/mise/installs/ruby/4.0.5/bin:/usr/local/bin:/usr/bin:/bin \
             SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)" \
             bash /tmp/valpo-upgrade-candidate/packaging/release/build.sh \
             --architecture amd64 --output-dir /tmp/valpo-upgrade-artifacts
       - name: Exercise upgrade failure recovery and activation
+        if: ${{ !inputs.online-release }}
         shell: bash
         run: |
           sudo env VALPO_UPGRADE_ACCEPTANCE=1 \
             bash /tmp/valpo-upgrade-candidate/packaging/upgrade/acceptance.sh \
             /tmp/valpo-upgrade-artifacts/valpo-*-linux-amd64.tar.zst
+      - name: Update from the published release without a tag
+        if: inputs.online-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          expected="$(jq -r .version release.json)"
+          channel=stable
+          [[ "$expected" != *-* ]] || channel=preview
+          sudo --preserve-env=GH_TOKEN bash /tmp/valpo-online-tooling/packaging/upgrade.sh --channel "$channel"
+          [[ "$(jq -r .version /var/lib/valpo-updater/installation.json)" == "$expected" ]]
+          sudo --preserve-env=GH_TOKEN valpo-upgrade | tee /tmp/valpo-online-noop.log
+          grep -q 'Already up to date' /tmp/valpo-online-noop.log
+
       - name: Verify the existing app and Postgres data after upgrading
         shell: bash
         run: |
@@ -79,4 +122,4 @@ jobs:
             BUNDLE_GEMFILE=/opt/valpo/current/Gemfile RUBYLIB=/opt/valpo/current/bundle \
             PATH=/opt/valpo/current/tools:/usr/local/bin:/usr/bin:/bin \
             /opt/valpo/current/runtime/ruby/bin/ruby -Ilib \
-            /tmp/valpo-upgrade-candidate/packaging/buildpack_acceptance.rb verify
+            /tmp/valpo-online-tooling/packaging/buildpack_acceptance.rb verify

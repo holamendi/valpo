@@ -17,6 +17,29 @@ class ValpoHostUpgrade
   TIMER = "valpo-maintenance.timer"
   class Error < StandardError; end
 
+  class Version
+    include Comparable
+
+    def initialize(text)
+      @text = text
+      core, preview = text.split("-", 2)
+      @key = core.split(".").map(&:to_i) + [preview ? 0 : 1,
+        if preview
+          preview.split(".").map { /\A\d+\z/.match?(it) ? [0, it.to_i] : [1, it] }
+        else
+          []
+        end]
+    end
+
+    def <=>(other) = @key <=> other.key
+    def prerelease? = @text.include?("-")
+    def to_s = @text
+
+    protected
+
+    attr_reader :key
+  end
+
   def initialize(root: "/", out: $stdout)
     @root = root
     @prefix = path("opt/valpo")
@@ -57,7 +80,7 @@ class ValpoHostUpgrade
     end
     release, metadata = stage(archive, sha256, channel)
     previous_metadata = JSON.parse(File.read(File.join(current, "release.json")))
-    unless Gem::Version.new(metadata.fetch("version")) > Gem::Version.new(previous_metadata.fetch("version"))
+    unless release_version("v#{metadata.fetch("version")}") > release_version("v#{previous_metadata.fetch("version")}")
       raise Error, "Upgrades require a higher release version; late rollback is not supported"
     end
     info = probe(release, "inspect")
@@ -107,6 +130,84 @@ class ValpoHostUpgrade
     end
     resume(journal)
     @out.puts "Activated #{metadata.fetch("version")}; checkpoint: #{checkpoint}"
+  end
+
+  # Online discovery is read-only until a completed, immutable release is selected.
+  def update(tag: nil, channel: nil)
+    raise Error, "Interrupted upgrade; run valpo-upgrade recover first" if File.exist?(@pending)
+    channel ||= File.file?(@metadata_path) ? JSON.parse(File.read(@metadata_path)).fetch("channel") : "stable"
+    raise Error, "Online updates require --channel stable or preview" unless %w[stable preview].include?(channel)
+    raise Error, "Invalid release tag" if tag && !release_version(tag)
+    current = File.symlink?(current_link) ? File.realpath(current_link) : @prefix
+    installed = release_version("v#{JSON.parse(File.read(File.join(current, "release.json"))).fetch("version")}")
+    raise Error, "Invalid installed version" unless installed
+    architecture = {"x86_64" => "amd64", "aarch64" => "arm64"}[run("uname", "-m").strip]
+    raise Error, "Unsupported host architecture" unless architecture
+    releases = if tag
+      [github_json("releases/tags/#{tag}")]
+    else
+      pages = JSON.parse(run("gh", "api", "--hostname", "github.com", "--paginate", "--slurp", "repos/holamendi/valpo/releases?per_page=100"))
+      pages.flatten(1)
+    end
+    candidates = releases.select do
+      version = release_version(it["tag_name"])
+      version && !it["draft"] && it["published_at"] &&
+        (channel == "preview" || (!it["prerelease"] && !version.prerelease?))
+    end
+    selected = candidates.max_by { release_version(it.fetch("tag_name")) }
+    raise Error, "Release is unpublished or excluded by channel" if tag && !selected
+    unless selected && release_version(selected.fetch("tag_name")) > installed
+      raise Error, "Upgrades require a higher release version" if tag
+      @out.puts "Already up to date (#{installed}, #{channel})"
+      return
+    end
+    raise Error, "Release must be immutable before updating" unless selected["immutable"] == true
+    raise Error, "Release tag mismatch" if tag && selected.fetch("tag_name") != tag
+    version = selected.fetch("tag_name").delete_prefix("v")
+    name = "valpo-#{version}-linux-#{architecture}.tar.zst"
+    # Require the complete publication contract, including both native builds.
+    required = ["SHA256SUMS"] + %w[amd64 arm64].flat_map do |arch|
+      %w[tar.zst spdx.json provenance.intoto.jsonl sbom.intoto.jsonl].map { "valpo-#{version}-linux-#{arch}.#{it}" }
+    end
+    assets = selected.fetch("assets")
+    required.each do |asset_name|
+      matches = assets.select { it["name"] == asset_name && it["state"] == "uploaded" }
+      raise Error, "Missing or ambiguous release asset: #{asset_name}" unless matches.size == 1
+    end
+    Dir.mktmpdir("download-", @state) do
+      checksums = download_asset(assets.find { it["name"] == "SHA256SUMS" }, it, limit: 65_536)
+      matches = File.readlines(checksums).filter_map do
+        match = /\A([0-9a-f]{64})  (?:\.\/)?#{Regexp.escape(name)}\n?\z/.match(it)
+        match && match[1]
+      end
+      raise Error, "Missing or ambiguous archive checksum" unless matches.size == 1
+      archive = download_asset(assets.find { it["name"] == name }, it, limit: 75 * 1024 * 1024)
+      # apply verifies checksum and exact-tag workflow provenance before extraction.
+      apply(archive:, sha256: matches.first, channel:)
+    end
+  end
+
+  def release_version(tag)
+    return unless tag.is_a?(String) && /\Av(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?\z/.match?(tag)
+    preview = tag.split("-", 2)[1]
+    return if preview&.split(".")&.any? { /\A0\d+\z/.match?(it) }
+    Version.new(tag.delete_prefix("v"))
+  end
+
+  def github_json(endpoint)
+    JSON.parse(run("gh", "api", "--hostname", "github.com", "repos/holamendi/valpo/#{endpoint}"))
+  end
+
+  def download_asset(asset, directory, limit:)
+    size = asset.fetch("size")
+    raise Error, "Invalid release asset size" unless size.is_a?(Integer) && size.positive? && size <= limit
+    id = asset.fetch("id")
+    raise Error, "Invalid release asset ID" unless id.is_a?(Integer) && id.positive?
+    contents = run("gh", "api", "--hostname", "github.com", "repos/holamendi/valpo/releases/assets/#{id}", "--header", "Accept: application/octet-stream", output_limit: limit)
+    raise Error, "Incomplete or oversized release download" unless contents.bytesize == size && contents.bytesize <= limit
+    destination = File.join(directory, asset.fetch("name"))
+    File.write(destination, contents, mode: "wb", perm: 0o600)
+    destination
   end
 
   def recover
@@ -259,11 +360,23 @@ class ValpoHostUpgrade
     fields
   end
 
-  def run(*args, input: "", chdir: @prefix)
+  def run(*args, input: "", chdir: @prefix, output_limit: 8 * 1024 * 1024)
     options = {pgroup: true}
     options[:chdir] = chdir if File.directory?(chdir)
     Open3.popen3(*args, **options) do |stdin, stdout, stderr, wait|
-      readers = [stdout, stderr].map { |stream| Thread.new { stream.read } }
+      readers = [stdout, stderr].map do |stream|
+        Thread.new do
+          output = +"".b
+          while (chunk = stream.read(65_536))
+            output << chunk
+            if output.bytesize > output_limit
+              Process.kill("KILL", -wait.pid)
+              raise Error, "Command output exceeds size limit"
+            end
+          end
+          output
+        end
+      end
       begin
         Timeout.timeout(120) do
           stdin.write(input)
@@ -467,20 +580,29 @@ if $PROGRAM_NAME == __FILE__
   begin
     options = {}
     parser = OptionParser.new
-    parser.banner = "Usage: valpo-upgrade apply ARCHIVE --sha256 DIGEST --channel CHANNEL | recover"
+    parser.banner = "Usage: valpo-upgrade [update | vVERSION] [--channel stable|preview] | apply ARCHIVE --sha256 DIGEST --channel CHANNEL | recover"
     parser.on("--sha256 DIGEST") { options[:sha256] = it }
     parser.on("--channel CHANNEL") { options[:channel] = it }
     parser.parse!(ARGV)
     command, archive = ARGV
+    online = (ARGV.empty? || (ARGV.size == 1 && (command == "update" || command.start_with?("v")))) && !options.key?(:sha256)
     valid_command = (command == "recover" && ARGV.size == 1) || (command == "apply" && ARGV.size == 2 && options.size == 2)
-    raise ValpoHostUpgrade::Error, parser.to_s unless valid_command
+    raise ValpoHostUpgrade::Error, parser.to_s unless valid_command || online
     raise ValpoHostUpgrade::Error, "Run the host updater as root" unless Process.euid.zero?
     os = File.read("/etc/os-release")
     raise ValpoHostUpgrade::Error, "Only Ubuntu 26.04 is supported" unless os.match?(/^ID=ubuntu$/) && os.match?(/^VERSION_ID="26\.04"$/)
     File.umask(0o077)
     Signal.trap("TERM") { raise Interrupt, "Upgrade interrupted" }
     updater = ValpoHostUpgrade.new
-    updater.synchronize { (command == "recover") ? updater.recover : updater.apply(archive:, **options) }
+    updater.synchronize do
+      if online
+        updater.update(tag: command&.start_with?("v") ? command : nil, **options)
+      elsif command == "recover"
+        updater.recover
+      else
+        updater.apply(archive:, **options)
+      end
+    end
   rescue StandardError, Interrupt => e
     warn "valpo-upgrade: #{e.message}"
     exit 1

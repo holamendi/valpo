@@ -27,16 +27,54 @@ packaging/release/sbom.sh \
 ```
 
 The builder refuses emulation, unpinned Ruby, unsafe archive paths, and artifacts
-above the configured size limits. GitHub Actions uploads archives, SPDX SBOMs,
-checksums, and attestations as workflow artifacts; it does not publish a GitHub
-Release.
+above the configured size limits. On a version tag, GitHub Actions publishes archives, SPDX SBOMs, checksums, and
+attestations as durable GitHub Release assets after all release gates pass.
+Enable immutable releases in repository settings before pushing a tag. Uploads
+remain draft until complete; published tags and assets must never be replaced.
+A failed publication may leave a draft for manual inspection; reruns refuse to
+overwrite it. Untagged runs produce only workflow artifacts.
 
 Artifacts can upgrade an existing installation using the host transaction below.
 The source installer remains the development bootstrap for a fresh host.
 
 ## Host Upgrades
 
-Use a reviewed checkout outside `/opt/valpo` for the first upgrade:
+Install the updated host tooling from a reviewed checkout outside `/opt/valpo`
+with `sudo packaging/upgrade.sh --channel stable`. Subsequent checks need no tag:
+
+```bash
+sudo valpo-upgrade
+sudo valpo-upgrade --channel preview
+sudo valpo-upgrade v0.1.2 --channel stable
+```
+
+The no-argument command (also spelled `update`) fetches all release pages and
+selects the highest semantic version above the installed version. It does not
+use GitHub's “latest” label or tag timestamps. It exits successfully without
+changes when already up to date. This checks on invocation; no background timer
+is installed. The saved installation channel is reused, defaulting to stable
+for source installs. Development installations must explicitly choose stable or
+preview for online updates. Stable excludes prereleases; preview includes both
+prereleases and final releases. An explicit tag must also be newer and match the
+selected channel. Drafts and unpublished tags are never installed.
+
+Online updates require a complete immutable release and select amd64 or arm64
+from the host architecture. Downloads use GitHub asset IDs in root-only temporary
+staging and are size-limited. The archive checksum and exact-tag workflow
+attestation must verify before extraction or candidate execution. Failed downloads
+are removed. Missing assets, changed release identities, and verification failures
+leave the active installation unchanged.
+
+GitHub CLI must be installed and authenticated as root, or supply `GH_TOKEN` via
+`sudo --preserve-env=GH_TOKEN valpo-upgrade`. Private release downloads require a
+token with repository Contents read access; provenance verification also needs
+Attestations read access. Never put a token in command arguments or configuration
+committed to Git. Private repositories require GitHub Enterprise Cloud to generate
+artifact attestations; making the repository public is not required for downloads,
+but may be necessary for this provenance workflow without Enterprise Cloud. See
+[GitHub's attestation requirements](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations).
+
+For a local development archive or offline artifact, use:
 
 ```bash
 sudo packaging/upgrade.sh apply \
@@ -82,11 +120,6 @@ rollback command is provided yet. Uninstallation removes these checkpoints.
 Coordinate host administration so no direct local database writers run during an
 upgrade. Custom systemd drop-ins require review and are rejected. Source installs
 cannot overwrite an activated packaged installation.
-
-Tag-based update discovery and downloads are not implemented. The proposed
-`valpo-upgrade vVERSION` workflow must first have durable release assets and
-verified provenance; see [the release-tag issue](https://github.com/holamendi/valpo/issues/31).
-The existing `apply` command remains the local/offline interface.
 
 ## Supported Source Installation
 

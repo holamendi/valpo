@@ -208,6 +208,7 @@ class ValpoPackagingReleaseArtifactTest < Minitest::Test
     assert_includes workflow, "Delete transfer artifacts"
     assert_includes workflow, "actions/artifacts/${artifact_id}"
     refute_includes workflow.downcase, "qemu"
-    refute_includes workflow, "gh release"
+    assert_includes workflow, "Publish immutable GitHub release"
+    assert_includes workflow, "needs: [prepare, build, acceptance]"
   end
 end
