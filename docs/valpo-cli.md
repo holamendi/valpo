@@ -303,4 +303,6 @@ valpo job wait ID
 valpo job events ID
 ```
 
+Job polling retries transient connection failures up to three times with bounded backoff, preserving the event cursor. It does not retry authentication errors or resubmit deployment requests. If waiting ends before the job finishes, resume with `valpo job wait ID`.
+
 Normal workflows should rely on default waiting or `--no-wait`; use the job commands when investigating queue or worker behavior.

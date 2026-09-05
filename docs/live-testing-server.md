@@ -130,8 +130,8 @@ Postgres and web services are running. The web app is available at
 
 The worker builder setting in `/etc/valpo/valpo.yml` is now
 `heroku/builder@sha256:e0d2453e68106a8000da70780f631e888ca61a515ea9921a26a1f7391964908a`
-(Heroku 26), because the pinned Paketo builder does not support Ruby 4.0.6.
-This changes the builder for subsequent buildpack builds on this test server.
+(Heroku 26), because the former pinned Paketo builder did not support Ruby 4.0.6.
+Heroku 26 is now also the repository default; the Sinatra manifest declares its own pinned builder and ordered buildpacks.
 The preceding configuration is saved as `/etc/valpo/valpo.before-heroku-builder.yml`.
 
 Build attempts subsequently failed fetching Docker Hub lifecycle metadata over
@@ -147,10 +147,10 @@ image needed its layers materialized through BuildKit to work around
 `FROM heroku/heroku:26` build tagged `valpo-heroku-runtime-check` allowed
 `docker save --platform linux/amd64 heroku/heroku:26` and the CNB exporter
 to succeed. This is runtime-image preparation; the application build still
-uses buildpacks. It may need repeating when the runtime image changes.
+uses buildpacks. Valpo now detects and performs this preparation automatically for newly resolved run images.
 
 The server also reported a separate storage-maintenance error,
-`comparison of String with Time failed`, during this trial; it remains unresolved.
+`comparison of String with Time failed`, during this trial. The cache-retention query now loads a typed release timestamp instead of comparing SQLite aggregate text with a Ruby `Time`.
 
 
 ## Buildpack hardening verification (2026-09-05)
@@ -158,3 +158,10 @@ The server also reported a separate storage-maintenance error,
 An isolated Ubuntu 26.04 VM, `valpo-buildpack-qa`, exercised the full source installer with dependencies. It installed Docker Buildx automatically. The new buildpack preflight reproduced and repaired the containerd run-image export failure before invoking the lifecycle. The packaged acceptance fixture uses Ruby 4.0.6, Sinatra, Postgres 18, an applied manifest, and the ordered `heroku/ruby`, `heroku/procfile` buildpacks. A stored HTTP-created item remained readable after container restarts and a complete QA VM reboot.
 
 The acceptance fixture uses local source checkout and a private loopback URL so it needs no GitHub credentials or public domain. During development the harness needed corrections for bundle loading, fixture installation, and transient connection resets during startup; these are included in the checked-in harness. Docker export must redirect stdout to `/dev/null`; its `--output` option rejects character devices.
+
+
+The full GitHub Actions run for `a63bac2` passed both normal checks and clean-install buildpack acceptance: https://github.com/holamendi/valpo/actions/runs/33972509955. That gate additionally caught inherited caller mise/XDG paths; installer commands now use Valpo-owned directories and a non-login shell.
+
+The live manifest now stores its own pinned builder and ordered buildpacks. Deployment `job_01a0720206f473fca39fcdf83b3f2d64` succeeded as release 6 (application commit `46cb57a`), and maintenance dry run `job_01a07202dc86700ab15fb73baa8cb666` succeeded. The live Ruby archive download was slow across multiple S3 addresses but completed; the old release continued serving during the build. A temporary Mac-to-API timeout interrupted polling without stopping the server job. Job polling now retries transient reads with bounded backoff and retains its event cursor; deployment submissions are not automatically retried.
+
+The control-plane database, configuration, and keyring were backed up to `/root/before-buildpack-hardening-669edd2` before upgrading to schema 6. Existing application containers remained running during the API/worker update.

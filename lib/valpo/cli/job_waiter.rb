@@ -21,14 +21,14 @@ module Valpo
         event_cursor = nil
 
         loop do
-          event_cursor = emit_events(id, event_cursor)
-          job = client.request(:get, "/v1/jobs/#{segment(id)}")
+          event_cursor = emit_events(id, event_cursor, deadline:)
+          job = read_with_retry("/v1/jobs/#{segment(id)}", deadline:)
           case job.fetch("status")
           when "succeeded"
-            emit_events(id, event_cursor)
+            emit_events(id, event_cursor, deadline:)
             return job
           when "failed"
-            emit_events(id, event_cursor)
+            emit_events(id, event_cursor, deadline:)
             detail = job["error"].to_s
             raise OperationalError, ["Job #{id} failed", detail].reject(&:empty?).join(": ")
           end
@@ -46,11 +46,11 @@ module Valpo
 
       attr_reader :client, :err, :clock, :sleeper
 
-      def emit_events(id, cursor)
+      def emit_events(id, cursor, deadline:)
         loop do
           query = {"limit" => EVENT_PAGE_LIMIT}
           query["after"] = cursor if cursor
-          events = client.request(:get, "/v1/jobs/#{segment(id)}/events", query:)
+          events = read_with_retry("/v1/jobs/#{segment(id)}/events", query:, deadline:)
           return cursor if events.empty?
 
           events.each do
@@ -59,6 +59,22 @@ module Valpo
           end
           cursor = events.last.fetch("id")
           return cursor if events.length < EVENT_PAGE_LIMIT
+        end
+      end
+
+      def read_with_retry(path, deadline:, query: nil)
+        attempts = 0
+        begin
+          client.request(:get, path, query:)
+        rescue Valpo::API::Client::Error => e
+          remaining = deadline - clock.call
+          raise unless e.retryable? && attempts < 3 && remaining.positive?
+
+          attempts += 1
+          err.puts "[system] Temporary API connection failure; retrying job polling (#{attempts}/3)"
+          sleeper.call([2**(attempts - 1), remaining].min)
+          raise OperationalError, "Timed out waiting for job #{path.split("/")[3]}; the server job continues" unless clock.call < deadline
+          retry
         end
       end
 

@@ -32,7 +32,7 @@ module Valpo
 
         body = bounded_body(response.body)
         message = parsed.is_a?(Hash) ? bounded_body(parsed.fetch("message", body)) : body
-        raise Error, "#{response.code}: #{message}"
+        raise Error.new("#{response.code}: #{message}", retryable: [408, 429, 502, 503, 504].include?(response.code.to_i))
       end
 
       private
@@ -45,8 +45,10 @@ module Valpo
         http.open_timeout = DEFAULT_OPEN_TIMEOUT
         http.read_timeout = DEFAULT_READ_TIMEOUT
         http.request(request)
-      rescue IOError, Net::OpenTimeout, Net::ReadTimeout, OpenSSL::SSL::SSLError, SocketError, SystemCallError => e
+      rescue OpenSSL::SSL::SSLError => e
         raise Error, "API request failed: #{e.message}"
+      rescue IOError, Net::OpenTimeout, Net::ReadTimeout, SocketError, SystemCallError => e
+        raise Error.new("API request failed: #{e.message}", retryable: true)
       end
 
       def parse_response(response)

@@ -101,6 +101,7 @@ class ValpoAPIClientTest < Minitest::Test
     http = ValpoTestSupport::FakeHTTP.new(error: Errno::ECONNREFUSED.new)
     error = assert_raises(Valpo::API::Client::Error) { client(http).request(:get, "/v1/projects") }
     assert_match "API request failed", error.message
+    assert error.retryable?
   end
 
   private
