@@ -4,6 +4,7 @@ umask 077
 
 if [[ "${1:-}" == --help || "${1:-}" == -h ]]; then
   echo 'Usage: packaging/upgrade.sh apply ARCHIVE --sha256 DIGEST --channel development|preview|stable'
+  echo '       valpo-upgrade [update | vVERSION] [--channel stable|preview]'
   echo '       valpo-upgrade recover'
   exit 0
 fi
@@ -43,5 +44,5 @@ fi
 printf '%s\n' '#!/bin/sh' 'exec /var/lib/valpo-updater/tooling/upgrade.sh "$@"' > "$updater/launcher.next"
 install -m 0755 "$updater/launcher.next" /usr/local/bin/valpo-upgrade
 rm "$updater/launcher.next"
-exec env -i PATH=/usr/local/bin:/usr/bin:/bin HOME=/root LANG=C.UTF-8 VALPO_UPGRADE_LOCK_FD=9 \
+exec env -i PATH=/usr/local/bin:/usr/bin:/bin HOME=/root LANG=C.UTF-8 GH_TOKEN="${GH_TOKEN:-}" VALPO_UPGRADE_LOCK_FD=9 \
   "$updater/runtime/ruby/bin/ruby" "$updater/tooling/upgrader.rb" "$@"

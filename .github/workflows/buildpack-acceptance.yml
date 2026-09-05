@@ -54,11 +54,15 @@ jobs:
           parts[2] += 1
           version = parts.join(".")
           metadata["version"] = version
+          schema = metadata.fetch("schema_target") + 1
+          metadata["schema_target"] = metadata["schema_max"] = schema
+          migration = File.join(root, "db/migrations", "%03d_upgrade_acceptance.rb" % schema)
+          File.write(migration, "Sequel.migration do\n  up do\n    create_table(:upgrade_acceptance) { String :value }\n    self[:upgrade_acceptance].insert(value: 'migration verified')\n  end\nend\n")
           File.write(metadata_path, JSON.pretty_generate(metadata) + "\n")
           path = File.join(root, "lib/valpo/version.rb")
           File.write(path, File.read(path).sub("VERSION = \"#{previous}\"", "VERSION = \"#{version}\""))
           path = File.join(root, "Gemfile.lock")
-          File.write(path, File.read(path).gsub("valpo (#{previous})", "valpo (#{version})"))
+          File.write(path, File.read(path).gsub("valpo (#{Gem::Version.new(previous)})", "valpo (#{version})"))
           RUBY
           sudo env PATH=/var/lib/valpo/.local/share/mise/installs/ruby/4.0.5/bin:/usr/local/bin:/usr/bin:/bin \
             SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)" \

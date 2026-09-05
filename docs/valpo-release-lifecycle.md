@@ -8,10 +8,13 @@ Release archives are named `valpo-VERSION-linux-ARCH.tar.zst` and rooted at `/op
 
 An artifact assumes its final versioned path but does not activate itself, install services, or modify the current source installer. The host updater verifies checksums before extraction; preview/stable channels additionally require tagged release-workflow attestations. Development artifacts are locally built and checksum-verified, without claiming GitHub provenance.
 
-Tag-only updates and durable GitHub Release publication remain tracked in
-[#31](https://github.com/holamendi/valpo/issues/31). The current operator interface
-is `valpo-upgrade apply ARCHIVE --sha256 DIGEST --channel CHANNEL`, with `recover`
-for interrupted transactions; a tag alone is not yet accepted.
+`sudo valpo-upgrade` discovers the highest eligible newer immutable GitHub
+Release, downloads the native archive, and reuses the verified transaction below.
+An explicit `vVERSION` remains optional; `--channel preview` includes prereleases.
+`apply ARCHIVE --sha256 DIGEST --channel CHANNEL` and `recover` remain available
+for local artifacts and interrupted transactions. Tagged builds publish durable
+assets only after native smoke tests, SBOM/provenance generation, and installation
+acceptance succeed. See [operator commands and authentication](../packaging/README.md#host-upgrades).
 
 ## Host Contract
 

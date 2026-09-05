@@ -19,6 +19,11 @@ on:
       - docs/valpo-roadmap.md
       - packaging/README.md
       - packaging/release/**
+      - packaging/upgrade/**
+      - packaging/upgrade.sh
+      - test/packaging/upgrade_script_test.rb
+      - test/packaging/online_upgrade_test.rb
+      - test/packaging/release_publication_test.rb
       - test/packaging/release_artifact_test.rb
   workflow_dispatch:
 
@@ -43,6 +48,15 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
+
+      - name: Set up Ruby for release checks
+        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b
+        with:
+          ruby-version: "4.0.5"
+          bundler-cache: true
+
+      - name: Verify tests, style, and documentation
+        run: bundle exec rake test standard cli:docs:check api:check docs:check
 
       - name: Select release builds
         id: release
@@ -186,8 +200,13 @@ jobs:
     runs-on: ubuntu-26.04
     permissions:
       actions: write
-      contents: read
+      contents: write
     steps:
+      - name: Check out publication tooling
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
       - name: Download architecture outputs
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -210,6 +229,13 @@ jobs:
           path: dist/*
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish immutable GitHub release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: bash packaging/release/publish.sh "$RELEASE_TAG" dist
 
       - name: Delete transfer artifacts
         env:
