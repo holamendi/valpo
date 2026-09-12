@@ -11,8 +11,8 @@ module Valpo
             active = Valpo::Domains::Configuration.active
             candidate = Valpo::PlatformDomain.where(active: false).reverse_order(:updated_at).first
             {
-              active: V1::System.render_domain(active),
-              candidate: V1::System.render_domain(candidate)
+              active: V1::Serializers::PlatformDomain.render(active),
+              candidate: V1::Serializers::PlatformDomain.render(candidate)
             }
           end
 
@@ -22,11 +22,11 @@ module Valpo
               validate_query
               payload = validate_body(V1::System::ConfigureAppDomainContract)
               record, changed = Valpo::Domains::Configuration.stage(payload.fetch(:hostname))
-              next({app_domain: V1::System.render_domain(record), job: nil}) unless changed
+              next({app_domain: V1::Serializers::PlatformDomain.render(record), job: nil}) unless changed
 
               response.status = 202
               job = jobs.enqueue("verify_platform_domain", platform_domain_id: record.id)
-              {app_domain: V1::System.render_domain(record), job: V1::Jobs.render(job)}
+              {app_domain: V1::Serializers::PlatformDomain.render(record), job: V1::Serializers::Job.render(job)}
             end
           end
         end
@@ -36,7 +36,7 @@ module Valpo
           r.post true do
             validate_query
             response.status = 202
-            V1::Jobs.render(jobs.enqueue("repair_system"))
+            V1::Serializers::Job.render(jobs.enqueue("repair_system"))
           end
         end
 
@@ -46,7 +46,7 @@ module Valpo
             validate_query
             payload = validate_body(V1::System::MaintainStorageContract)
             response.status = 202
-            V1::Jobs.render(jobs.enqueue_unique("maintain_storage", dry_run: payload.fetch(:dry_run, false)))
+            V1::Serializers::Job.render(jobs.enqueue_unique("maintain_storage", dry_run: payload.fetch(:dry_run, false)))
           end
         end
 
@@ -57,7 +57,7 @@ module Valpo
               validate_query
               require_admin_credential!
               response.status = 202
-              V1::Jobs.render(jobs.enqueue_unique("verify_secrets"))
+              V1::Serializers::Job.render(jobs.enqueue_unique("verify_secrets"))
             end
           end
 
@@ -67,7 +67,7 @@ module Valpo
               validate_query
               require_admin_credential!
               response.status = 202
-              V1::Jobs.render(jobs.enqueue_unique("rotate_secrets"))
+              V1::Serializers::Job.render(jobs.enqueue_unique("rotate_secrets"))
             end
           end
           not_found("Route not found")

@@ -7,7 +7,7 @@ module Valpo
         # GET /v1/session — inspect the authenticated API credential.
         r.get true do
           validate_query
-          V1::APICredentials.render(request.env.fetch("valpo.api_credential"))
+          V1::Serializers::APICredential.render(request.env.fetch("valpo.api_credential"))
         end
 
         if r.delete?
@@ -16,7 +16,7 @@ module Valpo
             validate_query
             credential = request.env.fetch("valpo.api_credential")
             credential.revoke!
-            {revoked: true, credential: V1::APICredentials.render(credential)}
+            {revoked: true, credential: V1::Serializers::APICredential.render(credential)}
           end
         end
         not_found("Route not found")

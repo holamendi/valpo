@@ -2,7 +2,7 @@
 
 Valpo exposes a JSON HTTP API for the bundled CLI and future dashboard clients. The API is pre-release: resource operations live under `/v1`, and incompatible changes may be made before the first release. `GET /` and `GET /health` remain unversioned.
 
-The complete machine-readable contract is [openapi.yaml](./openapi.yaml). Runtime request contracts are authoritative; automated checks keep OpenAPI aligned with them and the registered routes.
+The complete machine-readable contract is [openapi.yaml](./openapi.yaml). Runtime request contracts are authoritative for inputs; resource serializers define response fields. Automated checks keep OpenAPI aligned with the contracts, serialized resources, and registered routes.
 
 `GET /health` reports process health plus the server release, API compatibility version, current and target database schemas, configuration schema, host-profile version, release channel, and artifact digest. Development checkouts have a `null` artifact digest. The current release refuses to boot when its database schema does not match the target recorded in `release.json`.
 

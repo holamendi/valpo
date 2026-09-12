@@ -282,10 +282,10 @@ class ValpoAPIOpenAPITest < Minitest::Test
     domain = create_domain(service: app, platform_domain_id: platform_domain.id)
     job = Valpo::Jobs::Queue.new.enqueue("system_check", source: "openapi-test")
     event = Valpo::Jobs::Queue.new.events(job.id).first
-    app_output = Valpo::API::V1::Services.render(app)
-    managed_output = Valpo::API::V1::Services.render(managed)
-    release_output = Valpo::API::V1::Services.render_release(release)
-    project_output = Valpo::API::V1::Projects.render(project)
+    app_output = Valpo::API::V1::Serializers::Service.render(app)
+    managed_output = Valpo::API::V1::Serializers::Service.render(managed)
+    release_output = Valpo::API::V1::Serializers::Release.render(release)
+    project_output = Valpo::API::V1::Serializers::Project.render(project)
     environment_entry = Valpo::Services::Environment.entries_for_service(app.id, reveal: false).fetch(0)
     successful_log = {
       service_id: app.id,
@@ -303,23 +303,23 @@ class ValpoAPIOpenAPITest < Minitest::Test
 
     {
       "Project" => [project_output],
-      "Source" => [Valpo::API::V1::Projects.render_source(source)],
-      "BuildTarget" => [Valpo::API::V1::Projects.render_build_target(build)],
+      "Source" => [Valpo::API::V1::Serializers::Source.render(source)],
+      "BuildTarget" => [Valpo::API::V1::Serializers::BuildTarget.render(build)],
       "Service" => [app_output, managed_output],
       "AppConfiguration" => [app_output.fetch(:app)],
       "ManagedConfiguration" => [managed_output.fetch(:managed)],
-      "ServiceDependency" => [Valpo::API::V1::Services.render_dependency(dependency)],
+      "ServiceDependency" => [Valpo::API::V1::Serializers::ServiceDependency.render(dependency)],
       "Release" => [release_output],
       "ReleaseBuild" => [release_output.fetch(:build)],
-      "Domain" => [Valpo::API::V1::Services.render_domain(domain)],
-      "PlatformDomain" => [Valpo::API::V1::System.render_domain(platform_domain)],
-      "Job" => [Valpo::API::V1::Jobs.render(job)],
-      "JobEvent" => [Valpo::API::V1::Jobs.render_event(event)],
+      "Domain" => [Valpo::API::V1::Serializers::Domain.render(domain)],
+      "PlatformDomain" => [Valpo::API::V1::Serializers::PlatformDomain.render(platform_domain)],
+      "Job" => [Valpo::API::V1::Serializers::Job.render(job)],
+      "JobEvent" => [Valpo::API::V1::Serializers::JobEvent.render(event)],
       "ServiceLogs" => [{stdout: "ready\n", stderr: "", service: app_output}],
       "ProjectLogEntry" => [successful_log, failed_log],
       "ProjectLogs" => [{project: project_output, logs: [successful_log, failed_log]}],
-      "APICredential" => [Valpo::API::V1::APICredentials.render(api_credential)],
-      "ServiceEnvironmentVariable" => [Valpo::API::V1::Services.render_environment_variable(environment_variable)],
+      "APICredential" => [Valpo::API::V1::Serializers::APICredential.render(api_credential)],
+      "ServiceEnvironmentVariable" => [Valpo::API::V1::Serializers::EnvironmentVariable.render(environment_variable)],
       "EnvironmentEntry" => [environment_entry],
       "ServiceEnvironment" => [{service: app_output, env: [environment_entry]}]
     }

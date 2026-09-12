@@ -14,7 +14,7 @@ module Valpo
               manifest_planner.call(manifest)
             else
               response.status = 202
-              V1::Jobs.render(jobs.enqueue_manifest_operation(
+              V1::Serializers::Job.render(jobs.enqueue_manifest_operation(
                 project_name: manifest.dig("project", "name"), manifest:
               ))
             end
@@ -24,7 +24,7 @@ module Valpo
         # GET /v1/projects — list projects.
         r.get true do
           validate_query
-          Valpo::Project.order(:created_at, :name).all.map { V1::Projects.render(it) }
+          V1::Serializers::Project.render_many(Valpo::Project.order(:created_at, :name).all)
         end
 
         # POST /v1/projects — create a project.
@@ -33,7 +33,7 @@ module Valpo
           payload = validate_body(V1::Projects::CreateContract)
           project = Valpo::Project.create(name: payload.fetch(:name))
           response.status = 201
-          V1::Projects.render(project)
+          V1::Serializers::Project.render(project)
         end
 
         r.on String do
@@ -44,7 +44,7 @@ module Valpo
             # GET /v1/projects/{project}/services — list a project's services.
             r.get true do
               validate_query
-              services_for_project(project).map { V1::Services.render(it) }
+              V1::Serializers::Service.render_many(services_for_project(project))
             end
 
             # POST /v1/projects/{project}/services — create a service in a project.
@@ -67,7 +67,7 @@ module Valpo
                   build: payload[:build]
                 )
                 response.status = 202
-                next V1::Jobs.render(jobs.enqueue_project_operation(
+                next V1::Serializers::Job.render(jobs.enqueue_project_operation(
                   "create_source_service",
                   project_id: project.id,
                   payload: {
@@ -112,8 +112,8 @@ module Valpo
               end
               response.status = job ? 202 : 201
               {
-                service: V1::Services.render(service.refresh),
-                job: job && V1::Jobs.render(job)
+                service: V1::Serializers::Service.render(service.refresh),
+                job: job && V1::Serializers::Job.render(job)
               }
             end
 
@@ -125,7 +125,7 @@ module Valpo
                   Valpo::Service.where(project_id: project.id, name: service_reference).first
                 next not_found("Service not found") unless service
 
-                V1::Services.render(service)
+                V1::Serializers::Service.render(service)
               end
             end
           end
@@ -134,9 +134,7 @@ module Valpo
             # GET /v1/projects/{project}/sources — list a project's sources.
             r.get true do
               validate_query
-              Valpo::Source.where(project_id: project.id).order(:name).all.map do
-                V1::Projects.render_source(it)
-              end
+              V1::Serializers::Source.render_many(Valpo::Source.where(project_id: project.id).order(:name).all)
             end
           end
 
@@ -151,7 +149,7 @@ module Valpo
           # GET /v1/projects/{project} — show a project.
           r.get true do
             validate_query
-            V1::Projects.render(project)
+            V1::Serializers::Project.render(project)
           end
 
           if r.delete?
@@ -163,7 +161,7 @@ module Valpo
               end
 
               response.status = 202
-              V1::Jobs.render(jobs.enqueue_project_operation("delete_project", project_id: project.id))
+              V1::Serializers::Job.render(jobs.enqueue_project_operation("delete_project", project_id: project.id))
             end
           end
         end

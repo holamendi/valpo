@@ -7,7 +7,7 @@ module Valpo
         # GET /v1/jobs — list jobs.
         r.get true do
           query = validate_query(V1::Jobs::ListQueryContract)
-          jobs.list(limit: query.fetch(:limit, Valpo::Jobs::Queue::DEFAULT_JOB_LIMIT)).map { V1::Jobs.render(it) }
+          V1::Serializers::Job.render_many(jobs.list(limit: query.fetch(:limit, Valpo::Jobs::Queue::DEFAULT_JOB_LIMIT)))
         end
 
         r.on String do |id|
@@ -18,7 +18,7 @@ module Valpo
               next not_found("Job not found") unless jobs.find(id)
 
               response.status = 202
-              V1::Jobs.render(jobs.retry(id))
+              V1::Serializers::Job.render(jobs.retry(id))
             end
           end
 
@@ -29,7 +29,7 @@ module Valpo
               next not_found("Job not found") unless jobs.find(id)
 
               response.status = 202
-              V1::Jobs.render(jobs.reconcile(id))
+              V1::Serializers::Job.render(jobs.reconcile(id))
             end
           end
 
@@ -39,11 +39,11 @@ module Valpo
               query = validate_query(V1::Jobs::EventListQueryContract)
               next not_found("Job not found") unless jobs.find(id)
 
-              jobs.events(
+              V1::Serializers::JobEvent.render_many(jobs.events(
                 id,
                 after: query[:after],
                 limit: query.fetch(:limit, Valpo::Jobs::Queue::DEFAULT_EVENT_LIMIT)
-              ).map { V1::Jobs.render_event(it) }
+              ))
             end
           end
 
@@ -53,7 +53,7 @@ module Valpo
             job = jobs.find(id)
             next not_found("Job not found") unless job
 
-            V1::Jobs.render(job)
+            V1::Serializers::Job.render(job)
           end
         end
         not_found("Route not found")

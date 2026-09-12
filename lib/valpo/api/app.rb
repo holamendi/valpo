@@ -139,7 +139,7 @@ module Valpo
 
       def enqueue_service_job(type, service)
         response.status = 202
-        V1::Jobs.render(jobs.enqueue_service_operation(type, service_id: service.id, payload: {project_id: service.project_id}))
+        V1::Serializers::Job.render(jobs.enqueue_service_operation(type, service_id: service.id, payload: {project_id: service.project_id}))
       end
 
       def logs_for(service, tail:)
@@ -158,7 +158,7 @@ module Valpo
         rescue Valpo::ValidationError => e
           {service_id: it.id, service_name: it.name, type: it.kind, error: e.message}
         end
-        {project: V1::Projects.render(project), logs: entries}
+        {project: V1::Serializers::Project.render(project), logs: entries}
       end
 
       def require_app!(service)

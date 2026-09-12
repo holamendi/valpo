@@ -12,7 +12,7 @@ module Valpo
             project = Valpo::References.project(query.fetch(:project))
             dataset = dataset.where(project_id: project.id)
           end
-          dataset.all.map { V1::Services.render(it) }
+          V1::Serializers::Service.render_many(dataset.all)
         end
 
         r.on String do
@@ -23,7 +23,7 @@ module Valpo
             # GET /v1/services/{service}/logs — read service logs.
             r.get true do
               query = validate_query(V1::Services::TailQueryContract)
-              logs_for(service, tail: query.fetch(:tail, 200)).merge(service: V1::Services.render(service))
+              logs_for(service, tail: query.fetch(:tail, 200)).merge(service: V1::Serializers::Service.render(service))
             end
           end
 
@@ -53,7 +53,7 @@ module Valpo
               raise Valpo::ValidationError, "Managed service not found" unless dependency&.managed?
 
               response.status = 202
-              V1::Jobs.render(jobs.enqueue_service_operation(
+              V1::Serializers::Job.render(jobs.enqueue_service_operation(
                 "bind_service",
                 service_id: service.id,
                 payload: {project_id: service.project_id, dependency_service_id: dependency.id}
@@ -70,7 +70,7 @@ module Valpo
                   raise Valpo::ValidationError, "Managed service not found" unless dependency&.managed?
 
                   response.status = 202
-                  V1::Jobs.render(jobs.enqueue_service_operation(
+                  V1::Serializers::Job.render(jobs.enqueue_service_operation(
                     "unbind_service",
                     service_id: service.id,
                     payload: {project_id: service.project_id, dependency_service_id: dependency.id}
@@ -103,7 +103,7 @@ module Valpo
                 operation_payload = {ref:}.compact
               end
               response.status = 202
-              V1::Jobs.render(jobs.enqueue_service_operation(
+              V1::Serializers::Job.render(jobs.enqueue_service_operation(
                 job_type,
                 service_id: service.id,
                 payload: operation_payload.merge(
@@ -120,9 +120,7 @@ module Valpo
             r.get true do
               validate_query
               require_app!(service)
-              Valpo::Release.where(service_id: service.id).order(Sequel.desc(:version)).all.map do
-                V1::Services.render_release(it)
-              end
+              V1::Serializers::Release.render_many(Valpo::Release.where(service_id: service.id).order(Sequel.desc(:version)).all)
             end
           end
 
@@ -142,7 +140,7 @@ module Valpo
               require_app!(service)
               require_admin_credential! if query[:reveal] == "true"
               {
-                service: V1::Services.render(service),
+                service: V1::Serializers::Service.render(service),
                 env: Valpo::Services::Environment.entries_for_service(
                   service.id, reveal: query[:reveal] == "true"
                 )
@@ -155,7 +153,7 @@ module Valpo
                 validate_query
                 require_app!(service)
                 response.status = 202
-                V1::Jobs.render(jobs.enqueue_service_operation(
+                V1::Serializers::Job.render(jobs.enqueue_service_operation(
                   "reconcile_service_environment",
                   service_id: service.id,
                   payload: {project_id: service.project_id}
@@ -185,8 +183,8 @@ module Valpo
                   end
                   response.status = 202
                   {
-                    variable: V1::Services.render_environment_variable(variable),
-                    job: V1::Jobs.render(job)
+                    variable: V1::Serializers::EnvironmentVariable.render(variable),
+                    job: V1::Serializers::Job.render(job)
                   }
                 end
               end
@@ -204,7 +202,7 @@ module Valpo
                     environment_manager.unset(service_id: service.id, name:)
                   end
                   response.status = 202
-                  {deleted: true, name:, job: V1::Jobs.render(job)}
+                  {deleted: true, name:, job: V1::Serializers::Job.render(job)}
                 end
               end
             end
@@ -216,9 +214,7 @@ module Valpo
             # GET /v1/services/{service}/domains — list service domains.
             r.get true do
               validate_query
-              Valpo::Domain.where(service_id: service.id).order(:hostname).all.map do
-                V1::Services.render_domain(it)
-              end
+              V1::Serializers::Domain.render_many(Valpo::Domain.where(service_id: service.id).order(:hostname).all)
             end
 
             # POST /v1/services/{service}/domains — create and verify a custom domain.
@@ -234,7 +230,7 @@ module Valpo
               end
               domain ||= Valpo::Domain[job.payload.fetch("domain_id")]
               response.status = 202
-              {domain: V1::Services.render_domain(domain), job: V1::Jobs.render(job)}
+              {domain: V1::Serializers::Domain.render(domain), job: V1::Serializers::Job.render(job)}
             end
 
             r.on String do
@@ -247,7 +243,7 @@ module Valpo
                 r.post true do
                   validate_query
                   response.status = 202
-                  V1::Jobs.render(jobs.enqueue_service_operation(
+                  V1::Serializers::Job.render(jobs.enqueue_service_operation(
                     "verify_domain",
                     service_id: service.id,
                     payload: {project_id: service.project_id, domain_id: domain.id}
@@ -275,7 +271,7 @@ module Valpo
                     end
                     domain.destroy
                   end
-                  {deleted: true, job: V1::Jobs.render(job)}
+                  {deleted: true, job: V1::Serializers::Job.render(job)}
                 end
               end
             end
@@ -284,7 +280,7 @@ module Valpo
           # GET /v1/services/{service} — show a service.
           r.get true do
             validate_query
-            V1::Services.render(service)
+            V1::Serializers::Service.render(service)
           end
 
           if r.patch?
@@ -319,7 +315,7 @@ module Valpo
               end
 
               response.status = 202
-              V1::Jobs.render(jobs.enqueue_service_operation(
+              V1::Serializers::Job.render(jobs.enqueue_service_operation(
                 "update_app_service",
                 service_id: service.id,
                 payload: {
@@ -341,7 +337,7 @@ module Valpo
               end
 
               response.status = 202
-              V1::Jobs.render(jobs.enqueue_service_operation(
+              V1::Serializers::Job.render(jobs.enqueue_service_operation(
                 "delete_service", service_id: service.id, payload: {project_id: service.project_id, force: true}
               ))
             end

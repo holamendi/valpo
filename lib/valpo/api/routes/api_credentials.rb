@@ -8,7 +8,7 @@ module Valpo
         r.get true do
           validate_query
           require_admin_credential!
-          Valpo::APICredential.order(:created_at).all.map { V1::APICredentials.render(it) }
+          V1::Serializers::APICredential.render_many(Valpo::APICredential.order(:created_at).all)
         end
 
         # POST /v1/api-credentials — issue an API credential.
@@ -20,7 +20,7 @@ module Valpo
           issuer = Valpo::ControlPlaneState.api_bootstrapped? ? :issue : :bootstrap
           credential, token = Valpo::APICredential.public_send(issuer, name: payload.fetch(:name), scopes:)
           response.status = 201
-          V1::APICredentials.render(credential).merge(token:)
+          V1::Serializers::APICredential.render(credential).merge(token:)
         end
 
         r.on String do
@@ -33,7 +33,7 @@ module Valpo
               validate_query
               require_admin_credential!
               credential.revoke!
-              {revoked: true, credential: V1::APICredentials.render(credential)}
+              {revoked: true, credential: V1::Serializers::APICredential.render(credential)}
             end
           end
         end

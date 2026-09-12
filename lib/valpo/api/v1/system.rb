@@ -15,16 +15,6 @@ module Valpo
             optional(:dry_run).value(:bool)
           end
         end
-
-        module_function
-
-        def render_domain(domain)
-          return nil unless domain
-
-          Fields.call(
-            domain, :id, :hostname, :status, :active, :verification_error, :verified_at, :created_at, :updated_at
-          )
-        end
       end
     end
   end

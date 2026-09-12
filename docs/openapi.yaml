@@ -3,8 +3,9 @@ info:
   title: Valpo API
   version: 0.1.1
   description: >-
-    HTTP API for the pre-release Valpo server. Ruby dry-validation contracts are
-    the runtime authority; this document is the maintained public mirror.
+    HTTP API for the pre-release Valpo server. Ruby dry-validation contracts define
+    request validation and resource serializers define response fields; this
+    document is the maintained public mirror.
 servers:
   - url: http://127.0.0.1:7092
 security:
