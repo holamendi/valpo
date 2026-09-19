@@ -17,18 +17,18 @@ scripts against it or install Valpo on Starbook itself.
 - Initial stopped-VM recovery snapshot: `initial-20260905`.
 - Pre-fix recovery snapshot: `before-domain-fix-20260905`.
 
-As verified on 2026-09-05, the live control plane runs **Valpo 0.1.1**, schema 6,
-from `/opt/valpo/releases/0.1.1`, selected by `/opt/valpo/current`. It was built
-from commit `362ab1ac7459d1b1a2fc7e7f5db7ec709b4ceef2` and installed through the
-Ruby upgrade transaction with channel `development`. Its artifact digest is
-`sha256:6713a620c79ec0bde92538f281869c1ecb22e1f04ade73faccdd4062adbdd49a`.
-This was a locally built, checksum-verified artifact, not a GitHub-attested release.
+As verified on 2026-09-19, the live control plane runs **Valpo 0.1.2-rc.3**, schema 6,
+from `/opt/valpo/releases/0.1.2-rc.3`, selected by `/opt/valpo/current`. It was built
+from commit `3d85528595e0c11471ca09186c539f9bf73b627c` and installed through the
+Ruby upgrade transaction with channel `preview`. Its artifact digest is
+`sha256:4c11edadd781ce7721374510514e7e824e67930278f93ed2beed54be58c2cbbc`.
+GitHub provenance was verified against tag `v0.1.2-rc.3` and the release workflow.
 
 Use authenticated `system status` and `/var/lib/valpo-updater/installation.json`
 for the active release identity. `/etc/valpo/source-revision` describes the
 retained source installation and is no longer the active artifact identity.
 The upgrade checkpoint is
-`/var/lib/valpo-updater/checkpoints/20260905T163330.840348Z`.
+`/var/lib/valpo-updater/checkpoints/20260919T060009.709144Z`.
 
 On the operator's Mac, the `live` CLI profile selects `https://api-live.valpo.dev`
 with a dedicated `pablo-mac` admin credential. Login stores credentials in
@@ -187,3 +187,36 @@ The live upgrade preserved all application container IDs. During the change,
 completed secret verification (`job_01a0726c29e676f99fe304539575fe03`) and a
 maintenance dry run (`job_01a0726c9c7077a8b6b8b4fe7e2c2cfc`). The QA VM
 `valpo-buildpack-qa` was stopped after verification.
+
+
+## Rails 8.1 trial and serializer upgrade (2026-09-19)
+
+The private [holamendi/rails81-postgres-demo](https://github.com/holamendi/rails81-postgres-demo)
+repository contains a Rails 8.1.3.1 guestbook, Ruby 4.0.5, PostgreSQL 18, and a
+`valpo.toml` manifest. The public app is [rails81-demo-web.valpo.dev](https://rails81-demo-web.valpo.dev).
+It uses the pinned Heroku 26 builder with `heroku/ruby` and `heroku/procfile`;
+there is no application Dockerfile. Auto-deploy is disabled for this trial.
+
+Manifest job `job_01a0b8384abf750ba85ad23e53ddd1f6` provisioned the database and
+bound it to the web service. Deployment `job_01a0b838ecff7ba3b29d2cda60ad5bf4`
+built application commit `c5ad7973fb521fe694d789c00e6e7d27eb3f164b` as release 1.
+The runtime receives `DATABASE_URL` from the dependency binding and a generated,
+encrypted `SECRET_KEY_BASE`. `bin/web` prepares the database before starting
+Puma; this startup migration approach is intended for the single-service demo.
+
+The app pins JSON to 2.x: Rails 8.1.3.1 encrypted-cookie decoding passes positional
+JSON options that JSON 3 rejects. Four local PostgreSQL-backed tests passed.
+Live verification covered form submission, a database-backed `/health` endpoint,
+a rejected request without a CSRF token, desktop/mobile layout, and a stored
+message surviving app-container replacement through Valpo's restart command.
+
+[Release workflow 35425067106](https://github.com/holamendi/valpo/actions/runs/35425067106)
+and [CI 35425066039](https://github.com/holamendi/valpo/actions/runs/35425066039)
+passed for `0.1.2-rc.3`. The prior `rc.2` gate exposed a workflow bug: synthetic
+upgrade versions did not replace RubyGems-normalized prerelease versions in the
+lockfile. The fix has regression coverage for stable and prerelease inputs.
+
+The live upgrade from `0.1.2-rc.1` preserved all six application/database container
+IDs. All five host units were active afterward, and the canary, Sinatra app, and
+Rails health endpoint returned HTTP 200. The temporary root-only GitHub CLI
+credential used by provenance verification was removed after the transaction.

@@ -140,7 +140,7 @@ Every terminal route has a comment immediately above its matcher:
 r.post true do
 ```
 
-Version-specific contracts and renderers live under `API::V1`. When a route, contract, renderer, or response changes, update [valpo-api.md](./valpo-api.md) and [openapi.yaml](./openapi.yaml), then run `rake api:check`.
+Version-specific request contracts live under `API::V1`; resource serializers live under `API::V1::Serializers`. Declare copied attributes with `fields`, computed attributes with `field`, and conditional attributes with `field :name, if: -> { ... }`. A false condition omits the field without evaluating its value. Routes use `render` and `render_many`. When a route, contract, renderer, or response changes, update [valpo-api.md](./valpo-api.md) and [openapi.yaml](./openapi.yaml), then run `rake api:check`.
 
 ## Schema And Release Metadata Policy
 
