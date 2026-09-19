@@ -58,7 +58,7 @@ jobs:
           path = File.join(root, "lib/valpo/version.rb")
           File.write(path, File.read(path).sub("VERSION = \"#{previous}\"", "VERSION = \"#{version}\""))
           path = File.join(root, "Gemfile.lock")
-          File.write(path, File.read(path).gsub("valpo (#{previous})", "valpo (#{version})"))
+          File.write(path, File.read(path).gsub("valpo (#{Gem::Version.new(previous)})", "valpo (#{Gem::Version.new(version)})"))
           RUBY
           sudo env PATH=/var/lib/valpo/.local/share/mise/installs/ruby/4.0.5/bin:/usr/local/bin:/usr/bin:/bin \
             SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)" \

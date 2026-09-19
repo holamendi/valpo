@@ -6,6 +6,7 @@ require "rbconfig"
 require "test_helper"
 require "tmpdir"
 require "toml-rb"
+require "yaml"
 
 class ValpoPackagingReleaseArtifactTest < Minitest::Test
   ROOT = File.expand_path("../..", __dir__)
@@ -18,6 +19,30 @@ class ValpoPackagingReleaseArtifactTest < Minitest::Test
   DOCKERFILE = File.join(ROOT, "packaging/release/Dockerfile")
   SMOKE_DOCKERFILE = File.join(ROOT, "packaging/release/Smoke.Dockerfile")
   WORKFLOW = File.join(ROOT, ".github/workflows/release-artifacts.yml")
+
+  def test_upgrade_acceptance_updates_stable_and_prerelease_lockfiles
+    workflow = YAML.load_file(File.join(ROOT, ".github/workflows/buildpack-acceptance.yml"))
+    step = workflow.dig("jobs", "acceptance", "steps").find { it["name"] == "Build a next-version artifact for upgrade acceptance" }
+    script = step.fetch("run").match(/<<'RUBY'\n(.*?)\nRUBY/m)[1]
+
+    %w[0.1.2 0.1.2-rc.2].each do |previous|
+      Dir.mktmpdir("valpo-candidate-version") do
+        root = it
+        FileUtils.mkdir_p(File.join(root, "lib/valpo"))
+        File.write(File.join(root, "release.json"), JSON.generate(version: previous))
+        File.write(File.join(root, "lib/valpo/version.rb"), "module Valpo\n  VERSION = \"#{previous}\"\nend\n")
+        lock_version = Gem::Version.new(previous)
+        File.write(File.join(root, "Gemfile.lock"), "PATH\n  specs:\n    valpo (#{lock_version})\nDEPENDENCIES\n  valpo (#{lock_version})\n")
+
+        _stdout, stderr, status = Open3.capture3(RbConfig.ruby, "-rjson", "-", root, stdin_data: script)
+
+        assert status.success?, stderr
+        assert_equal "0.1.3", JSON.parse(File.read(File.join(root, "release.json"))).fetch("version")
+        assert_includes File.read(File.join(root, "lib/valpo/version.rb")), 'VERSION = "0.1.3"'
+        assert_equal ["0.1.3", "0.1.3"], File.read(File.join(root, "Gemfile.lock")).scan(/valpo \(([^)]+)\)/).flatten
+      end
+    end
+  end
 
   def test_release_commands_are_executable_and_expose_help
     [BUILD_SCRIPT, SMOKE_SCRIPT, SBOM_SCRIPT, SMOKE_CONTAINER_SCRIPT, LAUNCHER, MIGRATE].each do

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Valpo API
-  version: 0.1.2-rc.2
+  version: 0.1.2-rc.3
   description: >-
     HTTP API for the pre-release Valpo server. Ruby dry-validation contracts define
     request validation and resource serializers define response fields; this
