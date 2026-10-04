@@ -4,7 +4,7 @@ module Valpo
   module Services
     class Registry
       SECRET_ENV_KEYS = %w[DATABASE_URL PGPASSWORD REDIS_URL REDIS_PASSWORD].freeze
-      OPTION_KEYS = %i[version command port internal_port healthcheck healthcheck_path].freeze
+      OPTION_KEYS = %i[version command port internal_port healthcheck healthcheck_path storage_path].freeze
       DEFINITIONS = [
         Definitions::Web.new,
         Definitions::Worker.new,
@@ -67,6 +67,7 @@ module Valpo
 
         def validate_options!(type:, options:)
           definition = fetch(type)
+          AppStorage.validate_path!(options[:storage_path] || options["storage_path"])
           supplied = options.keys.map(&:to_sym) & OPTION_KEYS
           invalid = supplied - definition.supported_options
           return definition.name if invalid.empty?

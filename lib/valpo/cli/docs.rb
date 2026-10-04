@@ -41,6 +41,10 @@ module Valpo
 
           #{service_type_table}
 
+          `storage-path` mounts one service-owned persistent Docker data volume for `web` or `worker`, for example `valpo service create web --project acme --type web --storage-path /data`. Update with `--storage-path /app/data`; `--clear-storage` unmounts without deleting data. The destination must be absolute, normalized, and outside system directories. No host paths, volume source names, or shared volumes are accepted.
+
+          Storage survives releases, rollback, restarts, stop, and deployment failures; forced service deletion destroys it. Back up data separately. Writable SQLite services require a controlled stop-first migration: stop the service and wait before deploying, restarting, updating runtime configuration, or rolling back, since normal container replacement can overlap. Rollback does not roll back data or schemas.
+
           `command` is valid for `web` and `worker`. `port` and `healthcheck-path` are valid only for `web`. `version` is valid only for `postgres` and `redis`. Incompatible options are rejected rather than ignored. Managed service images are selected by Valpo and cannot be overridden.
 
           ## Service Environment

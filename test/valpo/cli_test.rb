@@ -159,6 +159,30 @@ class ValpoCLITest < Minitest::Test
     assert_empty client.requests
   end
 
+  def test_storage_options_roundtrip
+    client = FakeAPIClient.new({"service" => {"id" => service_id}, "job" => nil})
+    status, _, stderr = run_cli(client, %w[service create web --project acme --type web --storage-path /data --no-wait --json])
+    assert_equal 0, status, stderr
+    assert_equal "/data", client.requests.first.dig(:payload, "storage_path")
+    client = FakeAPIClient.new([{"id" => service_id}, {"id" => job_id, "status" => "queued"}])
+    status, _, stderr = run_cli(client, %w[service update web --project acme --storage-path /app/data --no-wait --json])
+    assert_equal 0, status, stderr
+    assert_equal "/app/data", client.requests.last.dig(:payload, "storage_path")
+    client = FakeAPIClient.new([{"id" => service_id}, {"id" => job_id, "status" => "queued"}])
+    status, _, stderr = run_cli(client, %w[service update web --project acme --clear-storage --no-wait --json])
+    assert_equal 0, status, stderr
+    assert client.requests.last.fetch(:payload).key?("storage_path")
+    assert_nil client.requests.last.dig(:payload, "storage_path")
+  end
+
+  def test_unsafe_storage_update_is_a_cli_usage_error
+    client = FakeAPIClient.new([])
+    status, _, stderr = run_cli(client, %w[service update web --storage-path /proc])
+    assert_equal 2, status
+    assert_includes stderr, "storage_path"
+    assert_empty client.requests
+  end
+
   def test_create_service_uses_project_collection_and_no_wait_returns_queued_job
     job = {"id" => job_id, "status" => "queued"}
     client = FakeAPIClient.new("service" => {"id" => service_id}, "job" => job)

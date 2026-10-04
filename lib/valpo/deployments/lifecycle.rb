@@ -209,6 +209,7 @@ module Valpo
         end
         build_target_ids = Valpo::BuildTarget.where(owner_service_id: service.id).select_map(:id)
         remove_build_caches(build_target_ids, queue:, job_id:)
+        runtime.remove_app_storage(service)
         image_cleaner.remove_for_service(service_id: service.id, queue:, job_id:)
         service.destroy
         event(queue, job_id, "Deleted #{service_name}")

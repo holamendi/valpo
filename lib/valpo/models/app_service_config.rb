@@ -20,6 +20,7 @@ module Valpo
 
     def validate
       super
+      Valpo::Services::AppStorage.validate_path!(storage_path)
       errors.add(:service_id, "is required") if service_id.nil? || service_id.to_s.empty?
       service = Valpo::Service[service_id] if service_id
       errors.add(:service_id, "must reference an app service") if service && !service.app?

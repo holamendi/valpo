@@ -5,6 +5,19 @@ require "test_helper"
 class ValpoManifestReconcilerTest < Minitest::Test
   include ValpoTestDatabase
 
+  def test_manifest_storage_is_persisted_and_reconciled
+    input = "schema = 1\n[project]\nname = \"acme\"\n[services.worker]\ntype = \"worker\"\nstorage_path = \"/data\"\n"
+    manifest = Valpo::Manifests::ProjectManifest.parse(input)
+    reconciler = build_reconciler
+    apply(reconciler, manifest)
+    service = Valpo::Service.where(name: "worker").first
+    assert_equal "/data", Valpo::AppServiceConfig[service.id].storage_path
+    updated = Valpo::Manifests::ProjectManifest.parse(input.sub("/data", "/app/data"))
+    apply(reconciler, updated)
+    assert_equal "/app/data", Valpo::AppServiceConfig[service.id].storage_path
+    refute_equal manifest.fetch("digest"), updated.fetch("digest")
+  end
+
   def test_apply_is_idempotent
     manifest = parsed_manifest
     reconciler = build_reconciler

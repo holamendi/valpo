@@ -5,6 +5,108 @@ require "test_helper"
 class ValpoDeploymentsLifecycleTest < Minitest::Test
   include ValpoTestDatabase
 
+  def test_storage_is_reused_across_releases_and_restart
+    app = create_app_service(kind: "worker")
+    Valpo::AppServiceConfig[app.id].update(storage_path: "/data")
+    docker = ValpoTestSupport::FakeDocker.new
+    2.times do
+      run_job do |queue, job|
+        lifecycle(docker:).deploy_registry_image(service_id: app.id, image: "example/app:v1", internal_port: nil, healthcheck_path: nil, queue:, job_id: job.id)
+      end
+    end
+    run_job { |queue, job| lifecycle(docker:).restart_service(service_id: app.id, queue:, job_id: job.id) }
+    run_job { |queue, job| lifecycle(docker:).rollback_service(service_id: app.id, queue:, job_id: job.id) }
+    run_job { |queue, job| lifecycle(docker:).stop_service(service_id: app.id, queue:, job_id: job.id) }
+    run_job { |queue, job| lifecycle(docker:).restart_service(service_id: app.id, queue:, job_id: job.id) }
+    name = "valpo-#{app.id.tr("_", "-")}-data"
+    assert_equal [{name => "/data"}] * 5, docker.run_requests.map { it.fetch(:volumes) }
+    assert docker.executed?(:volume_create, name, {"valpo.owned" => "true", "valpo.service_id" => app.id, "valpo.project_id" => app.project_id})
+    refute docker.executed?(:volume_rm, name, true)
+  end
+
+  def test_forced_deletion_removes_only_owned_app_storage_even_when_disabled
+    app = create_app_service(kind: "worker")
+    name = Valpo::Services::AppStorage.volume_name(app)
+    docker = ValpoTestSupport::FakeDocker.new(volumes: {name => {"valpo.owned" => "true", "valpo.service_id" => app.id, "valpo.project_id" => app.project_id}})
+    run_job { |queue, job| lifecycle(docker:).delete_app_service(service_id: app.id, force: true, queue:, job_id: job.id) }
+    assert docker.executed?(:volume_rm, name, true)
+  end
+
+  def test_deploy_refuses_storage_owned_by_another_service
+    app = create_app_service(kind: "worker")
+    Valpo::AppServiceConfig[app.id].update(storage_path: "/data")
+    name = Valpo::Services::AppStorage.volume_name(app)
+    docker = ValpoTestSupport::FakeDocker.new(volumes: {name => {"valpo.owned" => "true", "valpo.service_id" => "other", "valpo.project_id" => app.project_id}})
+    assert_raises(Valpo::ValidationError) do
+      run_job do |queue, job|
+        lifecycle(docker:).deploy_registry_image(service_id: app.id, image: "example/app:v1", internal_port: nil, healthcheck_path: nil, queue:, job_id: job.id)
+      end
+    end
+    assert_empty docker.run_requests
+    refute docker.executed?(:volume_rm, name, true)
+  end
+
+  def test_storage_refuses_driver_options_even_with_matching_labels
+    app = create_app_service(kind: "worker")
+    Valpo::AppServiceConfig[app.id].update(storage_path: "/data")
+    docker = Class.new(ValpoTestSupport::FakeDocker) do
+      def execute(command)
+        result = super
+        if command.first == :volume_inspect && result.fetch(:success)
+          volume = JSON.parse(result.fetch(:stdout)).first
+          volume["Options"] = {"type" => "none", "device" => "/", "o" => "bind"}
+          result[:stdout] = JSON.generate([volume])
+        end
+        result
+      end
+    end.new
+    assert_raises(Valpo::ValidationError) do
+      run_job do |queue, job|
+        lifecycle(docker:).deploy_registry_image(service_id: app.id, image: "example/app:v1", internal_port: nil, healthcheck_path: nil, queue:, job_id: job.id)
+      end
+    end
+    assert_empty docker.run_requests
+  end
+
+  def test_storage_is_retained_after_failed_container_start
+    app = create_app_service(kind: "worker")
+    Valpo::AppServiceConfig[app.id].update(storage_path: "/data")
+    docker = ValpoTestSupport::FakeDocker.new(fail_on: :run)
+    assert_raises(Valpo::ValidationError) do
+      run_job do |queue, job|
+        lifecycle(docker:).deploy_registry_image(service_id: app.id, image: "example/app:v1", internal_port: nil, healthcheck_path: nil, queue:, job_id: job.id)
+      end
+    end
+    name = Valpo::Services::AppStorage.volume_name(app)
+    assert docker.execute(docker.volume_inspect_command(name)).fetch(:success)
+    refute docker.executed?(:volume_rm, name, true)
+    assert_equal "/data", Valpo::AppServiceConfig[app.id].storage_path
+  end
+
+  def test_storage_names_are_isolated_across_projects_with_identical_service_names
+    first = create_app_service(kind: "worker")
+    second = create_app_service(project: create_project(name: "other"), kind: "worker")
+    docker = ValpoTestSupport::FakeDocker.new
+    [first, second].each do |app|
+      Valpo::AppServiceConfig[app.id].update(storage_path: "/data")
+      run_job do |queue, job|
+        lifecycle(docker:).deploy_registry_image(service_id: app.id, image: "example/app:v1", internal_port: nil, healthcheck_path: nil, queue:, job_id: job.id)
+      end
+    end
+    refute_equal docker.run_requests.first.fetch(:volumes).keys, docker.run_requests.last.fetch(:volumes).keys
+  end
+
+  def test_deletion_refuses_storage_owned_by_another_project
+    app = create_app_service(kind: "worker")
+    name = Valpo::Services::AppStorage.volume_name(app)
+    docker = ValpoTestSupport::FakeDocker.new(volumes: {name => {"valpo.owned" => "true", "valpo.service_id" => app.id, "valpo.project_id" => "other"}})
+    assert_raises(Valpo::ValidationError) do
+      run_job { |queue, job| lifecycle(docker:).delete_app_service(service_id: app.id, force: true, queue:, job_id: job.id) }
+    end
+    refute docker.executed?(:volume_rm, name, true)
+    assert Valpo::Service[app.id]
+  end
+
   def test_deploy_activates_release_routes_domain_and_injects_dependencies
     project = create_project
     app = create_app_service(project:)
@@ -37,6 +139,8 @@ class ValpoDeploymentsLifecycleTest < Minitest::Test
     assert_equal "3000", docker.run_requests.first.fetch(:env).fetch("PORT")
     assert_equal app.id, docker.run_requests.first.fetch(:labels).fetch("valpo.service_id")
     assert_equal "local", docker.run_requests.first.fetch(:log_driver)
+    assert_empty docker.run_requests.first.fetch(:volumes)
+    refute docker.commands.any? { it.first == :volume_create }
     assert_equal({"max-file" => 3, "max-size" => "10m"}, docker.run_requests.first.fetch(:log_options))
   end
 

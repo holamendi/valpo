@@ -2,8 +2,8 @@
   "version": "0.1.2-rc.3",
   "api_version": 1,
   "schema_min": 1,
-  "schema_target": 6,
-  "schema_max": 6,
+  "schema_target": 7,
+  "schema_max": 7,
   "config_schema": 1,
   "host_profile": 1
 }

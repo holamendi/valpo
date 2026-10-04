@@ -39,6 +39,7 @@ module Valpo
             fields["port policy"] = value.dig("app", "port_mode")
             fields["port"] = value.dig("app", "internal_port")
             fields["active port"] = value.dig("app", "resolved_internal_port")
+            fields["storage_path"] = value.dig("app", "storage_path")
             fields["healthcheck"] = value.dig("app", "healthcheck_path")
           elsif value["managed"]
             fields["version"] = value.dig("managed", "version")

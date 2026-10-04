@@ -11,6 +11,7 @@ module Valpo
           command: nil,
           port: nil,
           healthcheck_path: nil,
+          storage_path: nil,
           source: nil,
           ref: nil,
           build_strategy: nil,
@@ -21,7 +22,7 @@ module Valpo
         )
           validate_options!(
             type:,
-            options: {version:, command:, port:, healthcheck_path:}.compact
+            options: {version:, command:, port:, healthcheck_path:, storage_path:}.compact
           )
           validate_build_options!(build_strategy:, dockerfile:)
           source_options = {ref:, build_strategy:, dockerfile:, builder:, buildpacks:, context:}.compact
@@ -38,7 +39,8 @@ module Valpo
             "version" => version,
             "command" => command,
             "internal_port" => positive_integer(port, "port"),
-            "healthcheck_path" => healthcheck_path
+            "healthcheck_path" => healthcheck_path,
+            "storage_path" => storage_path
           }.compact
           if source
             payload["source"] = source_spec(source).merge("ref" => ref || "HEAD")

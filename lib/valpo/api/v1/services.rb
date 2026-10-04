@@ -15,6 +15,7 @@ module Valpo
             required(:name).filled(:string, format?: NONEMPTY)
             required(:type).filled(:string, format?: NONEMPTY)
             optional(:version).filled(:string, format?: NONEMPTY)
+            optional(:storage_path).maybe(:string)
             optional(:command).array(:string)
             optional(:internal_port).maybe(:integer, gt?: 0, lteq?: 65_535)
             optional(:healthcheck_path).maybe(:string, format?: HEALTHCHECK_PATH)
@@ -98,6 +99,7 @@ module Valpo
               optional(:builder).maybe(:string, format?: NONEMPTY)
               optional(:buildpacks).maybe { array(:string) }
             end
+            optional(:storage_path).maybe(:string)
             optional(:command).array(:string)
             optional(:internal_port).maybe(:integer, gt?: 0, lteq?: 65_535)
             optional(:healthcheck_path).maybe(:string, format?: HEALTHCHECK_PATH)

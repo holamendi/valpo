@@ -157,6 +157,7 @@ module Valpo
           command: config.fetch("command", []),
           internal_port: config["port"],
           healthcheck_path: config["healthcheck"],
+          storage_path: config["storage_path"],
           build_target_id: config["build"] && builds.fetch(config["build"]).id
         )
       end
@@ -171,10 +172,11 @@ module Valpo
             build_target_id: config["build"] && builds.fetch(config["build"]).id,
             command_json: JSON.generate(config.fetch("command")),
             internal_port: config["port"],
-            healthcheck_path: config["healthcheck"]
+            healthcheck_path: config["healthcheck"],
+            storage_path: config["storage_path"]
           }
           runtime_changed = attributes.any? { |key, value| key != :build_target_id && app[key] != value }
-          @app_snapshots[service.id] ||= app.values.slice(:build_target_id, :command_json, :internal_port, :healthcheck_path)
+          @app_snapshots[service.id] ||= app.values.slice(:build_target_id, :command_json, :internal_port, :healthcheck_path, :storage_path)
           app.update(attributes)
           runtime_changed
         end
@@ -263,7 +265,8 @@ module Valpo
             build_target_id: expected_build,
             command_json: JSON.generate(config.fetch("command")),
             internal_port: config["port"],
-            healthcheck_path: config["healthcheck"]
+            healthcheck_path: config["healthcheck"],
+            storage_path: config["storage_path"]
           }
           raise Valpo::ValidationError, "App service #{name} configuration did not converge" unless expected.all? { |key, value| app[key] == value }
 

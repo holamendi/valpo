@@ -17,7 +17,9 @@ module Valpo
           option :context, desc: "Build context within the repository"
           option :command, type: :array, desc: "Web/worker command as comma-separated arguments"
           option :port, desc: "Web container port"
+          option :storage_path, desc: "Service-owned persistent data directory (web/worker only)"
           option :healthcheck_path, desc: "Web health check path beginning with /"
+          option :clear_storage, type: :boolean, default: false, desc: "Unmount app storage without deleting its data"
           option :clear_builder, type: :boolean, default: false, desc: "Use the server default builder"
           option :clear_buildpacks, type: :boolean, default: false, desc: "Use repository or builder buildpack detection"
           option :clear_command, type: :boolean, default: false, desc: "Use the image's default command"
@@ -30,7 +32,7 @@ module Valpo
             "web --project acme --clear-port"
           ]
 
-          def call(service:, wait:, timeout:, api_url:, project: nil, source: nil, ref: nil, build_strategy: nil, dockerfile: nil, builder: nil, buildpacks: nil, context: nil, command: nil, port: nil, healthcheck_path: nil, clear_builder: false, clear_buildpacks: false, clear_command: false, clear_healthcheck: false, clear_port: false, deploy: false, json: false, args: nil, **)
+          def call(service:, wait:, timeout:, api_url:, project: nil, source: nil, ref: nil, build_strategy: nil, dockerfile: nil, builder: nil, buildpacks: nil, context: nil, command: nil, port: nil, healthcheck_path: nil, storage_path: nil, clear_storage: false, clear_builder: false, clear_buildpacks: false, clear_command: false, clear_healthcheck: false, clear_port: false, deploy: false, json: false, args: nil, **)
             reject_extra_arguments!(args)
             payload = PayloadBuilders::ServiceUpdate.call(
               source:,
@@ -42,6 +44,7 @@ module Valpo
               command:,
               port:,
               healthcheck_path:,
+              storage_path:, clear_storage:,
               clear_builder:, clear_buildpacks:,
               clear_command:,
               clear_healthcheck:,

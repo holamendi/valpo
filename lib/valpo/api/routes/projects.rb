@@ -76,7 +76,8 @@ module Valpo
                       type:,
                       command:,
                       internal_port: port,
-                      healthcheck_path:
+                      healthcheck_path:,
+                      storage_path: payload[:storage_path]
                     },
                     source: configuration.fetch(:source),
                     build: configuration.fetch(:build),
@@ -102,7 +103,8 @@ module Valpo
                   version: payload[:version],
                   command:,
                   internal_port: port,
-                  healthcheck_path:
+                  healthcheck_path:,
+                  storage_path: payload[:storage_path]
                 )
                 if service.managed?
                   job = jobs.enqueue_service_operation(

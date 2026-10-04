@@ -5,7 +5,7 @@ module Valpo
     module V1
       module Serializers
         class AppConfiguration < Serializer
-          fields :build_target_id, :internal_port, :healthcheck_path
+          fields :build_target_id, :internal_port, :healthcheck_path, :storage_path
 
           field(:command) { it.command }
           field(:port_mode) { it.internal_port ? "explicit" : "automatic" }

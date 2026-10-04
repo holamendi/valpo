@@ -69,6 +69,7 @@ module Valpo
             RELEASE_LABEL => release.id,
             SERVICE_LABEL => service.id
           },
+          volumes: app_storage_mounts(service, app_config),
           env: environment,
           ports: host_port ? {"127.0.0.1:#{host_port}" => release.internal_port} : {},
           restart_policy: "unless-stopped",
@@ -133,6 +134,16 @@ module Valpo
         false
       end
 
+      def remove_app_storage(service)
+        name = Valpo::Services::AppStorage.volume_name(service)
+        result = docker.execute(docker.volume_inspect_command(name))
+        if !result.fetch(:success) && result.fetch(:stderr).downcase.include?("no such volume")
+          return
+        end
+        verify_app_storage!(service, result)
+        execute_docker(docker.volume_rm_command(name, force: true), failure_message: "Docker volume remove failed")
+      end
+
       def app_logs(container_name:, tail: nil)
         result = docker.execute(docker.logs_command(container_name, tail:))
         raise_command_error("Docker logs failed", result) unless result.fetch(:success)
@@ -143,6 +154,29 @@ module Valpo
       private
 
       attr_reader :config, :docker, :queue, :job_id, :sleeper
+
+      def app_storage_mounts(service, app_config)
+        return {} unless app_config&.storage_path
+
+        Valpo::Services::AppStorage.validate_path!(app_config.storage_path)
+        name = Valpo::Services::AppStorage.volume_name(service)
+        labels = {OWNED_LABEL => "true", SERVICE_LABEL => service.id, PROJECT_LABEL => service.project_id}
+        execute_docker(docker.volume_create_command(name, labels:), failure_message: "Docker volume create failed")
+        result = docker.execute(docker.volume_inspect_command(name))
+        verify_app_storage!(service, result)
+        {name => app_config.storage_path}
+      end
+
+      def verify_app_storage!(service, result)
+        labels = {OWNED_LABEL => "true", SERVICE_LABEL => service.id, PROJECT_LABEL => service.project_id}
+        raise_command_error("Docker volume inspect failed", result) unless result.fetch(:success)
+        volume = JSON.parse(result.fetch(:stdout)).first
+        actual = volume&.fetch("Labels", {}) || {}
+        owned = volume && volume["Name"] == Valpo::Services::AppStorage.volume_name(service) &&
+          volume["Driver"] == "local" && (volume["Options"].nil? || volume["Options"] == {}) &&
+          labels.all? { |key, value| actual[key] == value }
+        raise Valpo::ValidationError, "App storage volume ownership mismatch" unless owned
+      end
 
       def ensure_network
         result = docker.execute(docker.network_create_command(config.docker_network, labels: {OWNED_LABEL => "true"}))

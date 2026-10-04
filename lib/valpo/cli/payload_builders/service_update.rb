@@ -14,6 +14,8 @@ module Valpo
           command: nil,
           port: nil,
           healthcheck_path: nil,
+          storage_path: nil,
+          clear_storage: false,
           clear_builder: false, clear_buildpacks: false,
           clear_command: false,
           clear_healthcheck: false,
@@ -34,7 +36,10 @@ module Valpo
 
           raise UsageError, "--builder and --clear-builder cannot be used together" if builder && clear_builder
           raise UsageError, "--buildpacks and --clear-buildpacks cannot be used together" if buildpacks && clear_buildpacks
+          raise UsageError, "--storage-path and --clear-storage cannot be used together" if storage_path && clear_storage
+          Valpo::Services::AppStorage.validate_path!(storage_path)
           payload = {}
+          payload["storage_path"] = clear_storage ? nil : storage_path if storage_path || clear_storage
           source_changes = source ? source_spec(source) : {}
           source_changes["ref"] = ref if ref
           payload["source"] = source_changes unless source_changes.empty?
@@ -51,6 +56,8 @@ module Valpo
           raise UsageError, "At least one service update option is required" if payload.empty?
 
           payload
+        rescue Valpo::ValidationError => e
+          raise UsageError, e.message
         end
 
         class << self

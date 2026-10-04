@@ -17,6 +17,7 @@ module Valpo
         command: [],
         internal_port: nil,
         healthcheck_path: nil,
+        storage_path: nil,
         build_target_id: nil
       )
         normalized_type = Registry.normalize_type(type)
@@ -26,7 +27,8 @@ module Valpo
             version:,
             command:,
             internal_port:,
-            healthcheck_path:
+            healthcheck_path:,
+            storage_path:
           )
         )
         normalized_command = Registry.normalize_command(command)
@@ -46,7 +48,8 @@ module Valpo
               build_target_id:,
               command: normalized_command,
               internal_port:,
-              healthcheck_path:
+              healthcheck_path:,
+              storage_path:
             )
           end
           service.refresh
@@ -67,19 +70,21 @@ module Valpo
         config.save
       end
 
-      def create_app_config(service, build_target_id:, command:, internal_port:, healthcheck_path:)
+      def create_app_config(service, build_target_id:, command:, internal_port:, healthcheck_path:, storage_path:)
         Valpo::AppServiceConfig.create(
           service_id: service.id,
           build_target_id:,
           command_json: JSON.generate(command),
           internal_port:,
-          healthcheck_path: blank_to_nil(healthcheck_path)
+          healthcheck_path: blank_to_nil(healthcheck_path),
+          storage_path:
         )
         Valpo::Domains::Configuration.reconcile_service(service) if service.web?
       end
 
-      def supplied_options(version:, command:, internal_port:, healthcheck_path:)
+      def supplied_options(version:, command:, internal_port:, healthcheck_path:, storage_path:)
         options = {}
+        options[:storage_path] = storage_path unless storage_path.nil?
         options[:version] = version unless version.nil?
         options[:command] = command unless command.nil? || command.empty?
         options[:internal_port] = internal_port unless internal_port.nil?

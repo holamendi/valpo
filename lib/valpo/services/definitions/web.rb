@@ -9,7 +9,7 @@ module Valpo
             name: "web",
             category: :app,
             description: "HTTP application routed through Caddy",
-            supported_options: %i[command port internal_port healthcheck healthcheck_path]
+            supported_options: %i[command port internal_port healthcheck healthcheck_path storage_path]
           )
         end
       end

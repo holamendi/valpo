@@ -35,7 +35,8 @@ module Valpo
             type: service_attributes.fetch("type"),
             command: service_attributes.fetch("command", []),
             internal_port: service_attributes["internal_port"],
-            healthcheck_path: service_attributes["healthcheck_path"]
+            healthcheck_path: service_attributes["healthcheck_path"],
+            storage_path: service_attributes["storage_path"]
           )
           source_record = Valpo::Source.create(
             project_id: project.id,

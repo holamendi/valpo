@@ -291,6 +291,7 @@ module Valpo
               payload = validate_body(V1::Services::UpdateContract)
 
               runtime = {}
+              runtime["storage_path"] = payload[:storage_path] if payload.key?(:storage_path)
               if payload.key?(:command)
                 runtime["command"] = Valpo::Services::Registry.normalize_command(payload.fetch(:command))
               end

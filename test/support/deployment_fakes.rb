@@ -146,7 +146,7 @@ module ValpoTestSupport
         labels = @volumes[command.fetch(1)]
         return failure("Error response from daemon: get #{command.fetch(1)}: no such volume") unless labels
 
-        success(JSON.generate([{"Name" => command.fetch(1), "Labels" => labels}]))
+        success(JSON.generate([{"Name" => command.fetch(1), "Labels" => labels, "Driver" => "local", "Options" => nil}]))
       when :volume_create
         @volumes[command.fetch(1)] ||= command.fetch(2)
         success("ok\n")

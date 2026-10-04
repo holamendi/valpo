@@ -12,6 +12,7 @@ module Valpo
           option :version, desc: "Postgres 16, 17, or 18 (default 18); Redis 7 or 8 (default 8)"
           option :command, type: :array, desc: "Web/worker command as comma-separated arguments"
           option :port, desc: "Web container port"
+          option :storage_path, desc: "Service-owned persistent data directory (web/worker only)"
           option :healthcheck_path, desc: "Web health check path beginning with /"
           option :source, desc: "Source as PROVIDER:OWNER/REPOSITORY"
           option :ref, desc: "Configured branch, tag, commit, or remote HEAD"
@@ -30,7 +31,7 @@ module Valpo
             "cache --project acme --type redis --version 8"
           ]
 
-          def call(name:, wait:, timeout:, api_url:, project: nil, type: nil, version: nil, command: nil, port: nil, healthcheck_path: nil, source: nil, ref: nil, build_strategy: nil, dockerfile: nil, builder: nil, buildpacks: nil, context: nil, deploy: false, json: false, args: nil, **)
+          def call(name:, wait:, timeout:, api_url:, project: nil, type: nil, version: nil, command: nil, port: nil, healthcheck_path: nil, storage_path: nil, source: nil, ref: nil, build_strategy: nil, dockerfile: nil, builder: nil, buildpacks: nil, context: nil, deploy: false, json: false, args: nil, **)
             reject_extra_arguments!(args)
             project = required_option!(project, "--project")
             name = service_name(name)
@@ -42,6 +43,7 @@ module Valpo
               command:,
               port:,
               healthcheck_path:,
+              storage_path:,
               source:,
               ref:,
               build_strategy:,
