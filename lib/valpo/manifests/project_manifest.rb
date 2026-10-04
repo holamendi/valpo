@@ -11,7 +11,7 @@ module Valpo
       PROJECT_KEYS = %w[name].freeze
       SOURCE_KEYS = %w[provider repository ref auto_deploy].freeze
       BUILD_KEYS = %w[source strategy dockerfile context builder buildpacks].freeze
-      APP_KEYS = %w[type build command port healthcheck depends_on].freeze
+      APP_KEYS = %w[type build command port healthcheck storage_path depends_on].freeze
       MANAGED_KEYS = %w[type version].freeze
 
       def self.parse(content)
@@ -129,6 +129,7 @@ module Valpo
               "command" => command,
               "port" => port,
               "healthcheck" => healthcheck,
+              "storage_path" => config["storage_path"],
               "depends_on" => dependencies.uniq.sort
             }
           end

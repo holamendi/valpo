@@ -67,6 +67,8 @@ module Valpo
       errors.add(:name, "must be a DNS-safe label of up to 63 lowercase letters, numbers, and dashes") if name && !name.match?(NAME_PATTERN)
       errors.add(:kind, "must be one of: #{KINDS.join(", ")}") unless KINDS.include?(kind)
       errors.add(:kind, "is immutable") if !new? && changed_columns.include?(:kind)
+      errors.add(:id, "is immutable") if !new? && changed_columns.include?(:id)
+      errors.add(:project_id, "is immutable") if !new? && changed_columns.include?(:project_id)
       if domain_slug
         errors.add(:domain_slug, "must be a DNS-safe label") unless domain_slug.match?(NAME_PATTERN)
       end

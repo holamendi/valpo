@@ -94,6 +94,12 @@ Buildpacks honor the other settings in `project.toml`. Web services default to t
 
 Valpo validates the repository, ref, context, and build inputs before changing configuration. A deployment records the exact commit, resolved strategy, image, and available buildpack metadata. GitHub.com shallow single-ref checkouts are supported; Git submodules and Git LFS are not configured.
 
+## App Storage
+
+Web and worker declarations accept `storage_path = "/data"` for one service-owned persistent named volume. The destination must be an absolute normalized non-system container directory. Source volume names, host bind mounts, and shared/cross-service volumes are not supported. Omitting this field from a declared service unmounts its storage on apply without deleting data; re-enabling it remounts the same service volume. Existing manifests without storage keep current behavior.
+
+Storage survives releases, restarts, stop, rollback, failures, and maintenance. Forced service deletion deletes its data. Back up data separately. Changing the destination does not copy ephemeral files; it remounts the same volume. Writable SQLite applications require a controlled stop-first migration: stop and wait before applying runtime changes, deploying, restarting, or rolling back, because ordinary replacement containers can overlap. Rollback does not restore data or database schemas.
+
 ## Runtime Rules
 
 For web services, an explicit `port` wins. Otherwise Valpo uses the image's sole TCP `EXPOSE` port, then port `3000` for a source image with no exposed port. Ambiguous images and registry images without exactly one exposed TCP port require an explicit port. Valpo injects the resolved value as `PORT`; workers have no platform port.

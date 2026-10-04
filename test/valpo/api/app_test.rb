@@ -21,6 +21,39 @@ class ValpoAPIAppTest < Minitest::Test
     Valpo::API::App
   end
 
+  def test_app_storage_api_roundtrip
+    project = create_project
+    post_json "/v1/projects/#{project.id}/services", name: "worker", type: "worker", storage_path: "/data"
+    assert_equal 201, last_response.status, last_response.body
+    assert_equal "/data", json.dig("service", "app", "storage_path")
+    service_id = json.dig("service", "id")
+    patch_json "/v1/services/#{service_id}", storage_path: "/app/data"
+    assert_equal 202, last_response.status, last_response.body
+    assert_equal "/app/data", Valpo::Job[json.fetch("id")].payload.dig("runtime", "storage_path")
+  end
+
+  def test_source_service_storage_is_created_from_api_job_attributes
+    project = create_project
+    post_json "/v1/projects/#{project.id}/services", name: "worker", type: "worker", source: {provider: "github", repository: "acme/agent"}, storage_path: "/data"
+    assert_equal 202, last_response.status, last_response.body
+    job = Valpo::Job[json.fetch("id")]
+    attributes = job.payload.fetch("service")
+    assert_equal "/data", attributes.fetch("storage_path")
+    service = Valpo::Sources::ServiceConfigurator.new.create_service!(project:, service_attributes: attributes, source: job.payload.fetch("source"), build: job.payload.fetch("build"))
+    assert_equal "/data", Valpo::AppServiceConfig[service.id].storage_path
+  end
+
+  def test_storage_api_rejects_unsafe_paths_and_user_selected_sources
+    project = create_project
+    post_json "/v1/projects/#{project.id}/services", name: "worker", type: "worker", storage_path: "/proc"
+    assert_equal 422, last_response.status
+    post_json "/v1/projects/#{project.id}/services", name: "worker", type: "worker", storage_path: "/data", volumes: {"other" => "/data"}
+    assert_equal 400, last_response.status
+    post_json "/v1/projects/#{project.id}/services", name: "database", type: "postgres", storage_path: "/data"
+    assert_equal 422, last_response.status
+    assert_equal 0, Valpo::Service.count
+  end
+
   def test_health_and_authentication
     get "/health"
     assert_equal 200, last_response.status

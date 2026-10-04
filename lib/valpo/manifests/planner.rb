@@ -95,7 +95,7 @@ module Valpo
         app = Valpo::AppServiceConfig[service.id]
         build_name = app.build_target_id && Valpo::BuildTarget[app.build_target_id]&.name
         build_name == config["build"] && app.command == config.fetch("command") &&
-          app.internal_port == config["port"] && app.healthcheck_path == config["healthcheck"]
+          app.internal_port == config["port"] && app.healthcheck_path == config["healthcheck"] && app.storage_path == config["storage_path"]
       end
 
       def retained_actions(actions, existing, declarations, type)

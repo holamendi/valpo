@@ -167,7 +167,7 @@ Important ownership and field conventions:
 - `Project` is a grouping boundary with a manifest digest and last-applied timestamp.
 - `Source` and `BuildTarget` belong to a project and may have an `owner_service_id` for CLI-owned configuration.
 - `Service.kind` is `web`, `worker`, `postgres`, or `redis`; app/managed details live in one-to-one configuration tables.
-- `AppServiceConfig` stores `build_target_id`, command JSON, nullable `internal_port`, and nullable `healthcheck_path`.
+- `AppServiceConfig` stores `build_target_id`, command JSON, nullable `internal_port`, nullable `healthcheck_path`, and nullable `storage_path` for one service-owned persistent data volume.
 - `ManagedServiceConfig` stores version, image, runtime names/address, port, and encrypted credential JSON.
 - `ServiceDependency` links one app service to one managed service; its environment is derived from the dependency at runtime.
 - `ServiceEnvironmentVariable` stores a custom app-service key, encrypted value, sensitivity flag, and timestamps.

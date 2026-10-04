@@ -1402,6 +1402,9 @@ components:
     NullableHealthcheckPath:
       type: [string, 'null']
       pattern: '^/\S*$'
+    NullableStoragePath:
+      type: [string, 'null']
+      description: Absolute normalized non-system container directory for one service-owned data volume; web/worker only. Null unmounts without deleting data.
     CreateServiceRequest:
       type: object
       additionalProperties: false
@@ -1410,6 +1413,7 @@ components:
         name: {$ref: '#/components/schemas/NonEmptyString'}
         type: {$ref: '#/components/schemas/NonEmptyString'}
         version: {$ref: '#/components/schemas/NonEmptyString'}
+        storage_path: {$ref: '#/components/schemas/NullableStoragePath'}
         command: {$ref: '#/components/schemas/Command'}
         internal_port: {$ref: '#/components/schemas/NullablePort'}
         healthcheck_path: {$ref: '#/components/schemas/NullableHealthcheckPath'}
@@ -1422,6 +1426,7 @@ components:
       properties:
         source: {$ref: '#/components/schemas/SourceChanges'}
         build: {$ref: '#/components/schemas/BuildChanges'}
+        storage_path: {$ref: '#/components/schemas/NullableStoragePath'}
         command: {$ref: '#/components/schemas/Command'}
         internal_port: {$ref: '#/components/schemas/NullablePort'}
         healthcheck_path: {$ref: '#/components/schemas/NullableHealthcheckPath'}
@@ -1525,8 +1530,9 @@ components:
     AppConfiguration:
       type: object
       additionalProperties: false
-      required: [build_target_id, internal_port, healthcheck_path, command, port_mode, resolved_internal_port, source, build]
+      required: [build_target_id, internal_port, healthcheck_path, storage_path, command, port_mode, resolved_internal_port, source, build]
       properties:
+        storage_path: {$ref: '#/components/schemas/NullableStoragePath'}
         build_target_id: {type: [string, 'null']}
         internal_port: {anyOf: [{$ref: '#/components/schemas/Port'}, {type: 'null'}]}
         healthcheck_path: {type: [string, 'null']}

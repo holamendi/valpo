@@ -9,7 +9,7 @@ module Valpo
             name: "worker",
             category: :app,
             description: "Background process without a public route",
-            supported_options: %i[command]
+            supported_options: %i[command storage_path]
           )
         end
       end

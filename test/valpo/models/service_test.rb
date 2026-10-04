@@ -16,6 +16,17 @@ class ValpoServiceTest < Minitest::Test
     assert web.web?
   end
 
+  def test_service_storage_identity_cannot_be_changed
+    service = create_app_service
+    other = create_project(name: "other")
+    error = assert_raises(Sequel::ValidationFailed) { service.update(project_id: other.id) }
+    assert_match "project_id is immutable", error.message
+    service.refresh
+    service.id = Valpo::Identifier.generate(:service)
+    error = assert_raises(Sequel::ValidationFailed) { service.save }
+    assert_match "id is immutable", error.message
+  end
+
   def test_service_validates_kind_status_and_name
     project = create_project
     error = assert_raises Sequel::ValidationFailed do

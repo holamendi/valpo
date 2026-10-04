@@ -5,6 +5,28 @@ require "test_helper"
 class ValpoServicesCreatorTest < Minitest::Test
   include ValpoTestDatabase
 
+  def test_app_storage_path_is_persisted
+    project = create_project
+    %w[web worker].each do
+      service = Valpo::Services::Creator.call(project_id: project.id, name: it, type: it, storage_path: "/data")
+      assert_equal "/data", Valpo::AppServiceConfig[service.id].storage_path
+    end
+  end
+
+  def test_storage_rejects_unsafe_destinations_and_managed_services
+    project = create_project
+    %w[/ /proc /proc/x /sys /dev /etc /run /var /var/lib /root /root/.ssh /var/lib/valpo /var/run/docker.sock /var/lib/docker /data/../etc /data/ /data//x relative].each do |path|
+      assert_raises(Valpo::ValidationError, Sequel::ValidationFailed) do
+        Valpo::Services::Creator.call(project_id: project.id, name: "unsafe", type: "worker", storage_path: path)
+      end
+    end
+    %w[postgres redis].each do |type|
+      assert_raises(Valpo::ValidationError) do
+        Valpo::Services::Creator.call(project_id: project.id, name: type, type:, storage_path: "/data")
+      end
+    end
+  end
+
   def test_unsupported_type_and_version_are_rejected
     project = create_project
     assert_raises(Valpo::ValidationError) do

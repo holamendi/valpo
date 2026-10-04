@@ -5,6 +5,20 @@ require "test_helper"
 class ValpoServicesAppUpdaterTest < Minitest::Test
   include ValpoTestDatabase
 
+  def test_storage_update_is_preserved_on_omission_and_restored_on_failure
+    service = create_app_service(status: "running")
+    create_release(service:, status: "active", container_name: "active")
+    updater.update(service_id: service.id, configuration: nil, runtime_changes: {"storage_path" => "/data"}, deploy: false, queue: FakeQueue.new, job_id: "job_test")
+    assert_equal "/data", Valpo::AppServiceConfig[service.id].storage_path
+    updater.update(service_id: service.id, configuration: nil, runtime_changes: {"command" => ["ruby"]}, deploy: false, queue: FakeQueue.new, job_id: "job_test")
+    assert_equal "/data", Valpo::AppServiceConfig[service.id].storage_path
+    failing = updater(deployment: FakeDeployment.new(error: Valpo::ValidationError.new("restart failed")))
+    assert_raises(Valpo::ValidationError) do
+      failing.update(service_id: service.id, configuration: nil, runtime_changes: {"storage_path" => "/app/data"}, deploy: false, queue: FakeQueue.new, job_id: "job_test")
+    end
+    assert_equal "/data", Valpo::AppServiceConfig[service.id].storage_path
+  end
+
   def test_source_update_detaches_from_manifest_configuration
     service, manifest_source, = configured_service
     configuration = {

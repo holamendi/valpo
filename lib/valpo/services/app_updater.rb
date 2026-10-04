@@ -58,6 +58,7 @@ module Valpo
         end
 
         attributes = {}
+        attributes[:storage_path] = runtime_changes["storage_path"] if runtime_changes.key?("storage_path")
         attributes[:command_json] = JSON.generate(runtime_changes["command"]) if runtime_changes.key?("command")
         attributes[:internal_port] = runtime_changes["internal_port"] if runtime_changes.key?("internal_port")
         attributes[:healthcheck_path] = runtime_changes["healthcheck_path"] if runtime_changes.key?("healthcheck_path")
@@ -100,7 +101,7 @@ module Valpo
         build = Valpo::BuildTarget.where(owner_service_id: service.id).first
         {
           service_status: service.status,
-          app: app.values.slice(:build_target_id, :command_json, :internal_port, :healthcheck_path),
+          app: app.values.slice(:build_target_id, :command_json, :internal_port, :healthcheck_path, :storage_path),
           source: source&.values&.slice(:id, :provider, :repository, :ref, :status),
           build: build&.values&.slice(:id, :source_id, :strategy, :dockerfile, :context, :builder, :buildpacks_json)
         }

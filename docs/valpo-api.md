@@ -47,6 +47,14 @@ Source-backed app requests accept `build.strategy` as `auto`, `dockerfile`, or `
 
 Service records retain `kind` internally, but every public service and project-log response exposes that field as `type`. Managed-service responses have no `plan` field. Effective environment entries identify whether they originate from a custom service variable or a managed dependency. Custom values are encrypted and sensitive by default; sensitive custom values and managed binding credentials are redacted for normal reads, including reads made with a `read` credential. `GET /v1/services/{service}/env?reveal=true` requires an `admin` credential and returns `403 forbidden` for every other credential. Authorized reveals return the plaintext values. Managed binding values are derived from encrypted managed credentials rather than persisted as a second copy.
 
+## App Persistent Storage
+
+Service creation and PATCH accept nullable `storage_path` for web/worker services, exposed in `app.storage_path`. For example, `{"storage_path":"/data"}` enables a single service-owned Docker named volume. Omitted PATCH fields preserve configuration; `null` unmounts without deleting data. The container destination must be absolute and normalized (no root, trailing slash, dot segments, whitespace, or mount-option syntax), outside system directories including `/proc`, `/sys`, `/dev`, `/etc`, `/run`, and Docker/containerd data directories. Managed services reject this option.
+
+The volume name is derived only from the immutable service ID (`valpo-<service-id-with-dashes>-data`); users cannot select a source, bind a host path, or share another service/project volume. Valpo labels and verifies service/project ownership before mounting or deleting. Storage survives releases, restarts, stop, rollback, deployment failures, and maintenance; forced service deletion destroys it, including when unmounted. Back up application data separately. Valpo does not automatically provision UID/GID ownership or permissions for non-root apps; prepare the image's mount destination and preserve numeric ownership when restoring a volume. Verify that the runtime user can write before cutover.
+
+**Writable SQLite requires controlled stop-first migration.** Stop the service and wait for completion before a deploy, runtime update, restart, or rollback: ordinary replacements can run old and new containers concurrently against the same volume. Rollback restores code, not data or database schemas. Changing the destination remounts the same volume and does not migrate existing ephemeral files. Schema migration 007 adds nullable `app_service_configs.storage_path`; existing apps remain unmounted.
+
 ## Bounded Lists And Logs
 
 - `GET /v1/jobs` accepts `limit`; the default is `100` and the maximum is `500`.
@@ -59,7 +67,7 @@ Service records retain `kind` internally, but every public service and project-l
 
 Clients waiting on a job must drain every event page before advancing the cursor. Daily storage maintenance expires completed jobs, their events, and GitHub webhook deliveries according to the host retention configuration.
 
-`POST /v1/system/maintenance` enqueues an ownership-scoped cleanup job and accepts an optional `dry_run` boolean. Cleanup retains the configured number of deployable local build artifacts per service, marks older artifacts unavailable without deleting their release history, removes stale buildpack caches and orphaned Valpo containers, and leaves registry images, managed data volumes, unrelated Docker resources, and global Dockerfile build cache untouched.
+`POST /v1/system/maintenance` enqueues an ownership-scoped cleanup job and accepts an optional `dry_run` boolean. Cleanup retains the configured number of deployable local build artifacts per service, marks older artifacts unavailable without deleting their release history, removes stale buildpack caches and orphaned Valpo containers, and leaves registry images, managed and app data volumes, unrelated Docker resources, and global Dockerfile build cache untouched.
 
 `POST /v1/system/secrets/verify` requires an admin credential and enqueues decryption and format verification for every encrypted managed-service credential, custom service environment variable, and provider credential. `POST /v1/system/secrets/rotate` also requires admin scope; it verifies the current records, adds a new active host-key version, re-encrypts every record in one SQLite transaction, and verifies the result. Old key versions remain in the keyring so interrupted rotation does not make existing ciphertext unrecoverable. Safe record counts and active key versions are written to job events; plaintext values never enter jobs or events.
 
