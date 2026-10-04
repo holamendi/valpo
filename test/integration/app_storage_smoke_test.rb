@@ -20,7 +20,7 @@ class AppStorageSmokeTest < Minitest::Test
     names = []
 
     begin
-      Dir.mktmpdir("valpo-storage-image") do 
+      Dir.mktmpdir("valpo-storage-image") do
         dockerfile = File.join(it, "Dockerfile")
         File.write(dockerfile, "FROM alpine:3.21\nRUN adduser -D app && mkdir /data && chown app:app /data\nUSER app\n")
         built = docker.execute(docker.build_command(dockerfile:, tag: image, context: it))
